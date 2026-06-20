@@ -32,7 +32,11 @@ FROM node:20-alpine AS frontend
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci
+
+# Limpieza explícita + reinstalación: evita el bug de npm con binarios nativos
+# de Rollup quedando desincronizados entre plataformas (ver npm/cli#4828)
+RUN rm -rf node_modules package-lock.json \
+    && npm install --no-audit --no-fund
 
 COPY . .
 COPY --from=vendor /app/vendor ./vendor
