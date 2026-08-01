@@ -46,6 +46,7 @@ Route::middleware('auth')->group(function () {
     Route::post('devices/{device}/assign-content', [DeviceController::class, 'assignContent'])->name('devices.assign-content');
     Route::post('devices/{device}/unbind', [DeviceController::class, 'unbind'])->name('devices.unbind');
     Route::post('devices/{device}/assign-media', [DeviceController::class, 'assignMedia'])->name('devices.assign-media');
+    Route::post('devices/{device}/remove-media', [DeviceController::class, 'removeMedia'])->name('devices.remove-media');
     Route::post('devices/bulk-format-sd', [DeviceController::class, 'bulkFormatSd'])->name('devices.bulk-format-sd');
     Route::post('devices/{device}/format-sd', [DeviceController::class, 'formatSd'])->name('devices.format-sd');
     Route::post('devices/{device}/set-volume', [DeviceController::class, 'setVolume'])->name('devices.set-volume');
