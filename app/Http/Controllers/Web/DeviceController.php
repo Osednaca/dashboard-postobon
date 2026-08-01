@@ -164,6 +164,79 @@ class DeviceController extends Controller
     }
 
     /**
+     * Set the volume of a device.
+     */
+    public function setVolume(Request $request, Device $device): RedirectResponse
+    {
+        $this->authorize('update', $device);
+
+        $request->validate([
+            'volume' => ['required', 'integer', 'min:0', 'max:100'],
+        ]);
+
+        try {
+            if (! $device->mac_address) {
+                return back()->with('error', 'El dispositivo no tiene una dirección MAC asignada.');
+            }
+
+            $volume = (int) $request->input('volume');
+
+            if ($this->z2DeviceService->setVolume($device->mac_address, $volume)) {
+                return back()->with('success', "Volumen del dispositivo ajustado a {$volume}%.");
+            }
+
+            return back()->with('error', 'No se pudo actualizar el volumen en la nube Z2.');
+        } catch (\Exception $e) {
+            Log::error('Error al cambiar volumen del dispositivo: ' . $e->getMessage());
+
+            return back()->with('error', 'Ocurrió un error al ajustar el volumen del dispositivo.');
+        }
+    }
+
+    /**
+     * Format SD card for multiple selected devices.
+     */
+    public function bulkFormatSd(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'device_ids' => ['required', 'array', 'min:1'],
+            'device_ids.*' => ['exists:devices,id'],
+        ]);
+
+        try {
+            $deviceIds = $request->input('device_ids');
+            $devices = Device::whereIn('id', $deviceIds)->get();
+
+            $successCount = 0;
+            $failCount = 0;
+
+            foreach ($devices as $device) {
+                $this->authorize('update', $device);
+
+                if ($device->mac_address && $this->z2DeviceService->formatSd($device->mac_address)) {
+                    $successCount++;
+                } else {
+                    $failCount++;
+                }
+            }
+
+            if ($failCount === 0) {
+                return back()->with('success', "Tarjeta SD formateada exitosamente en los {$successCount} dispositivos seleccionados.");
+            }
+
+            if ($successCount > 0) {
+                return back()->with('warning', "Se formateó la tarjeta SD en {$successCount} dispositivos, pero falló en {$failCount}.");
+            }
+
+            return back()->with('error', 'No se pudo formatear la tarjeta SD en los dispositivos seleccionados.');
+        } catch (\Exception $e) {
+            Log::error('Error al formatear SDs en lote: ' . $e->getMessage());
+
+            return back()->with('error', 'Ocurrió un error al procesar el formateo en lote.');
+        }
+    }
+
+    /**
      * Show the form for editing the specified device.
      */
     public function edit(Device $device): View

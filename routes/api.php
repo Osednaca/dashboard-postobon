@@ -26,8 +26,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::apiResource('locations', LocationController::class)->names('api.locations');
     Route::apiResource('devices', DeviceController::class)->names('api.devices');
+    Route::post('devices/bulk-format-sd', [DeviceController::class, 'bulkFormatSd'])->name('api.devices.bulk-format-sd');
     Route::post('devices/{device}/format-sd', [DeviceController::class, 'formatSd'])->name('api.devices.format-sd');
     Route::get('devices/{device}/settings', [DeviceController::class, 'getSettings'])->name('api.devices.settings');
+    Route::post('devices/{device}/volume', [DeviceController::class, 'setVolume'])->name('api.devices.set-volume');
     Route::apiResource('groups', GroupController::class)->names('api.groups');
     Route::apiResource('media', MediaController::class)->parameters(['media' => 'media'])->names('api.media');
     Route::apiResource('campaigns', CampaignController::class)->names('api.campaigns');

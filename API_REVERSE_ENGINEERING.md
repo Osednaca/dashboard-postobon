@@ -264,6 +264,32 @@ Consulta los parámetros de configuración específicos del dispositivo (por eje
 
 ---
 
+### `POST /User/setDeviceSetting`
+
+Establece o modifica un parámetro de configuración del dispositivo (por ejemplo, ajustar el **volumen de audio** entre 0 y 100).
+
+**Body:** `application/x-www-form-urlencoded`
+
+| Campo | Tipo | Requerido | Descripción |
+|---|---|---|---|
+| `userName` | string | ✅ | Nombre de usuario |
+| `deviceId` | string | ✅ | MAC del fan (ej: `9097D5E4D9FC`) |
+| `parameter` | string | ✅ | Parámetro a modificar (`Volume`) |
+| `value` | string | ✅ | Valor del parámetro (ej: `"75"`) |
+
+**Respuesta:**
+```json
+{
+  "result": 0
+}
+```
+
+| Campo | Descripción |
+|---|---|
+| `result` | `0` = éxito al aplicar el ajuste |
+
+---
+
 ## 4. Gestión de Videos
 
 ---
@@ -463,6 +489,7 @@ Mueve un fan a un grupo.
 | `POST` | `/User/unbindDevice` | Desvincular fan | Cookie |
 | `POST` | `/User/needFormatSd` | Formatear SD (borrar videos) | Cookie |
 | `POST` | `/User/selectDeviceSetting` | Consultar ajuste (ej: Volumen) | Cookie |
+| `POST` | `/User/setDeviceSetting` | Ajustar parámetro (ej: Volumen) | Cookie |
 | `POST` | `/Effect/getUiListIsVersion` | Listar videos | Cookie |
 | `POST` | `/User/upgradeDeviceUi` | Cambiar video activo | Cookie |
 | `POST` | `/User/uploadMediaFile` | Obtener slot FTP | Cookie |

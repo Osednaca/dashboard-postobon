@@ -427,4 +427,81 @@ class DeviceController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Set the volume of a device via API.
+     */
+    public function setVolume(Request $request, Device $device): JsonResponse
+    {
+        try {
+            $this->authorize('update', $device);
+
+            $request->validate([
+                'volume' => ['required', 'integer', 'min:0', 'max:100'],
+            ]);
+
+            if (! $device->mac_address) {
+                return response()->json([
+                    'message' => 'El dispositivo no tiene una dirección MAC asignada.',
+                ], 422);
+            }
+
+            $volume = (int) $request->input('volume');
+
+            if ($this->z2DeviceService->setVolume($device->mac_address, $volume)) {
+                return response()->json([
+                    'message' => 'Volumen del dispositivo actualizado correctamente.',
+                    'volume' => $volume,
+                    'device' => $device->fresh(),
+                ]);
+            }
+
+            return response()->json([
+                'message' => 'Error al actualizar el volumen en la nube Z2.',
+            ], 500);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Error al cambiar el volumen del dispositivo.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Bulk format SD card for multiple devices via API.
+     */
+    public function bulkFormatSd(Request $request): JsonResponse
+    {
+        try {
+            $request->validate([
+                'device_ids' => ['required', 'array', 'min:1'],
+                'device_ids.*' => ['exists:devices,id'],
+            ]);
+
+            $deviceIds = $request->input('device_ids');
+            $devices = Device::whereIn('id', $deviceIds)->get();
+
+            $results = [];
+            foreach ($devices as $device) {
+                $this->authorize('update', $device);
+                $mac = $device->mac_address;
+                $success = $mac ? $this->z2DeviceService->formatSd($mac) : false;
+                $results[] = [
+                    'device_id' => $device->id,
+                    'mac_address' => $mac,
+                    'success' => $success,
+                ];
+            }
+
+            return response()->json([
+                'message' => 'Proceso de formateo en lote completado.',
+                'results' => $results,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Error al ejecutar el formateo de tarjetas SD en lote.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
 }

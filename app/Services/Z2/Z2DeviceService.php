@@ -352,6 +352,55 @@ class Z2DeviceService
     }
 
     /**
+     * Set a device setting parameter in Z2 Cloud (e.g. Volume).
+     *
+     * POST /User/setDeviceSetting
+     *   userName, deviceId, parameter, value
+     */
+    public function setDeviceSetting(string $mac, string $parameter, string $value): bool
+    {
+        Log::info('[Z2] Setting device parameter', ['mac' => $mac, 'parameter' => $parameter, 'value' => $value]);
+
+        $response = $this->client->request('POST', '/User/setDeviceSetting', [
+            'userName' => $this->client->username,
+            'deviceId' => $mac,
+            'parameter' => $parameter,
+            'value' => $value,
+            $parameter => $value,
+        ]);
+
+        if ($response && ($response['result'] ?? -1) === 0) {
+            Log::info('[Z2] Device parameter updated successfully', ['mac' => $mac, 'parameter' => $parameter, 'value' => $value]);
+            return true;
+        }
+
+        Log::error('[Z2] Set device setting failed', ['mac' => $mac, 'parameter' => $parameter, 'value' => $value, 'response' => $response]);
+        return false;
+    }
+
+    /**
+     * Set device volume (0 to 100).
+     */
+    public function setVolume(string $mac, int $volume): bool
+    {
+        $volume = max(0, min(100, $volume));
+        return $this->setDeviceSetting($mac, 'Volume', (string) $volume);
+    }
+
+    /**
+     * Format SD cards for multiple devices.
+     * Returns an array of results keyed by MAC address.
+     */
+    public function formatSdMultiple(array $macs): array
+    {
+        $results = [];
+        foreach ($macs as $mac) {
+            $results[$mac] = $this->formatSd($mac);
+        }
+        return $results;
+    }
+
+    /**
      * Move device to group.
      */
     public function moveToGroup(string $mac, int $groupId): bool

@@ -99,14 +99,39 @@
                         <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">MAC Address</p>
                         <p class="text-sm text-text font-mono">{{ $device->mac_address }}</p>
                     </div>
-                    <div class="p-4 rounded-lg bg-surface">
-                        <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Volumen de Audio</p>
-                        <p class="text-sm text-text font-semibold flex items-center gap-1.5">
-                            <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
-                            </svg>
-                            {{ isset($deviceVolume) && $deviceVolume !== null ? $deviceVolume . '%' : 'No reportado' }}
-                        </p>
+                    <div class="p-4 rounded-lg bg-surface sm:col-span-2 border border-border/60" x-data="{ currentVol: {{ isset($deviceVolume) && $deviceVolume !== null ? $deviceVolume : 50 }} }">
+                        <div class="flex items-center justify-between mb-2">
+                            <p class="text-xs font-medium text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                                <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+                                </svg>
+                                Control de Volumen de Audio
+                            </p>
+                            <span class="text-sm font-bold text-primary font-mono" x-text="currentVol + '%'"></span>
+                        </div>
+                        <form action="{{ route('devices.set-volume', $device) }}" method="POST" class="space-y-3">
+                            @csrf
+                            <div class="flex items-center gap-3">
+                                <button type="button" @click="currentVol = Math.max(0, parseInt(currentVol) - 10)" class="px-2.5 py-1 rounded bg-white border border-border text-xs font-bold text-text hover:bg-surface transition-colors shadow-xs" title="Bajar 10%">-10%</button>
+                                <input type="range" name="volume" min="0" max="100" step="1" x-model="currentVol" class="w-full accent-primary cursor-pointer h-2 bg-border/40 rounded-lg">
+                                <button type="button" @click="currentVol = Math.min(100, parseInt(currentVol) + 10)" class="px-2.5 py-1 rounded bg-white border border-border text-xs font-bold text-text hover:bg-surface transition-colors shadow-xs" title="Subir 10%">+10%</button>
+                            </div>
+                            <div class="flex items-center justify-between text-xs text-text-muted pt-1">
+                                <div class="flex items-center gap-2">
+                                    <button type="button" @click="currentVol = 0" class="hover:text-primary transition-colors">Silenciar</button>
+                                    <span>•</span>
+                                    <button type="button" @click="currentVol = 50" class="hover:text-primary transition-colors">50%</button>
+                                    <span>•</span>
+                                    <button type="button" @click="currentVol = 100" class="hover:text-primary transition-colors">100%</button>
+                                </div>
+                                <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white text-xs font-medium rounded-lg hover:bg-primary/95 transition-colors shadow-xs">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                    </svg>
+                                    Aplicar Volumen
+                                </button>
+                            </div>
+                        </form>
                     </div>
                     <div class="p-4 rounded-lg bg-surface">
                         <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Firmware</p>
