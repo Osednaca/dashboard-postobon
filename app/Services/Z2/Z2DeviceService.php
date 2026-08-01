@@ -74,10 +74,17 @@ class Z2DeviceService
                 $groupId = null;
                 if (! empty($deviceData['groupName'])) {
                     if (! isset($groupMap[$deviceData['groupName']])) {
-                        $group = Group::firstOrCreate(
-                            ['name' => $deviceData['groupName']],
-                            ['description' => 'Grupo sincronizado desde Z2 Cloud']
-                        );
+                        $group = Group::withTrashed()->where('name', $deviceData['groupName'])->first();
+                        if ($group) {
+                            if ($group->trashed()) {
+                                $group->restore();
+                            }
+                        } else {
+                            $group = Group::create([
+                                'name' => $deviceData['groupName'],
+                                'description' => 'Grupo sincronizado desde Z2 Cloud',
+                            ]);
+                        }
                         $groupMap[$deviceData['groupName']] = $group->id;
                     }
                     $groupId = $groupMap[$deviceData['groupName']];

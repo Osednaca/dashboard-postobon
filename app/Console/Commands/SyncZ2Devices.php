@@ -82,10 +82,18 @@ class SyncZ2Devices extends Command
                 }
 
                 if (! empty($deviceData['group'])) {
-                    $group = Group::firstOrCreate(
-                        ['name' => $deviceData['group']['name']],
-                        ['description' => $deviceData['group']['description'] ?? null]
-                    );
+                    $groupName = $deviceData['group']['name'];
+                    $group = Group::withTrashed()->where('name', $groupName)->first();
+                    if ($group) {
+                        if ($group->trashed()) {
+                            $group->restore();
+                        }
+                    } else {
+                        $group = Group::create([
+                            'name' => $groupName,
+                            'description' => $deviceData['group']['description'] ?? null,
+                        ]);
+                    }
                     $device->group()->associate($group);
                     $device->save();
                 }
