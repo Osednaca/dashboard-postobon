@@ -1,0 +1,61 @@
+HTTP/1.1
+POST www . holographicdisplay . cn
+Method: POST
+URL
+http://www.holographicdisplay.cn:8088/User/needFormatSd
+Headers
+Accept-Encoding:
+gzip
+Accept-Language:
+es-US,es;q=0.8
+charset:
+utf-8
+Connection:
+Keep-Alive
+Content-Length:
+58
+Content-Type:
+application/x-www-form-urlencoded
+Cookie:
+JSESSIONID=7F3E07395392D7F2C4A59CEAF331D218
+Host:
+www.holographicdisplay.cn:8088
+User-Agent:
+okhttp-okgo/jeasonlzy
+
+userName=oscarleon210&deviceId=9097D5E4D9FC&needFormatSd=1
+
+Status: 200 OK
+Headers
+Accept-Charset:
+big5, big5-hkscs, cesu-8, euc-jp, euc-kr, gb18030, gb2312, gbk, ibm-thai, ibm00858, ibm01140, ibm01141, ibm01142, ibm01143, ibm01144, ibm01145, ibm01146, ibm01147, ibm01148, ibm01149, ibm037, ibm1026, ibm1047, ibm273, ibm277, ibm278, ibm280, ibm284, ibm285, ibm290, ibm297, ibm420, ibm424, ibm437, ibm500, ibm775, ibm850, ibm852, ibm855, ibm857, ibm860, ibm861, ibm862, ibm863, ibm864, ibm865, ibm866, ibm868, ibm869, ibm870, ibm871, ibm918, iso-2022-cn, iso-2022-jp, iso-2022-jp-2, iso-202...
+Access-Control-Allow-Credentials:
+true
+Access-Control-Allow-Headers:
+X-Requested-With, X-HTTP-Method-Override, Content-Type, Accept
+Access-Control-Allow-Methods:
+GET,POST,HEAD,OPTIONS,PUT,DELETE
+Access-Control-Allow-Origin:
+https://holographicdisplay.cn
+Access-Control-Max-Age:
+0
+Connection:
+keep-alive
+Content-Length:
+47
+Content-Type:
+application/json;charset=UTF-8
+Date:
+Sat, 01 Aug 2026 21:28:25 GMT
+Keep-Alive:
+timeout=300
+Server:
+XDomainRequestAllowed:
+1
+
+{
+  "result": 0,
+  "DeviceResult": {
+    "9097D5E4D9FC": 66
+  }
+}

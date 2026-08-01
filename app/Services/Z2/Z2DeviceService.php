@@ -317,6 +317,41 @@ class Z2DeviceService
     }
 
     /**
+     * Query a setting from the device (e.g. Volume).
+     *
+     * POST /User/selectDeviceSetting
+     *   userName, deviceId, parameter
+     *   Success: {"result":0,"aaData":{"Volume":"50","MacIpAddress":"9097D5E4D9FC"}}
+     */
+    public function getDeviceSetting(string $mac, string $parameter = 'Volume'): ?array
+    {
+        $response = $this->client->request('POST', '/User/selectDeviceSetting', [
+            'userName' => $this->client->username,
+            'deviceId' => $mac,
+            'parameter' => $parameter,
+        ]);
+
+        if ($response && ($response['result'] ?? -1) === 0 && isset($response['aaData'])) {
+            return $response['aaData'];
+        }
+
+        Log::error('[Z2] Get device setting failed', ['mac' => $mac, 'parameter' => $parameter, 'response' => $response]);
+        return null;
+    }
+
+    /**
+     * Convenience method to get device volume level.
+     */
+    public function getVolume(string $mac): ?int
+    {
+        $data = $this->getDeviceSetting($mac, 'Volume');
+        if ($data && isset($data['Volume'])) {
+            return (int) $data['Volume'];
+        }
+        return null;
+    }
+
+    /**
      * Move device to group.
      */
     public function moveToGroup(string $mac, int $groupId): bool

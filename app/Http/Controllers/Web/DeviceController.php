@@ -116,10 +116,12 @@ class DeviceController extends Controller
         try {
             $deviceDetail = null;
             $devicePlaylist = [];
+            $deviceVolume = null;
 
             if ($device->mac_address) {
                 $deviceDetail = $this->z2DeviceService->getDeviceDetail($device->mac_address);
                 $devicePlaylist = $this->z2PlaylistService->getDevicePlaylist($device->mac_address);
+                $deviceVolume = $this->z2DeviceService->getVolume($device->mac_address);
             }
 
             // Deduplicated media list for the select dropdown
@@ -128,12 +130,36 @@ class DeviceController extends Controller
                 ->unique('file_path')
                 ->values();
 
-            return view('devices.show', compact('device', 'deviceDetail', 'devicePlaylist', 'allMediaForDevice'));
+            return view('devices.show', compact('device', 'deviceDetail', 'devicePlaylist', 'allMediaForDevice', 'deviceVolume'));
         } catch (\Exception $e) {
             Log::error('Error al mostrar dispositivo: ' . $e->getMessage());
 
             return redirect()->route('devices.index')
                 ->with('error', 'Ocurrió un error al cargar el dispositivo.');
+        }
+    }
+
+    /**
+     * Format the SD card of the device.
+     */
+    public function formatSd(Device $device): RedirectResponse
+    {
+        $this->authorize('update', $device);
+
+        try {
+            if (! $device->mac_address) {
+                return back()->with('error', 'El dispositivo no tiene una dirección MAC asignada.');
+            }
+
+            if ($this->z2DeviceService->formatSd($device->mac_address)) {
+                return back()->with('success', 'Tarjeta SD del dispositivo formateada exitosamente.');
+            }
+
+            return back()->with('error', 'No se pudo formatear la tarjeta SD en la nube Z2.');
+        } catch (\Exception $e) {
+            Log::error('Error al formatear la SD del dispositivo: ' . $e->getMessage());
+
+            return back()->with('error', 'Ocurrió un error al formatear la tarjeta SD del dispositivo.');
         }
     }
 

@@ -233,6 +233,37 @@ Formatea la tarjeta SD del fan, eliminando **todos los videos almacenados**. El 
 
 ---
 
+### `POST /User/selectDeviceSetting`
+
+Consulta los parámetros de configuración específicos del dispositivo (por ejemplo, el nivel de **volumen de audio**).
+
+**Body:** `application/x-www-form-urlencoded`
+
+| Campo | Tipo | Requerido | Descripción |
+|---|---|---|---|
+| `userName` | string | ✅ | Nombre de usuario |
+| `deviceId` | string | ✅ | MAC del fan (ej: `9097D5E4D9FC`) |
+| `parameter` | string | ✅ | Parámetro a consultar (ej: `Volume`) |
+
+**Respuesta:**
+```json
+{
+  "result": 0,
+  "aaData": {
+    "Volume": "50",
+    "MacIpAddress": "9097D5E4D9FC"
+  }
+}
+```
+
+| Campo | Descripción |
+|---|---|
+| `result` | `0` = éxito |
+| `aaData.Volume` | Nivel de volumen configurado (ej: `"50"`) |
+| `aaData.MacIpAddress` | MAC address del dispositivo consultado |
+
+---
+
 ## 4. Gestión de Videos
 
 ---
@@ -431,6 +462,7 @@ Mueve un fan a un grupo.
 | `POST` | `/User/devicePower` | Encender / Apagar | Cookie |
 | `POST` | `/User/unbindDevice` | Desvincular fan | Cookie |
 | `POST` | `/User/needFormatSd` | Formatear SD (borrar videos) | Cookie |
+| `POST` | `/User/selectDeviceSetting` | Consultar ajuste (ej: Volumen) | Cookie |
 | `POST` | `/Effect/getUiListIsVersion` | Listar videos | Cookie |
 | `POST` | `/User/upgradeDeviceUi` | Cambiar video activo | Cookie |
 | `POST` | `/User/uploadMediaFile` | Obtener slot FTP | Cookie |

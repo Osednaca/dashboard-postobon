@@ -360,4 +360,71 @@ class DeviceController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Format the SD card of a device.
+     */
+    public function formatSd(Device $device): JsonResponse
+    {
+        try {
+            $this->authorize('update', $device);
+
+            if (! $device->mac_address) {
+                return response()->json([
+                    'message' => 'El dispositivo no tiene una dirección MAC asignada.',
+                ], 422);
+            }
+
+            if ($this->z2DeviceService->formatSd($device->mac_address)) {
+                return response()->json([
+                    'message' => 'Tarjeta SD del dispositivo formateada correctamente.',
+                    'device' => $device->fresh(),
+                ]);
+            }
+
+            return response()->json([
+                'message' => 'Error al formatear la tarjeta SD en la nube Z2.',
+            ], 500);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Error al formatear la tarjeta SD del dispositivo.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Get specific setting or volume of a device from Z2 Cloud.
+     */
+    public function getSettings(Request $request, Device $device): JsonResponse
+    {
+        try {
+            $this->authorize('view', $device);
+
+            if (! $device->mac_address) {
+                return response()->json([
+                    'message' => 'El dispositivo no tiene una dirección MAC asignada.',
+                ], 422);
+            }
+
+            $parameter = $request->input('parameter', 'Volume');
+            $settingData = $this->z2DeviceService->getDeviceSetting($device->mac_address, $parameter);
+
+            if ($settingData !== null) {
+                return response()->json([
+                    'parameter' => $parameter,
+                    'data' => $settingData,
+                ]);
+            }
+
+            return response()->json([
+                'message' => 'Error al consultar los ajustes del dispositivo en la nube Z2.',
+            ], 500);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Error al consultar la configuración del dispositivo.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
 }

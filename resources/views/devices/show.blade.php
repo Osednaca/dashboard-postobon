@@ -3,7 +3,7 @@
 @section('title', $device->name)
 
 @section('content')
-<div class="max-w-5xl mx-auto" x-data="{ showUnbindModal: false, showRemoveVideoModal: false, removeVideoCode: '', removeVideoName: '' }">
+<div class="max-w-5xl mx-auto" x-data="{ showUnbindModal: false, showRemoveVideoModal: false, showFormatSdModal: false, removeVideoCode: '', removeVideoName: '' }">
     <!-- Page Header -->
     <div class="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -69,6 +69,12 @@
                     </button>
                 </form>
             @endif
+            <button @click="showFormatSdModal = true" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-danger/10 text-danger text-sm font-medium hover:bg-danger/20 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+                Formatear SD
+            </button>
             <button @click="showUnbindModal = true" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-text-muted/10 text-text-muted text-sm font-medium hover:bg-text-muted/20 transition-colors">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
@@ -94,6 +100,15 @@
                         <p class="text-sm text-text font-mono">{{ $device->mac_address }}</p>
                     </div>
                     <div class="p-4 rounded-lg bg-surface">
+                        <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Volumen de Audio</p>
+                        <p class="text-sm text-text font-semibold flex items-center gap-1.5">
+                            <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+                            </svg>
+                            {{ isset($deviceVolume) && $deviceVolume !== null ? $deviceVolume . '%' : 'No reportado' }}
+                        </p>
+                    </div>
+                    <div class="p-4 rounded-lg bg-surface">
                         <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Firmware</p>
                         <p class="text-sm text-text">{{ $device->firmware ?? 'No especificado' }}</p>
                     </div>
@@ -117,7 +132,7 @@
                         <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Último Heartbeat</p>
                         <p class="text-sm text-text">{{ $device->last_heartbeat_at ? $device->last_heartbeat_at->format('d/m/Y H:i') : 'Nunca' }}</p>
                     </div>
-                    <div class="p-4 rounded-lg bg-surface">
+                    <div class="p-4 rounded-lg bg-surface sm:col-span-2">
                         <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Horas de Trabajo</p>
                         <p class="text-sm text-text">{{ $device->working_hours ? number_format($device->working_hours, 1) . 'h' : '-' }}</p>
                     </div>
@@ -370,6 +385,32 @@
                     @csrf
                     <input type="hidden" name="ui_code" :value="removeVideoCode">
                     <button type="submit" class="px-4 py-2.5 rounded-lg bg-danger text-white text-sm font-medium hover:bg-red-700 transition-colors">Quitar Video</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Format SD Modal -->
+    <div x-show="showFormatSdModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" style="display: none;">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showFormatSdModal = false"></div>
+        <div class="relative bg-white rounded-xl shadow-xl border border-border p-6 w-full max-w-md" @click.away="showFormatSdModal = false">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 rounded-full bg-danger/10 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-danger" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-text">¿Formatear tarjeta SD?</h3>
+                </div>
+            </div>
+            <p class="text-sm text-text-light mb-2">Se borrarán <strong>todos los videos almacenados</strong> en la tarjeta SD del dispositivo.</p>
+            <p class="text-xs text-text-muted mb-6"><strong>Nota:</strong> El dispositivo permanecerá vinculado a tu cuenta Z2 Cloud y podrás volver a asignarle videos en cualquier momento.</p>
+            <div class="flex justify-end gap-3">
+                <button @click="showFormatSdModal = false" class="px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-text hover:bg-surface transition-colors">Cancelar</button>
+                <form action="{{ route('devices.format-sd', $device) }}" method="POST" class="inline">
+                    @csrf
+                    <button type="submit" class="px-4 py-2.5 rounded-lg bg-danger text-white text-sm font-medium hover:bg-red-700 transition-colors">Formatear SD</button>
                 </form>
             </div>
         </div>
