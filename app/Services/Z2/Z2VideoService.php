@@ -379,9 +379,8 @@ class Z2VideoService
      */
     public function deleteVideo(string $uiCode): bool
     {
-        // Note: No explicit delete endpoint documented
-        // Delete locally only
-        Media::where('file_path', $uiCode)->delete();
+        // Note: No explicit delete endpoint documented in Z2 Cloud API
+        // MediaService handles local file and database record deletion
         return true;
     }
 

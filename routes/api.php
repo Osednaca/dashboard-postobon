@@ -31,6 +31,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('devices/{device}/settings', [DeviceController::class, 'getSettings'])->name('api.devices.settings');
     Route::post('devices/{device}/volume', [DeviceController::class, 'setVolume'])->name('api.devices.set-volume');
     Route::apiResource('groups', GroupController::class)->names('api.groups');
+    Route::post('media/bulk-delete', [MediaController::class, 'bulkDestroy'])->name('api.media.bulk-delete');
     Route::apiResource('media', MediaController::class)->parameters(['media' => 'media'])->names('api.media');
     Route::apiResource('campaigns', CampaignController::class)->names('api.campaigns');
     Route::apiResource('schedules', ScheduleController::class)->names('api.schedules');

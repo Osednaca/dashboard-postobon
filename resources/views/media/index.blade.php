@@ -11,7 +11,22 @@
     deleteId: null, 
     deleteName: '',
     showAssignModal: false,
-    assignId: null
+    assignId: null,
+    selectedIds: [],
+    showBulkDeleteModal: false,
+    toggleAll() {
+        const checkboxes = document.querySelectorAll('input[name=&quot;media_ids[]&quot;]');
+        if (this.selectedIds.length === checkboxes.length && checkboxes.length > 0) {
+            this.selectedIds = [];
+        } else {
+            this.selectedIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+        }
+    },
+    openDeleteModal(id, name) {
+        this.deleteId = id;
+        this.deleteName = name;
+        this.showDeleteModal = true;
+    }
 }">
     <!-- Page Header -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
@@ -42,7 +57,7 @@
         </div>
     </div>
 
-    <!-- Filters -->
+    <!-- Filters & Bulk Actions -->
     <div class="bg-white rounded-xl border border-border p-4 mb-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
         <div class="flex flex-col sm:flex-row gap-3">
             <div class="flex-1 relative">
@@ -57,6 +72,22 @@
                     <option value="video">Video</option>
                     <option value="image">Imagen</option>
                 </select>
+            </div>
+        </div>
+
+        <!-- Bulk Actions Bar -->
+        <div x-show="selectedIds.length > 0" x-transition class="mt-4 pt-4 border-t border-border flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <span class="text-sm font-medium text-text" x-text="selectedIds.length + ' seleccionado(s)'"></span>
+                <button type="button" @click="selectedIds = []" class="text-xs text-text-light hover:text-primary underline">Desseleccionar todos</button>
+            </div>
+            <div class="flex items-center gap-2">
+                <button type="button" @click="showBulkDeleteModal = true" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-danger text-white text-xs font-medium hover:bg-red-700 transition-colors shadow-sm">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                    Eliminar Selección (<span x-text="selectedIds.length"></span>)
+                </button>
             </div>
         </div>
     </div>
@@ -82,8 +113,14 @@
     <!-- Grid View -->
     <div x-show="viewMode === 'grid'" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         @forelse($media as $item)
-            <div class="bg-white rounded-xl border border-border shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-shadow"
+            <div class="bg-white rounded-xl border border-border shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-shadow relative"
                  x-show="(!search || '{{ strtolower($item->name) }}'.includes(search.toLowerCase())) && (!typeFilter || '{{ $item->mime_type }}'.startsWith(typeFilter))">
+                
+                <!-- Selection Checkbox -->
+                <div class="absolute top-2 left-2 z-20">
+                    <input type="checkbox" name="media_ids[]" :value="{{ $item->id }}" x-model.number="selectedIds" class="w-4 h-4 rounded border-border text-primary focus:ring-primary/20 bg-white/90 cursor-pointer shadow-sm">
+                </div>
+
                 <!-- Thumbnail -->
                 <div class="aspect-video bg-surface relative group">
                     @if($thumbnailUrl($item))
@@ -137,7 +174,7 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                             </svg>
                         </button>
-                        <button @click="showDeleteModal = true; deleteId = {{ $item->id }}; deleteName = '{{ $item->name }}'" class="p-2 rounded-lg bg-surface text-text-light hover:text-danger hover:bg-danger/10 transition-colors" title="Eliminar">
+                        <button @click="openDeleteModal({{ $item->id }}, {{ json_encode($item->name) }})" class="p-2 rounded-lg bg-surface text-text-light hover:text-danger hover:bg-danger/10 transition-colors" title="Eliminar">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                             </svg>
@@ -172,6 +209,9 @@
                 <table class="w-full text-left text-sm">
                     <thead>
                         <tr class="bg-surface border-b border-border">
+                            <th class="px-4 py-4 w-10 text-center">
+                                <input type="checkbox" @click="toggleAll()" :checked="selectedIds.length > 0 && selectedIds.length === document.querySelectorAll('input[name=\'media_ids[]\']').length" class="w-4 h-4 rounded border-border text-primary focus:ring-primary/20 cursor-pointer">
+                            </th>
                             <th class="px-6 py-4 font-semibold text-text">Nombre</th>
                             <th class="px-6 py-4 font-semibold text-text">Duración</th>
                             <th class="px-6 py-4 font-semibold text-text">Tamaño</th>
@@ -184,6 +224,9 @@
                         @foreach($media as $item)
                             <tr class="hover:bg-surface/50 transition-colors"
                                 x-show="(!search || '{{ strtolower($item->name) }}'.includes(search.toLowerCase())) && (!typeFilter || '{{ $item->mime_type }}'.startsWith(typeFilter))">
+                                <td class="px-4 py-4 w-10 text-center">
+                                    <input type="checkbox" name="media_ids[]" :value="{{ $item->id }}" x-model.number="selectedIds" class="w-4 h-4 rounded border-border text-primary focus:ring-primary/20 cursor-pointer">
+                                </td>
                                 <td class="px-6 py-4">
                                     <div class="flex items-center gap-3">
                                         <div class="w-10 h-10 rounded-lg bg-surface flex items-center justify-center shrink-0">
@@ -212,7 +255,7 @@
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                                             </svg>
                                         </button>
-                                        <button @click="showDeleteModal = true; deleteId = {{ $item->id }}; deleteName = '{{ $item->name }}'" class="p-2 rounded-lg text-text-light hover:text-danger hover:bg-danger/10 transition-colors" title="Eliminar">
+                                        <button @click="openDeleteModal({{ $item->id }}, {{ json_encode($item->name) }})" class="p-2 rounded-lg text-text-light hover:text-danger hover:bg-danger/10 transition-colors" title="Eliminar">
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                                             </svg>
@@ -250,8 +293,8 @@
         @endif
     </div>
 
-    <!-- Delete Confirmation Modal -->
-    <div x-show="showDeleteModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" style="display: none;">
+    <!-- Single Delete Confirmation Modal -->
+    <div x-show="showDeleteModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showDeleteModal = false"></div>
         <div class="relative bg-white rounded-xl shadow-xl border border-border p-6 w-full max-w-md" @click.away="showDeleteModal = false">
             <div class="flex items-center gap-3 mb-4">
@@ -266,8 +309,8 @@
             </div>
             <p class="text-sm text-text-light mb-6">Estás a punto de eliminar <span class="font-medium text-text" x-text="deleteName"></span>. Esta acción no se puede deshacer.</p>
             <div class="flex justify-end gap-3">
-                <button @click="showDeleteModal = false" class="px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-text hover:bg-surface transition-colors">Cancelar</button>
-                <form :action="'/media/' + deleteId" method="POST" class="inline">
+                <button type="button" @click="showDeleteModal = false" class="px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-text hover:bg-surface transition-colors">Cancelar</button>
+                <form :action="'{{ route('media.index') }}/' + deleteId" method="POST" class="inline">
                     @csrf
                     @method('DELETE')
                     <button type="submit" class="px-4 py-2.5 rounded-lg bg-danger text-white text-sm font-medium hover:bg-red-700 transition-colors">Eliminar</button>
@@ -276,8 +319,36 @@
         </div>
     </div>
 
+    <!-- Bulk Delete Confirmation Modal -->
+    <div x-show="showBulkDeleteModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showBulkDeleteModal = false"></div>
+        <div class="relative bg-white rounded-xl shadow-xl border border-border p-6 w-full max-w-md" @click.away="showBulkDeleteModal = false">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 rounded-full bg-danger/10 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-danger" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-text">¿Eliminar archivos seleccionados?</h3>
+                </div>
+            </div>
+            <p class="text-sm text-text-light mb-6">Estás a punto de eliminar <span class="font-medium text-text" x-text="selectedIds.length"></span> archivo(s) multimedia. Esta acción no se puede deshacer.</p>
+            <div class="flex justify-end gap-3">
+                <button type="button" @click="showBulkDeleteModal = false" class="px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-text hover:bg-surface transition-colors">Cancelar</button>
+                <form action="{{ route('media.bulk-delete') }}" method="POST" class="inline">
+                    @csrf
+                    <template x-for="id in selectedIds" :key="id">
+                        <input type="hidden" name="ids[]" :value="id">
+                    </template>
+                    <button type="submit" class="px-4 py-2.5 rounded-lg bg-danger text-white text-sm font-medium hover:bg-red-700 transition-colors">Eliminar Lote</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Assign to Campaign Modal -->
-    <div x-show="showAssignModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" style="display: none;">
+    <div x-show="showAssignModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showAssignModal = false"></div>
         <div class="relative bg-white rounded-xl shadow-xl border border-border p-6 w-full max-w-md" @click.away="showAssignModal = false">
             <div class="flex items-center gap-3 mb-4">
@@ -291,7 +362,7 @@
                 </div>
             </div>
             <p class="text-sm text-text-light mb-4">Selecciona una campaña para asignar este archivo.</p>
-            <form :action="'/media/' + assignId + '/assign'" method="POST" class="space-y-4">
+            <form :action="'{{ route('media.index') }}/' + assignId + '/assign'" method="POST" class="space-y-4">
                 @csrf
                 <div>
                     <label for="campaign_id" class="block text-sm font-medium text-text mb-2">Campaña</label>

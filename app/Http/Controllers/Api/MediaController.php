@@ -13,6 +13,7 @@ use App\Services\MediaService;
 use App\Services\Z2\Z2VideoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 
 class MediaController extends Controller
 {
@@ -132,6 +133,45 @@ class MediaController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Error al eliminar el medio.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Remove multiple media items in bulk via API.
+     */
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        $request->validate([
+            'ids' => 'required|array',
+            'ids.*' => 'required|integer|exists:media,id',
+        ]);
+
+        try {
+            $ids = $request->input('ids', []);
+            $deletedCount = 0;
+
+            foreach ($ids as $id) {
+                $media = Media::find($id);
+                if (! $media) {
+                    continue;
+                }
+
+                $this->authorize('delete', $media);
+
+                $this->z2VideoService->deleteVideo($media->file_path);
+                $this->mediaService->delete($media->id);
+                $deletedCount++;
+            }
+
+            return response()->json([
+                'message' => "Se eliminaron {$deletedCount} archivos multimedia correctamente.",
+                'deleted_count' => $deletedCount,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Error al eliminar los medios en lote.',
                 'error' => $e->getMessage(),
             ], 500);
         }

@@ -56,7 +56,15 @@ class MediaService extends BaseService
         $media = $this->repository->find($id);
 
         if ($media instanceof Media) {
-            Storage::disk(config('filesystems.default', 'public'))->delete($media->file_path);
+            $disk = Storage::disk(config('filesystems.default', 'public'));
+
+            if ($media->file_path && ! str_starts_with($media->file_path, 'http')) {
+                $disk->delete($media->file_path);
+            }
+
+            if ($media->thumbnail && ! str_starts_with($media->thumbnail, 'http')) {
+                $disk->delete($media->thumbnail);
+            }
         }
 
         return parent::delete($id);

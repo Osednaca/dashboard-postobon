@@ -11,6 +11,7 @@ use App\Models\Media;
 use App\Services\MediaService;
 use App\Services\Z2\Z2VideoService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 
@@ -185,6 +186,42 @@ class MediaController extends Controller
             Log::error('Error al eliminar medio: ' . $e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al eliminar el medio. Por favor intente nuevamente.');
+        }
+    }
+
+    /**
+     * Remove multiple media items in bulk.
+     */
+    public function bulkDestroy(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'ids' => 'required|array',
+            'ids.*' => 'required|integer|exists:media,id',
+        ]);
+
+        try {
+            $ids = $request->input('ids', []);
+            $deletedCount = 0;
+
+            foreach ($ids as $id) {
+                $media = Media::find($id);
+                if (! $media) {
+                    continue;
+                }
+
+                $this->authorize('delete', $media);
+
+                $this->z2VideoService->deleteVideo($media->file_path);
+                $this->mediaService->delete($media->id);
+                $deletedCount++;
+            }
+
+            return redirect()->route('media.index')
+                ->with('success', "Se eliminaron {$deletedCount} archivos multimedia exitosamente.");
+        } catch (\Exception $e) {
+            Log::error('Error al eliminar medios en lote: ' . $e->getMessage());
+
+            return back()->with('error', 'Ocurrió un error al eliminar los medios seleccionados.');
         }
     }
 

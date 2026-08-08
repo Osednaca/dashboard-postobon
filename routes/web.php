@@ -57,6 +57,7 @@ Route::middleware('auth')->group(function () {
     Route::post('groups/{group}/change-content', [GroupController::class, 'changeContent'])->name('groups.change-content');
     Route::post('groups/{group}/publish-campaign', [GroupController::class, 'publishCampaign'])->name('groups.publish-campaign');
 
+    Route::post('media/bulk-delete', [MediaController::class, 'bulkDestroy'])->name('media.bulk-delete');
     Route::resource('media', MediaController::class)->parameters(['media' => 'media']);
 
     Route::resource('campaigns', CampaignController::class);
