@@ -260,52 +260,22 @@ class Z2DeviceService
 
     /**
      * Turn the device's Bluetooth on.
+     *
+     * Bluetooth is exposed as a device setting (same write endpoint used for
+     * volume). The parameter name may differ per Z2 build — adjust if the
+     * cloud rejects it.
      */
-    public function bluetoothOn(string $mac): bool
+    public function bluetoothOn(string $mac): ?array
     {
-        return $this->sendBluetoothCommand($mac, 1);
+        return $this->setDeviceSetting($mac, 'Bluetooth', '1');
     }
 
     /**
      * Turn the device's Bluetooth off.
      */
-    public function bluetoothOff(string $mac): bool
+    public function bluetoothOff(string $mac): ?array
     {
-        return $this->sendBluetoothCommand($mac, 0);
-    }
-
-    /**
-     * Send a Bluetooth on/off command to the device.
-     *
-     * Endpoint mirrors the power command convention:
-     *   POST /User/deviceBluetooth
-     *     deviceBluetoothOn=1  (turn on)
-     *     deviceBluetoothOff=1 (turn off)
-     *
-     * NOTE: The exact Z2 endpoint name may need verification against the
-     * real API. If the cloud rejects it, adjust the path/params here.
-     */
-    private function sendBluetoothCommand(string $mac, int $state): ?array
-    {
-        $param = $state === 1 ? 'deviceBluetoothOn' : 'deviceBluetoothOff';
-
-        $response = $this->client->request('POST', '/User/deviceBluetooth', [
-            'userName' => $this->client->username,
-            'deviceId' => $mac,
-            $param => 1,
-        ]);
-
-        if ($response && ($response['result'] ?? -1) === 0) {
-            $deviceResult = $response['DeviceResult'] ?? [];
-            $deviceMac = str_replace(':', '', $mac);
-            if (isset($deviceResult[$deviceMac]) && $deviceResult[$deviceMac] >= 0) {
-                return $response;
-            }
-        }
-
-        Log::error('[Z2] Bluetooth command failed', ['mac' => $mac, 'state' => $state, 'response' => $response]);
-
-        return $response;
+        return $this->setDeviceSetting($mac, 'Bluetooth', '0');
     }
 
     /**
@@ -426,29 +396,62 @@ class Z2DeviceService
     }
 
     /**
-     * Set a device setting parameter in Z2 Cloud (e.g. Volume).
+     * Candidate write endpoints for device settings.
      *
-     * POST /User/setDeviceSetting
-     *   userName, deviceId, parameter, value
+     * The read endpoint is /User/selectDeviceSetting. The matching write
+     * endpoint name varies between Z2 server builds (the original
+     * /User/setDeviceSetting returns 404 on this server). We probe them in
+     * order and use the first that answers with valid JSON. Simplify to a
+     * single endpoint once the correct one is confirmed via the logs.
+     */
+    private const DEVICE_SETTING_WRITE_ENDPOINTS = [
+        '/User/updateDeviceSetting',
+        '/User/saveDeviceSetting',
+        '/User/editDeviceSetting',
+        '/User/setDeviceSetting',
+        '/User/deviceSetting',
+    ];
+
+    /**
+     * Set a device setting parameter in Z2 Cloud (e.g. Volume, Bluetooth).
+     *
+     * Probes candidate write endpoints and stops at the first that returns
+     * valid JSON (success or API error). A 404/non-JSON response means the
+     * endpoint does not exist, so the next candidate is tried.
      */
     public function setDeviceSetting(string $mac, string $parameter, string $value): ?array
     {
         Log::info('[Z2] Setting device parameter', ['mac' => $mac, 'parameter' => $parameter, 'value' => $value]);
 
-        $response = $this->client->request('POST', '/User/setDeviceSetting', [
+        $payload = [
             'userName' => $this->client->username,
             'deviceId' => $mac,
             'parameter' => $parameter,
             'value' => $value,
-        ]);
+        ];
 
-        if ($response && ($response['result'] ?? -1) === 0) {
-            Log::info('[Z2] Device parameter updated successfully', ['mac' => $mac, 'parameter' => $parameter, 'value' => $value]);
-        } else {
-            Log::error('[Z2] Set device setting failed', ['mac' => $mac, 'parameter' => $parameter, 'value' => $value, 'response' => $response]);
+        $lastResponse = null;
+
+        foreach (self::DEVICE_SETTING_WRITE_ENDPOINTS as $endpoint) {
+            $response = $this->client->request('POST', $endpoint, $payload);
+            $lastResponse = $response;
+
+            // Valid JSON response (success or API error) -> endpoint exists; stop probing.
+            if ($response && ! isset($response['_error'])) {
+                if (($response['result'] ?? -1) === 0) {
+                    Log::info('[Z2] Device parameter updated', ['endpoint' => $endpoint, 'mac' => $mac, 'parameter' => $parameter, 'value' => $value]);
+                } else {
+                    Log::warning('[Z2] Device setting endpoint responded with error', ['endpoint' => $endpoint, 'response' => $response]);
+                }
+
+                return $response;
+            }
+
+            // Non-JSON (e.g. 404 HTML) -> endpoint does not exist; try the next candidate.
+            Log::warning('[Z2] Device setting endpoint unavailable, trying next', ['endpoint' => $endpoint, 'response' => $response]);
         }
 
-        return $response;
+        return $lastResponse;
     }
 
     /**
