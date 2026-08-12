@@ -159,10 +159,19 @@
                     </thead>
                     <tbody class="divide-y divide-border">
                         @foreach($devices as $device)
+                            @php
+                                $indicatorStatus = match($device->status) {
+                                    'online', 'active' => ($device->power_status === 'off' ? 'powered_off' : 'online'),
+                                    'offline', 'inactive', 'error' => ($device->power_status === 'off' ? 'powered_off' : 'offline'),
+                                    'disabled' => 'disabled',
+                                    'maintenance' => 'maintenance',
+                                    default => 'offline',
+                                };
+                            @endphp
                             <tr class="hover:bg-surface/50 transition-colors"
                                 x-show="
                                     (!search || '{{ strtolower($device->name) }}'.includes(search.toLowerCase()) || '{{ strtolower($device->mac_address) }}'.includes(search.toLowerCase())) &&
-                                    (!statusFilter || '{{ $device->status }}' === statusFilter) &&
+                                    (!statusFilter || '{{ $indicatorStatus }}' === statusFilter) &&
                                     (!locationFilter || '{{ $device->location_id }}' === locationFilter) &&
                                     (!groupFilter || '{{ $device->group_id }}' === groupFilter)
                                 ">
@@ -181,15 +190,6 @@
                                 </td>
                                 <td class="px-4 py-4 text-text-light font-mono text-xs">{{ $device->mac_address }}</td>
                                 <td class="px-4 py-4">
-                                    @php
-                                        $indicatorStatus = match($device->status) {
-                                            'online', 'active' => 'online',
-                                            'offline', 'inactive', 'error' => 'offline',
-                                            'disabled' => 'disabled',
-                                            'maintenance' => 'maintenance',
-                                            default => 'offline',
-                                        };
-                                    @endphp
                                     <x-device-status-indicator :status="$indicatorStatus" />
                                 </td>
                                 <td class="px-4 py-4 text-text-light">{{ $device->location?->name ?? '-' }}</td>

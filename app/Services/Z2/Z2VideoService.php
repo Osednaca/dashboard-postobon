@@ -91,8 +91,10 @@ class Z2VideoService
             Media::upsert($videosToUpsert, ['file_path'], ['name', 'original_name', 'mime_type', 'size', 'duration', 'thumbnail']);
         }
 
-        // Remove videos no longer in cloud
-        Media::whereNotIn('file_path', $uiCodes)->delete();
+        // Remove videos no longer in cloud (except local media fallback files)
+        Media::whereNotIn('file_path', $uiCodes)
+            ->where('file_path', 'NOT LIKE', 'media/%')
+            ->delete();
 
         $syncedVideos = Media::whereIn('file_path', $uiCodes)->get()->all();
 
@@ -153,20 +155,22 @@ class Z2VideoService
             return null;
         }
 
-        // Create local media record
-        $media = Media::create([
-            'name' => $fileName,
-            'original_name' => $fileName,
-            'file_path' => $uploadInfo['uiCode'],
-            'mime_type' => 'video/mp4',
-            'size' => $actualFileSize,
-            'duration' => $actualDuration,
-            'thumbnail' => $this->buildThumbnailUrl(
-                $uploadInfo['advertisersCode'] ?? '',
-                $uploadInfo['uiCode'],
-                $fileName
-            ),
-        ]);
+        // Create or update local media record atomically
+        $media = Media::updateOrCreate(
+            ['file_path' => $uploadInfo['uiCode']],
+            [
+                'name' => $fileName,
+                'original_name' => $fileName,
+                'mime_type' => 'video/mp4',
+                'size' => $actualFileSize,
+                'duration' => $actualDuration,
+                'thumbnail' => $this->buildThumbnailUrl(
+                    $uploadInfo['advertisersCode'] ?? '',
+                    $uploadInfo['uiCode'],
+                    $fileName
+                ),
+            ]
+        );
 
         return $media;
     }

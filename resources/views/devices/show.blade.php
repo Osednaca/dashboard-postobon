@@ -18,10 +18,10 @@
                 <h1 class="text-2xl font-bold text-text">{{ $device->name }}</h1>
                 @php
                     $indicatorStatus = match($device->status) {
-                        'active' => 'online',
-                        'inactive' => 'offline',
-                        'error' => 'offline',
+                        'online', 'active' => ($device->power_status === 'off' ? 'powered_off' : 'online'),
+                        'offline', 'inactive', 'error' => ($device->power_status === 'off' ? 'powered_off' : 'offline'),
                         'disabled' => 'disabled',
+                        'maintenance' => 'maintenance',
                         default => 'offline',
                     };
                 @endphp

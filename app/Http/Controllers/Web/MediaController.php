@@ -44,6 +44,7 @@ class MediaController extends Controller
         $this->authorize('viewAny', Media::class);
 
         try {
+            $this->z2VideoService->syncVideos();
             $media = Media::paginate(15);
 
             return view('media.index', compact('media'));
@@ -76,42 +77,33 @@ class MediaController extends Controller
             $file = $request->file('file');
             $name = $request->input('name') ?: $file->getClientOriginalName();
             $localPath = $file->store('media', 'public');
+            $storagePath = storage_path('app/public/' . $localPath);
 
-            $data = array_merge($request->validated(), [
-                'name' => $name,
-                'original_name' => $file->getClientOriginalName(),
-                'file_path' => $localPath,
-                'mime_type' => $file->getMimeType(),
-                'size' => $file->getSize(),
-            ]);
-
-            $media = $this->mediaService->create($data);
-
-            // Upload to Z2 FanCloud server
+            // Upload directly to Z2 FanCloud server
+            $z2Media = null;
             try {
-                $storagePath = storage_path('app/public/' . $localPath);
                 $z2Media = $this->z2VideoService->uploadVideo($storagePath, $name, (int) $request->input('duration', 0));
-
-                if ($z2Media) {
-                    // Update local record with Z2 uiCode as file_path for consistency with synced media
-                    $media->update([
-                        'file_path' => $z2Media->file_path,
-                        'thumbnail' => $z2Media->thumbnail,
-                        'duration' => $z2Media->duration ?: $media->duration,
-                    ]);
-
-                    // Clean up the duplicate record created by uploadVideo
-                    if ($z2Media->id !== $media->id) {
-                        $z2Media->forceDelete();
-                    }
-
-                    Log::info('Media uploaded to Z2 cloud successfully', ['media_id' => $media->id, 'uiCode' => $media->file_path]);
-                } else {
-                    Log::warning('Media saved locally but Z2 cloud upload failed', ['media_id' => $media->id]);
-                }
             } catch (\Exception $z2Error) {
-                Log::error('Z2 cloud upload error: ' . $z2Error->getMessage(), ['media_id' => $media->id]);
-                // Media is saved locally, Z2 upload failed - user can retry via sync
+                Log::error('Z2 cloud upload error: ' . $z2Error->getMessage());
+            }
+
+            if ($z2Media) {
+                $z2Media->update([
+                    'name' => $name,
+                    'original_name' => $file->getClientOriginalName(),
+                ]);
+                Log::info('Media uploaded to Z2 cloud successfully', ['media_id' => $z2Media->id, 'uiCode' => $z2Media->file_path]);
+            } else {
+                // Fallback: save locally if Z2 cloud upload failed
+                $data = array_merge($request->validated(), [
+                    'name' => $name,
+                    'original_name' => $file->getClientOriginalName(),
+                    'file_path' => $localPath,
+                    'mime_type' => $file->getMimeType(),
+                    'size' => $file->getSize(),
+                ]);
+                $media = $this->mediaService->create($data);
+                Log::warning('Media saved locally but Z2 cloud upload failed', ['media_id' => $media->id]);
             }
 
             return redirect()->route('media.index')

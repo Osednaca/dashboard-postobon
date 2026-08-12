@@ -5,6 +5,7 @@
 @php
 $colorClasses = match($status) {
     'online' => 'bg-success',
+    'powered_off' => 'bg-warning',
     'offline' => 'bg-danger',
     'disabled' => 'bg-text-muted',
     'maintenance' => 'bg-warning',
@@ -13,6 +14,7 @@ $colorClasses = match($status) {
 
 $labels = [
     'online' => 'En línea',
+    'powered_off' => 'Apagado',
     'offline' => 'Fuera de línea',
     'disabled' => 'Deshabilitado',
     'maintenance' => 'En mantenimiento',
