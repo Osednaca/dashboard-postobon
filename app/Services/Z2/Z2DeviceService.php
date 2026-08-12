@@ -396,62 +396,35 @@ class Z2DeviceService
     }
 
     /**
-     * Candidate write endpoints for device settings.
+     * Set a device setting parameter in Z2 Cloud (e.g. Volume, BTSwitch).
      *
-     * The read endpoint is /User/selectDeviceSetting. The matching write
-     * endpoint name varies between Z2 server builds (the original
-     * /User/setDeviceSetting returns 404 on this server). We probe them in
-     * order and use the first that answers with valid JSON. Simplify to a
-     * single endpoint once the correct one is confirmed via the logs.
-     */
-    private const DEVICE_SETTING_WRITE_ENDPOINTS = [
-        '/User/updateDeviceSetting',
-        '/User/saveDeviceSetting',
-        '/User/editDeviceSetting',
-        '/User/setDeviceSetting',
-        '/User/deviceSetting',
-    ];
-
-    /**
-     * Set a device setting parameter in Z2 Cloud (e.g. Volume, Bluetooth).
-     *
-     * Probes candidate write endpoints and stops at the first that returns
-     * valid JSON (success or API error). A 404/non-JSON response means the
-     * endpoint does not exist, so the next candidate is tried.
+     * Verified working request (captured from the official mobile app):
+     *   POST /User/updateDeviceSetting
+     *     userName, deviceId (MAC WITHOUT colons, uppercase), <Parameter>=<value>
+     *   e.g. userName=oscarleon210&deviceId=9097D5E4D9FC&Volume=79
+     *        userName=oscarleon210&deviceId=9097D5E4D9FC&BTSwitch=0
      */
     public function setDeviceSetting(string $mac, string $parameter, string $value): ?array
     {
-        Log::info('[Z2] Setting device parameter', ['mac' => $mac, 'parameter' => $parameter, 'value' => $value]);
+        $deviceId = strtoupper(str_replace(':', '', $mac));
+
+        Log::info('[Z2] Setting device parameter', ['deviceId' => $deviceId, 'parameter' => $parameter, 'value' => $value]);
 
         $payload = [
             'userName' => $this->client->username,
-            'deviceId' => $mac,
-            'parameter' => $parameter,
-            'value' => $value,
+            'deviceId' => $deviceId,
+            $parameter => $value,
         ];
 
-        $lastResponse = null;
+        $response = $this->client->request('POST', '/User/updateDeviceSetting', $payload);
 
-        foreach (self::DEVICE_SETTING_WRITE_ENDPOINTS as $endpoint) {
-            $response = $this->client->request('POST', $endpoint, $payload);
-            $lastResponse = $response;
-
-            // Valid JSON response (success or API error) -> endpoint exists; stop probing.
-            if ($response && ! isset($response['_error'])) {
-                if (($response['result'] ?? -1) === 0) {
-                    Log::info('[Z2] Device parameter updated', ['endpoint' => $endpoint, 'mac' => $mac, 'parameter' => $parameter, 'value' => $value]);
-                } else {
-                    Log::warning('[Z2] Device setting endpoint responded with error', ['endpoint' => $endpoint, 'response' => $response]);
-                }
-
-                return $response;
-            }
-
-            // Non-JSON (e.g. 404 HTML) -> endpoint does not exist; try the next candidate.
-            Log::warning('[Z2] Device setting endpoint unavailable, trying next', ['endpoint' => $endpoint, 'response' => $response]);
+        if ($response && ($response['result'] ?? -1) === 0) {
+            Log::info('[Z2] Device parameter updated', ['deviceId' => $deviceId, 'parameter' => $parameter, 'value' => $value]);
+        } else {
+            Log::warning('[Z2] Device setting failed', ['deviceId' => $deviceId, 'parameter' => $parameter, 'value' => $value, 'response' => $response]);
         }
 
-        return $lastResponse;
+        return $response;
     }
 
     /**
