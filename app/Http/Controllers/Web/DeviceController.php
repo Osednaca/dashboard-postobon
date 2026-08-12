@@ -110,7 +110,16 @@ class DeviceController extends Controller
                 $deviceDetail = $this->z2DeviceService->getDeviceDetail($device->mac_address);
                 $devicePlaylist = $this->z2PlaylistService->getDevicePlaylist($device->mac_address);
                 $deviceVolume = $this->z2DeviceService->getVolume($device->mac_address);
+
+                // Read live Bluetooth status from Z2 so the dashboard reflects
+                // changes made from the mobile app, then sync the local column.
+                $deviceBluetooth = $this->z2DeviceService->getBluetoothStatus($device->mac_address);
+                if ($deviceBluetooth !== null && $deviceBluetooth !== $device->bluetooth_status) {
+                    $device->update(['bluetooth_status' => $deviceBluetooth]);
+                }
             }
+
+            $deviceBluetooth ??= $device->bluetooth_status ?? 'off';
 
             // Deduplicated media list for the select dropdown
             $allMediaForDevice = Media::orderBy('name')
@@ -118,7 +127,7 @@ class DeviceController extends Controller
                 ->unique('file_path')
                 ->values();
 
-            return view('devices.show', compact('device', 'deviceDetail', 'devicePlaylist', 'allMediaForDevice', 'deviceVolume'));
+            return view('devices.show', compact('device', 'deviceDetail', 'devicePlaylist', 'allMediaForDevice', 'deviceVolume', 'deviceBluetooth'));
         } catch (\Exception $e) {
             Log::error('Error al mostrar dispositivo: '.$e->getMessage());
 

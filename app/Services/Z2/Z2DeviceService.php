@@ -267,7 +267,7 @@ class Z2DeviceService
      */
     public function bluetoothOn(string $mac): ?array
     {
-        return $this->setDeviceSetting($mac, 'Bluetooth', '1');
+        return $this->setDeviceSetting($mac, 'BTSwitch', '1');
     }
 
     /**
@@ -275,7 +275,24 @@ class Z2DeviceService
      */
     public function bluetoothOff(string $mac): ?array
     {
-        return $this->setDeviceSetting($mac, 'Bluetooth', '0');
+        return $this->setDeviceSetting($mac, 'BTSwitch', '0');
+    }
+
+    /**
+     * Read the live Bluetooth status from Z2 Cloud.
+     *
+     * Uses the same BTSwitch parameter the write uses, read via
+     * /User/selectDeviceSetting. Returns 'on'/'off' or null on failure.
+     */
+    public function getBluetoothStatus(string $mac): ?string
+    {
+        $data = $this->getDeviceSetting($mac, 'BTSwitch');
+
+        if ($data && isset($data['BTSwitch'])) {
+            return (string) $data['BTSwitch'] === '1' ? 'on' : 'off';
+        }
+
+        return null;
     }
 
     /**
@@ -367,9 +384,11 @@ class Z2DeviceService
      */
     public function getDeviceSetting(string $mac, string $parameter = 'Volume'): ?array
     {
+        $deviceId = strtoupper(str_replace(':', '', $mac));
+
         $response = $this->client->request('POST', '/User/selectDeviceSetting', [
             'userName' => $this->client->username,
-            'deviceId' => $mac,
+            'deviceId' => $deviceId,
             'parameter' => $parameter,
         ]);
 

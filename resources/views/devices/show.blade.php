@@ -133,7 +133,7 @@
                             </div>
                         </form>
                     </div>
-                    <div class="p-4 rounded-lg bg-surface sm:col-span-2" x-data="{ bt: '{{ $device->bluetooth_status ?? 'off' }}' }">
+                    <div class="p-4 rounded-lg bg-surface sm:col-span-2" x-data="{ bt: '{{ $deviceBluetooth ?? $device->bluetooth_status ?? 'off' }}' }">
                         <div class="flex items-center justify-between">
                             <p class="text-xs font-medium text-text-muted uppercase tracking-wider flex items-center gap-1.5">
                                 <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
