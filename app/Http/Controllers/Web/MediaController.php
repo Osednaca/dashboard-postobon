@@ -13,6 +13,7 @@ use App\Services\Z2\Z2VideoService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
 class MediaController extends Controller
@@ -92,6 +93,9 @@ class MediaController extends Controller
                     'name' => $name,
                     'original_name' => $file->getClientOriginalName(),
                 ]);
+                // Z2 cloud is the source of truth: remove the temporary local file
+                // so it does not linger on disk (and never create a duplicate record).
+                Storage::disk('public')->delete($localPath);
                 Log::info('Media uploaded to Z2 cloud successfully', ['media_id' => $z2Media->id, 'uiCode' => $z2Media->file_path]);
             } else {
                 // Fallback: save locally if Z2 cloud upload failed
