@@ -840,6 +840,15 @@ class DeviceController extends Controller
             return 'No hubo respuesta del servidor Z2 (revisa conectividad y autenticación).';
         }
 
+        if (isset($response['_error'])) {
+            return match ($response['_error']) {
+                'invalid_json_response' => 'La API de Z2 devolvió una respuesta NO-JSON (HTTP '.(int) ($response['status_code'] ?? 0).'). Cuerpo: '.(string) ($response['body'] ?? ''),
+                'request_exception' => 'Fallo de red/HTTP al llamar a Z2 (HTTP '.(int) ($response['status_code'] ?? 0).'): '.(string) ($response['message'] ?? ''),
+                'exception' => 'Excepción al llamar a Z2: '.(string) ($response['message'] ?? ''),
+                default => 'Error desconocido de Z2: '.json_encode($response, JSON_UNESCAPED_UNICODE),
+            };
+        }
+
         $code = $response['result'] ?? 'n/a';
         $msg = $response['msg'] ?? $response['message'] ?? '';
         $extra = mb_strimwidth(json_encode($response, JSON_UNESCAPED_UNICODE), 0, 300, '...');

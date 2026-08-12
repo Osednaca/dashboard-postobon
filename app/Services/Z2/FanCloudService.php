@@ -217,6 +217,14 @@ class FanCloudService
 
             $this->logApiCall($service, $endpoint, $method, $data, $json, $statusCode, $attempt, true, null, $duration);
 
+            if ($json === null) {
+                return [
+                    '_error' => 'invalid_json_response',
+                    'status_code' => $statusCode,
+                    'body' => substr($body, 0, 1000),
+                ];
+            }
+
             return $json;
         } catch (RequestException $e) {
             $duration = (int) ((microtime(true) - $startTime) * 1000);
@@ -237,12 +245,20 @@ class FanCloudService
                 return $this->request($method, $endpoint, $data, $requiresAuth, $attempt + 1);
             }
 
-            return null;
+            return [
+                '_error' => 'request_exception',
+                'status_code' => $statusCode,
+                'message' => $errorMessage,
+            ];
         } catch (\Throwable $e) {
             $duration = (int) ((microtime(true) - $startTime) * 1000);
             $this->logApiCall($service, $endpoint, $method, $data, null, null, $attempt, false, $e->getMessage(), $duration);
             Log::error("[Z2] Unexpected error: {$endpoint} - " . $e->getMessage());
-            return null;
+
+            return [
+                '_error' => 'exception',
+                'message' => $e->getMessage(),
+            ];
         }
     }
 
