@@ -460,22 +460,19 @@ class Z2DeviceService
      */
     private function mapStatus(array $deviceData): string
     {
-        $devicePower = $deviceData['devicePower'] ?? 0;
-        $runStatus = $deviceData['runStatus'] ?? 0;
+        // `runStatus` reflects cloud connectivity. The Z2 API returns
+        // 0 when the device is disconnected and a non-zero value
+        // (1 = running, 10 = active/normal) when it is online.
+        // `devicePower` is intentionally NOT used here: the power
+        // command is unreliable (returns DeviceResult 82 without
+        // changing state), so it cannot be trusted as an online signal.
+        $runStatus = (int) ($deviceData['runStatus'] ?? 0);
 
-        if ($devicePower === 0) {
+        if ($runStatus === 0) {
             return 'offline';
         }
 
-        if ($runStatus === 10) {
-            return 'online';
-        }
-
-        if ($runStatus === 0) {
-            return 'disabled';
-        }
-
-        return 'maintenance';
+        return 'online';
     }
 
     /**

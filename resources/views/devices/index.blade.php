@@ -317,7 +317,6 @@
             </div>
         </div>
     </div>
-</div>
 
     <!-- Bulk Assign Media Modal -->
     <div x-show="showBulkAssignMediaModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" style="display: none;">
@@ -341,8 +340,7 @@
                 </template>
                 <div>
                     <label for="bulk-media-id" class="block text-sm font-medium text-text mb-2">Medio</label>
-                    <select id="bulk-media-id" name="media_id" required
-                            class="w-full px-4 py-2.5 rounded-lg border border-border text-sm text-text focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all bg-white">
+                    <select id="bulk-media-id" name="media_id" required class="w-full px-4 py-2.5 rounded-lg border border-border text-sm text-text focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all bg-white">
                         <option value="">Seleccionar medio</option>
                         @foreach(App\Models\Media::orderBy('name')->get() as $media)
                             <option value="{{ $media->id }}">{{ $media->name }}</option>
@@ -356,5 +354,7 @@
             </form>
         </div>
     </div>
+
 </div>
+
 @endsection
