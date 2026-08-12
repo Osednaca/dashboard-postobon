@@ -146,8 +146,34 @@
                         <p class="text-sm text-text font-mono">{{ $device->rpm ?? '-' }}</p>
                     </div>
                     <div class="p-4 rounded-lg bg-surface">
-                        <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Ubicación</p>
-                        <p class="text-sm text-text">{{ $device->location?->name ?? 'No asignada' }}</p>
+                        <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Establecimiento</p>
+                        <p class="text-sm text-text">{{ $device->establishment ?? 'No especificado' }}</p>
+                    </div>
+                    <div class="p-4 rounded-lg bg-surface sm:col-span-2">
+                        <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Dirección</p>
+                        <p class="text-sm text-text">{{ $device->address ?? 'No especificada' }}</p>
+                        @if($device->city || $device->country)
+                            <p class="text-xs text-text-light mt-0.5">{{ $device->city ?? '' }}@if($device->city && $device->country), @endif{{ $device->country ?? '' }}</p>
+                        @endif
+                        @if($device->latitude && $device->longitude)
+                            <a href="https://www.google.com/maps?q={{ $device->latitude }},{{ $device->longitude }}" target="_blank" class="inline-flex items-center gap-1.5 text-xs text-primary hover:text-red-700 font-medium transition-colors mt-1">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z"/>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                </svg>
+                                Ver en el mapa
+                            </a>
+                        @endif
+                        @if($device->location)
+                            <p class="text-xs text-text-muted mt-1">Ubicación: {{ $device->location->name }}</p>
+                        @endif
+                    </div>
+                    <div class="p-4 rounded-lg bg-surface">
+                        <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Contacto</p>
+                        <p class="text-sm text-text">{{ $device->contact_name ?? 'No especificado' }}</p>
+                        @if($device->contact_phone)
+                            <p class="text-xs text-text-light mt-0.5">{{ $device->contact_phone }}</p>
+                        @endif
                     </div>
                     <div class="p-4 rounded-lg bg-surface">
                         <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Grupo</p>

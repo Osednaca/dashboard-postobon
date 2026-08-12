@@ -43,7 +43,7 @@ class StoreMediaRequest extends FormRequest
             'file.required' => 'El archivo es obligatorio.',
             'file.file' => 'El archivo debe ser un archivo válido.',
             'file.mimes' => 'El archivo debe ser un video o audio en formato: mp4, avi, mov, wmv, flv, mkv, mp3 o wav.',
-            'file.max' => 'El archivo no puede pesar más de 500 MB.',
+            'file.max' => 'El archivo no puede pesar más de 100 MB.',
             'file.uploaded' => 'El archivo no se pudo subir. Verifica que el tamaño no exceda el límite del servidor (máximo ' . ini_get('upload_max_filesize') . ').',
             'duration.integer' => 'La duración debe ser un número entero.',
             'thumbnail.max' => 'La ruta de la miniatura no puede tener más de 500 caracteres.',

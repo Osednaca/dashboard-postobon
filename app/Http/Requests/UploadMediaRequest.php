@@ -14,7 +14,7 @@ class UploadMediaRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'file' => ['required', 'file', 'mimes:mp4,avi,mov,wmv,flv,mkv', 'max:512000'],
+            'file' => ['required', 'file', 'mimes:mp4,avi,mov,wmv,flv,mkv', 'max:102400'],
         ];
     }
 
@@ -24,7 +24,7 @@ class UploadMediaRequest extends FormRequest
             'file.required' => 'El archivo es obligatorio.',
             'file.file' => 'El archivo debe ser un archivo válido.',
             'file.mimes' => 'El archivo debe ser un video en formato: mp4, avi, mov, wmv, flv o mkv.',
-            'file.max' => 'El archivo no puede pesar más de 500 MB.',
+            'file.max' => 'El archivo no puede pesar más de 100 MB.',
         ];
     }
 }
