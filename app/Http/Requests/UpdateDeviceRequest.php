@@ -18,6 +18,14 @@ class UpdateDeviceRequest extends FormRequest
 
         return [
             'name' => ['sometimes', 'string', 'max:255'],
+            'establishment' => ['nullable', 'string', 'max:255'],
+            'contact_name' => ['nullable', 'string', 'max:255'],
+            'contact_phone' => ['nullable', 'string', 'max:50'],
+            'address' => ['nullable', 'string', 'max:500'],
+            'city' => ['nullable', 'string', 'max:255'],
+            'country' => ['nullable', 'string', 'max:255'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'mac_address' => ['sometimes', 'string', 'max:255', Rule::unique('devices')->ignore($deviceId)],
             'firmware' => ['nullable', 'string', 'max:255'],
             'hardware' => ['nullable', 'string', 'max:255'],
@@ -34,6 +42,16 @@ class UpdateDeviceRequest extends FormRequest
     {
         return [
             'name.max' => 'El nombre no puede tener más de 255 caracteres.',
+            'establishment.max' => 'El establecimiento no puede tener más de 255 caracteres.',
+            'contact_name.max' => 'El nombre de contacto no puede tener más de 255 caracteres.',
+            'contact_phone.max' => 'El teléfono no puede tener más de 50 caracteres.',
+            'address.max' => 'La dirección no puede tener más de 500 caracteres.',
+            'city.max' => 'La ciudad no puede tener más de 255 caracteres.',
+            'country.max' => 'El país no puede tener más de 255 caracteres.',
+            'latitude.numeric' => 'La latitud debe ser un número.',
+            'latitude.between' => 'La latitud debe estar entre -90 y 90.',
+            'longitude.numeric' => 'La longitud debe ser un número.',
+            'longitude.between' => 'La longitud debe estar entre -180 y 180.',
             'mac_address.unique' => 'La dirección MAC ya está registrada.',
             'firmware.max' => 'El firmware no puede tener más de 255 caracteres.',
             'hardware.max' => 'El hardware no puede tener más de 255 caracteres.',

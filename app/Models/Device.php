@@ -14,6 +14,14 @@ class Device extends Model
 
     protected $fillable = [
         'name',
+        'establishment',
+        'contact_name',
+        'contact_phone',
+        'address',
+        'city',
+        'country',
+        'latitude',
+        'longitude',
         'mac_address',
         'firmware',
         'hardware',
@@ -31,6 +39,8 @@ class Device extends Model
         return [
             'last_heartbeat_at' => 'datetime',
             'working_hours' => 'float',
+            'latitude' => 'decimal:8',
+            'longitude' => 'decimal:8',
         ];
     }
 

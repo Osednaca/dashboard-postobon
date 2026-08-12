@@ -75,16 +75,65 @@
                            class="w-full px-4 py-2.5 rounded-lg border border-border text-sm text-text placeholder:text-text-muted focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all">
                 </div>
 
-                <!-- Location -->
+                <!-- Establecimiento -->
                 <div>
-                    <label for="location_id" class="block text-sm font-medium text-text mb-2">Ubicación</label>
-                    <select id="location_id" name="location_id"
-                            class="w-full px-4 py-2.5 rounded-lg border border-border text-sm text-text focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all bg-white">
-                        <option value="">Seleccionar ubicación</option>
-                        @foreach(App\Models\Location::all() as $location)
-                            <option value="{{ $location->id }}" {{ old('location_id') == $location->id ? 'selected' : '' }}>{{ $location->name }}</option>
-                        @endforeach
-                    </select>
+                    <label for="establishment" class="block text-sm font-medium text-text mb-2">Establecimiento</label>
+                    <input type="text" id="establishment" name="establishment" value="{{ old('establishment') }}"
+                           placeholder="Nombre del establecimiento"
+                           class="w-full px-4 py-2.5 rounded-lg border border-border text-sm text-text placeholder:text-text-muted focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all">
+                </div>
+
+                <!-- Contacto -->
+                <div>
+                    <label for="contact_name" class="block text-sm font-medium text-text mb-2">Contacto (nombre)</label>
+                    <input type="text" id="contact_name" name="contact_name" value="{{ old('contact_name') }}"
+                           placeholder="Persona de contacto"
+                           class="w-full px-4 py-2.5 rounded-lg border border-border text-sm text-text placeholder:text-text-muted focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all">
+                </div>
+
+                <!-- Teléfono de contacto -->
+                <div>
+                    <label for="contact_phone" class="block text-sm font-medium text-text mb-2">Teléfono de contacto</label>
+                    <input type="tel" id="contact_phone" name="contact_phone" value="{{ old('contact_phone') }}"
+                           placeholder="+57 300 000 0000"
+                           class="w-full px-4 py-2.5 rounded-lg border border-border text-sm text-text placeholder:text-text-muted focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all">
+                </div>
+
+                <!-- Dirección con Google Autocomplete -->
+                <div class="sm:col-span-2">
+                    <label for="address" class="block text-sm font-medium text-text mb-2">Dirección</label>
+                    <input type="text" id="address" name="address" value="{{ old('address') }}"
+                           placeholder="Busca la dirección en el mapa..."
+                           autocomplete="off"
+                           class="w-full px-4 py-2.5 rounded-lg border border-border text-sm text-text placeholder:text-text-muted focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all">
+                    <p class="mt-1.5 text-xs text-text-muted">Escribe la dirección y selecciona una sugerencia del mapa. Se completarán ciudad, país y coordenadas automáticamente.</p>
+
+                    @if(config('services.google_maps.key'))
+                        <div id="device-map" class="mt-3 h-64 w-full rounded-lg border border-border"></div>
+                    @else
+                        <div class="mt-3 p-3 rounded-lg bg-surface border border-border text-xs text-text-muted">
+                            No se ha configurado <code>GOOGLE_MAPS_API_KEY</code>. Ingresa manualmente latitud y longitud si deseas ubicar el dispositivo en el mapa.
+                        </div>
+                        <div class="mt-3 grid grid-cols-2 gap-4">
+                            <div>
+                                <label for="latitude" class="block text-xs font-medium text-text mb-1">Latitud</label>
+                                <input type="number" step="any" id="latitude" name="latitude" value="{{ old('latitude') }}"
+                                       class="w-full px-3 py-2 rounded-lg border border-border text-sm text-text focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all">
+                            </div>
+                            <div>
+                                <label for="longitude" class="block text-xs font-medium text-text mb-1">Longitud</label>
+                                <input type="number" step="any" id="longitude" name="longitude" value="{{ old('longitude') }}"
+                                       class="w-full px-3 py-2 rounded-lg border border-border text-sm text-text focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all">
+                            </div>
+                        </div>
+                    @endif
+
+                    <input type="hidden" id="city" name="city" value="{{ old('city') }}">
+                    <input type="hidden" id="country" name="country" value="{{ old('country') }}">
+                    @if(config('services.google_maps.key'))
+                        <input type="hidden" id="latitude" name="latitude" value="{{ old('latitude') }}">
+                        <input type="hidden" id="longitude" name="longitude" value="{{ old('longitude') }}">
+                    @endif
                 </div>
 
                 <!-- Group -->
@@ -114,3 +163,81 @@
     </div>
 </div>
 @endsection
+
+@push('scripts')
+@if(config('services.google_maps.key'))
+<script>
+    let deviceMap, deviceMarker;
+
+    function initDeviceMap() {
+        const lat = parseFloat(document.getElementById('latitude').value) || 4.7110;
+        const lng = parseFloat(document.getElementById('longitude').value) || -74.0721;
+        const center = { lat, lng };
+
+        deviceMap = new google.maps.Map(document.getElementById('device-map'), {
+            center,
+            zoom: 14,
+        });
+
+        deviceMarker = new google.maps.Marker({
+            position: center,
+            map: deviceMap,
+            draggable: true,
+        });
+
+        const input = document.getElementById('address');
+        const autocomplete = new google.maps.places.Autocomplete(input);
+        autocomplete.bindTo('bounds', deviceMap);
+
+        autocomplete.addListener('place_changed', () => {
+            const place = autocomplete.getPlace();
+            if (!place.geometry) {
+                return;
+            }
+
+            deviceMap.setCenter(place.geometry.location);
+            deviceMarker.setPosition(place.geometry.location);
+            updateCoordinates(place.geometry.location.lat(), place.geometry.location.lng(), place);
+        });
+
+        deviceMarker.addListener('dragend', (e) => {
+            updateCoordinates(e.latLng.lat(), e.latLng.lng(), null);
+            reverseGeocode(e.latLng.lat(), e.latLng.lng());
+        });
+    }
+
+    function updateCoordinates(lat, lng, place) {
+        document.getElementById('latitude').value = lat;
+        document.getElementById('longitude').value = lng;
+
+        if (place && place.address_components) {
+            let city = '';
+            let country = '';
+
+            place.address_components.forEach((c) => {
+                if (c.types.includes('locality') || c.types.includes('administrative_area_level_1')) {
+                    city = c.long_name;
+                }
+                if (c.types.includes('country')) {
+                    country = c.long_name;
+                }
+            });
+
+            document.getElementById('city').value = city;
+            document.getElementById('country').value = country;
+        }
+    }
+
+    function reverseGeocode(lat, lng) {
+        const geocoder = new google.maps.Geocoder();
+        geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+            if (status === 'OK' && results[0]) {
+                document.getElementById('address').value = results[0].formatted_address;
+                updateCoordinates(lat, lng, results[0]);
+            }
+        });
+    }
+</script>
+<script async defer src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google_maps.key') }}&libraries=places&callback=initDeviceMap"></script>
+@endif
+@endpush
