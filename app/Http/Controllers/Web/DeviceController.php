@@ -22,24 +22,12 @@ use Illuminate\View\View;
 
 class DeviceController extends Controller
 {
-    /**
-     * @var DeviceService
-     */
     protected DeviceService $deviceService;
 
-    /**
-     * @var Z2DeviceService
-     */
     protected Z2DeviceService $z2DeviceService;
 
-    /**
-     * @var Z2PlaylistService
-     */
     protected Z2PlaylistService $z2PlaylistService;
 
-    /**
-     * @var Z2VideoService
-     */
     protected Z2VideoService $z2VideoService;
 
     /**
@@ -70,7 +58,7 @@ class DeviceController extends Controller
 
             return view('devices.index', compact('devices'));
         } catch (\Exception $e) {
-            Log::error('Error al listar dispositivos: ' . $e->getMessage());
+            Log::error('Error al listar dispositivos: '.$e->getMessage());
 
             return redirect()->route('dashboard.index')
                 ->with('error', 'Ocurrió un error al cargar los dispositivos.');
@@ -100,7 +88,7 @@ class DeviceController extends Controller
             return redirect()->route('devices.index')
                 ->with('success', 'Dispositivo creado exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al crear dispositivo: ' . $e->getMessage());
+            Log::error('Error al crear dispositivo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al crear el dispositivo. Por favor intente nuevamente.');
         }
@@ -132,7 +120,7 @@ class DeviceController extends Controller
 
             return view('devices.show', compact('device', 'deviceDetail', 'devicePlaylist', 'allMediaForDevice', 'deviceVolume'));
         } catch (\Exception $e) {
-            Log::error('Error al mostrar dispositivo: ' . $e->getMessage());
+            Log::error('Error al mostrar dispositivo: '.$e->getMessage());
 
             return redirect()->route('devices.index')
                 ->with('error', 'Ocurrió un error al cargar el dispositivo.');
@@ -157,7 +145,7 @@ class DeviceController extends Controller
 
             return back()->with('error', 'No se pudo formatear la tarjeta SD en la nube Z2.');
         } catch (\Exception $e) {
-            Log::error('Error al formatear la SD del dispositivo: ' . $e->getMessage());
+            Log::error('Error al formatear la SD del dispositivo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al formatear la tarjeta SD del dispositivo.');
         }
@@ -187,7 +175,7 @@ class DeviceController extends Controller
 
             return back()->with('error', 'No se pudo actualizar el volumen en la nube Z2.');
         } catch (\Exception $e) {
-            Log::error('Error al cambiar volumen del dispositivo: ' . $e->getMessage());
+            Log::error('Error al cambiar volumen del dispositivo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al ajustar el volumen del dispositivo.');
         }
@@ -230,10 +218,68 @@ class DeviceController extends Controller
 
             return back()->with('error', 'No se pudo formatear la tarjeta SD en los dispositivos seleccionados.');
         } catch (\Exception $e) {
-            Log::error('Error al formatear SDs en lote: ' . $e->getMessage());
+            Log::error('Error al formatear SDs en lote: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al procesar el formateo en lote.');
         }
+    }
+
+    /**
+     * Execute a supported operation for multiple devices.
+     */
+    public function bulkOperation(BulkDeviceOperationRequest $request): RedirectResponse
+    {
+        $data = $request->validated();
+        $devices = Device::whereIn('id', $data['device_ids'])->get();
+        $successCount = 0;
+        $failCount = 0;
+
+        try {
+            foreach ($devices as $device) {
+                $this->authorize('update', $device);
+                $success = match ($data['action']) {
+                    'power_on' => $device->mac_address && $this->z2DeviceService->powerOn($device->mac_address),
+                    'power_off' => $device->mac_address && $this->z2DeviceService->powerOff($device->mac_address),
+                    'disable' => (bool) $device->update(['status' => 'disabled']),
+                    'enable' => (bool) $device->update(['status' => 'active']),
+                    'change_group' => $this->bulkChangeGroup($device, $data),
+                    'change_location' => (bool) $device->update(['location_id' => $data['target_location_id'] ?? null]),
+                    'unbind' => $this->z2DeviceService->unbindDevice($device->mac_address ?? ''),
+                    default => false,
+                };
+
+                $success ? $successCount++ : $failCount++;
+            }
+
+            $message = "Acción completada: {$successCount} correctos y {$failCount} fallidos.";
+
+            return $failCount === 0
+                ? back()->with('success', $message)
+                : back()->with('warning', $message);
+        } catch (\Exception $e) {
+            Log::error('Error en acción masiva de dispositivos', [
+                'action' => $data['action'],
+                'exception' => $e,
+            ]);
+
+            return back()->with('error', 'Ocurrió un error al ejecutar la acción masiva.');
+        }
+    }
+
+    /**
+     * Change a device group during a bulk operation.
+     */
+    private function bulkChangeGroup(Device $device, array $data): bool
+    {
+        if (! isset($data['target_group_id'])) {
+            return false;
+        }
+
+        if ($device->mac_address && ! $this->z2DeviceService->moveToGroup($device->mac_address, (int) $data['target_group_id'])) {
+            return false;
+        }
+
+        return (bool) $device->update(['group_id' => $data['target_group_id']]);
     }
 
     /**
@@ -259,7 +305,7 @@ class DeviceController extends Controller
             return redirect()->route('devices.index')
                 ->with('success', 'Dispositivo actualizado exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al actualizar dispositivo: ' . $e->getMessage());
+            Log::error('Error al actualizar dispositivo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al actualizar el dispositivo. Por favor intente nuevamente.');
         }
@@ -284,7 +330,7 @@ class DeviceController extends Controller
             return redirect()->route('devices.index')
                 ->with('success', 'Dispositivo eliminado exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al eliminar dispositivo: ' . $e->getMessage());
+            Log::error('Error al eliminar dispositivo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al eliminar el dispositivo. Por favor intente nuevamente.');
         }
@@ -305,6 +351,7 @@ class DeviceController extends Controller
         try {
             if (! $device->mac_address) {
                 Log::warning('[DeviceController] powerOn - no mac address');
+
                 return back()->with('error', 'El dispositivo no tiene una dirección MAC asignada.');
             }
 
@@ -316,14 +363,15 @@ class DeviceController extends Controller
                 // Re-sync device to get updated status after command
                 Log::info('[DeviceController] Syncing devices after powerOn');
                 $this->z2DeviceService->syncDevices();
-                
+
                 return back()->with('success', 'Comando de encendido enviado a la nube. El estado se actualizará en breve.');
             }
 
             Log::warning('[DeviceController] powerOn failed - z2DeviceService returned false');
+
             return back()->with('error', 'No se pudo enviar el comando de encendido al dispositivo.');
         } catch (\Exception $e) {
-            Log::error('[DeviceController] Error al encender dispositivo: ' . $e->getMessage());
+            Log::error('[DeviceController] Error al encender dispositivo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al encender el dispositivo.');
         }
@@ -344,6 +392,7 @@ class DeviceController extends Controller
         try {
             if (! $device->mac_address) {
                 Log::warning('[DeviceController] powerOff - no mac address');
+
                 return back()->with('error', 'El dispositivo no tiene una dirección MAC asignada.');
             }
 
@@ -355,14 +404,15 @@ class DeviceController extends Controller
                 // Re-sync device to get updated status after command
                 Log::info('[DeviceController] Syncing devices after powerOff');
                 $this->z2DeviceService->syncDevices();
-                
+
                 return back()->with('success', 'Comando de apagado enviado a la nube. El estado se actualizará en breve.');
             }
 
             Log::warning('[DeviceController] powerOff failed - z2DeviceService returned false');
+
             return back()->with('error', 'No se pudo enviar el comando de apagado al dispositivo.');
         } catch (\Exception $e) {
-            Log::error('[DeviceController] Error al apagar dispositivo: ' . $e->getMessage());
+            Log::error('[DeviceController] Error al apagar dispositivo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al apagar el dispositivo.');
         }
@@ -381,7 +431,7 @@ class DeviceController extends Controller
 
             return back()->with('success', 'Dispositivo deshabilitado exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al deshabilitar dispositivo: ' . $e->getMessage());
+            Log::error('Error al deshabilitar dispositivo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al deshabilitar el dispositivo.');
         }
@@ -400,7 +450,7 @@ class DeviceController extends Controller
 
             return back()->with('success', 'Dispositivo habilitado exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al habilitar dispositivo: ' . $e->getMessage());
+            Log::error('Error al habilitar dispositivo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al habilitar el dispositivo.');
         }
@@ -422,7 +472,7 @@ class DeviceController extends Controller
 
             return back()->with('error', 'Ocurrió un error al cambiar el grupo del dispositivo en la nube.');
         } catch (\Exception $e) {
-            Log::error('Error al cambiar grupo del dispositivo: ' . $e->getMessage());
+            Log::error('Error al cambiar grupo del dispositivo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al cambiar el grupo del dispositivo.');
         }
@@ -441,7 +491,7 @@ class DeviceController extends Controller
 
             return back()->with('success', 'Ubicación del dispositivo actualizada exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al cambiar ubicación del dispositivo: ' . $e->getMessage());
+            Log::error('Error al cambiar ubicación del dispositivo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al cambiar la ubicación del dispositivo.');
         }
@@ -478,7 +528,7 @@ class DeviceController extends Controller
 
             return back()->with('error', 'Ocurrió un error al asignar contenido al dispositivo en la nube.');
         } catch (\Exception $e) {
-            Log::error('Error al asignar contenido al dispositivo: ' . $e->getMessage());
+            Log::error('Error al asignar contenido al dispositivo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al asignar contenido al dispositivo.');
         }
@@ -498,7 +548,7 @@ class DeviceController extends Controller
 
             return back()->with('error', 'Ocurrió un error al desvincular contenido del dispositivo en la nube.');
         } catch (\Exception $e) {
-            Log::error('Error al desvincular contenido del dispositivo: ' . $e->getMessage());
+            Log::error('Error al desvincular contenido del dispositivo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al desvincular contenido del dispositivo.');
         }
@@ -516,12 +566,12 @@ class DeviceController extends Controller
         ]);
 
         try {
-            if (!$device->mac_address) {
+            if (! $device->mac_address) {
                 return back()->with('error', 'El dispositivo no tiene una dirección MAC asignada.');
             }
 
             $media = Media::find($request->input('media_id'));
-            if (!$media) {
+            if (! $media) {
                 return back()->with('error', 'El medio seleccionado no existe.');
             }
 
@@ -538,7 +588,7 @@ class DeviceController extends Controller
 
             return back()->with('error', 'Ocurrió un error al asignar el video al dispositivo en la nube.');
         } catch (\Exception $e) {
-            Log::error('Error al asignar video al dispositivo: ' . $e->getMessage());
+            Log::error('Error al asignar video al dispositivo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al asignar el video al dispositivo.');
         }
@@ -562,7 +612,7 @@ class DeviceController extends Controller
         ]);
 
         try {
-            if (!$device->mac_address) {
+            if (! $device->mac_address) {
                 return back()->with('error', 'El dispositivo no tiene una dirección MAC asignada.');
             }
 
@@ -573,24 +623,25 @@ class DeviceController extends Controller
 
             Log::info('removeMedia: playlist actual del dispositivo', [
                 'device_id' => $device->id,
-                'mac'       => $device->mac_address,
-                'playlist'  => $currentPlaylist,
-                'removing'  => $videoToRemove,
+                'mac' => $device->mac_address,
+                'playlist' => $currentPlaylist,
+                'removing' => $videoToRemove,
             ]);
 
             // Build list of remaining videos
             $remainingFiles = array_values(array_filter(
                 $currentPlaylist,
-                fn($file) => $file !== $videoToRemove
+                fn ($file) => $file !== $videoToRemove
             ));
 
             // Step 1: Format the SD card (clears ALL videos, keeps device bound)
             $formatResult = $this->z2DeviceService->formatSd($device->mac_address);
-            if (!$formatResult) {
+            if (! $formatResult) {
                 Log::error('removeMedia: fallo al formatear SD', [
                     'device_id' => $device->id,
-                    'mac'       => $device->mac_address,
+                    'mac' => $device->mac_address,
                 ]);
+
                 return back()->with('error', 'No se pudo formatear la tarjeta SD del dispositivo.');
             }
 
@@ -602,8 +653,9 @@ class DeviceController extends Controller
             if (empty($remainingFiles)) {
                 Log::info('removeMedia: no quedan videos tras formatear SD', [
                     'device_id' => $device->id,
-                    'mac'       => $device->mac_address,
+                    'mac' => $device->mac_address,
                 ]);
+
                 return back()->with('success', 'Video quitado exitosamente. No quedan videos en el dispositivo.');
             }
 
@@ -616,12 +668,13 @@ class DeviceController extends Controller
 
             foreach ($remainingFiles as $fileName) {
                 $uiCode = $this->z2VideoService->getUiCodeByFileName($fileName);
-                if (!$uiCode) {
+                if (! $uiCode) {
                     Log::warning('removeMedia: no se pudo resolver uiCode, saltando', [
                         'device_id' => $device->id,
-                        'file'      => $fileName,
+                        'file' => $fileName,
                     ]);
                     $failedFiles[] = $fileName;
+
                     continue;
                 }
 
@@ -630,38 +683,38 @@ class DeviceController extends Controller
                     $reassigned++;
                     Log::info('removeMedia: video re-asignado al dispositivo', [
                         'device_id' => $device->id,
-                        'file'      => $fileName,
-                        'uiCode'    => $uiCode,
+                        'file' => $fileName,
+                        'uiCode' => $uiCode,
                     ]);
                 } else {
                     $failedFiles[] = $fileName;
                     Log::error('removeMedia: fallo al re-asignar video', [
                         'device_id' => $device->id,
-                        'file'      => $fileName,
-                        'uiCode'    => $uiCode,
+                        'file' => $fileName,
+                        'uiCode' => $uiCode,
                     ]);
                 }
             }
 
             Log::info('removeMedia: proceso completado', [
-                'device_id'    => $device->id,
-                'removed'      => $videoToRemove,
-                'reassigned'   => $reassigned,
+                'device_id' => $device->id,
+                'removed' => $videoToRemove,
+                'reassigned' => $reassigned,
                 'failed_count' => count($failedFiles),
                 'failed_files' => $failedFiles,
             ]);
 
-            if ($reassigned === 0 && !empty($failedFiles)) {
+            if ($reassigned === 0 && ! empty($failedFiles)) {
                 return back()->with('warning', 'Video quitado pero no se pudieron re-asignar los videos restantes. El dispositivo quedó sin playlist.');
             }
 
-            if (!empty($failedFiles)) {
-                return back()->with('success', "Video quitado exitosamente. Se re-asignaron {$reassigned} videos, pero " . count($failedFiles) . " no se pudieron resolver.");
+            if (! empty($failedFiles)) {
+                return back()->with('success', "Video quitado exitosamente. Se re-asignaron {$reassigned} videos, pero ".count($failedFiles).' no se pudieron resolver.');
             }
 
             return back()->with('success', 'Video quitado del dispositivo exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al quitar video del dispositivo: ' . $e->getMessage());
+            Log::error('Error al quitar video del dispositivo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al quitar el video del dispositivo.');
         }

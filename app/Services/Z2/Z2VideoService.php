@@ -4,7 +4,6 @@ namespace App\Services\Z2;
 
 use App\Models\Media;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 
 class Z2VideoService
 {
@@ -31,6 +30,7 @@ class Z2VideoService
 
         if (! $response || ! isset($response['aaData'])) {
             Log::error('[Z2] Failed to fetch videos from cloud');
+
             return [];
         }
 
@@ -46,13 +46,13 @@ class Z2VideoService
             $uiCodes[] = $uiCode;
 
             $fileName = $videoData['resourcesName'] ?? $videoData['fileName'] ?? 'unknown.mp4';
-            
+
             if (isset($videoData['videoSize'])) {
                 $fileSize = $videoData['videoSize'] * 1024; // Convert KB to bytes
             } else {
                 $fileSize = $videoData['fileSize'] ?? 0;
             }
-            
+
             if (isset($videoData['videoTime'])) {
                 $duration = round($videoData['videoTime'] / 1000); // Convert ms to seconds
             } else {
@@ -86,15 +86,6 @@ class Z2VideoService
             ];
         }
 
-        // Restore soft-deleted media that are back in the cloud
-        if (! empty($uiCodes)) {
-            $trashedMedia = Media::onlyTrashed()->whereIn('file_path', $uiCodes)->get();
-            foreach ($trashedMedia as $trashed) {
-                $trashed->restore();
-                Log::info('[Z2] Restored soft-deleted media', ['file_path' => $trashed->file_path]);
-            }
-        }
-
         // Atomic upsert to avoid race conditions
         if (! empty($videosToUpsert)) {
             Media::upsert($videosToUpsert, ['file_path'], ['name', 'original_name', 'mime_type', 'size', 'duration', 'thumbnail']);
@@ -105,7 +96,7 @@ class Z2VideoService
 
         $syncedVideos = Media::whereIn('file_path', $uiCodes)->get()->all();
 
-        Log::info('[Z2] Synced ' . count($syncedVideos) . ' videos from cloud');
+        Log::info('[Z2] Synced '.count($syncedVideos).' videos from cloud');
 
         return $syncedVideos;
     }
@@ -132,8 +123,8 @@ class Z2VideoService
 
         // Ensure name has correct extension (important for Z2 cloud validation)
         $extension = pathinfo($filePath, PATHINFO_EXTENSION);
-        if ($extension && !str_ends_with(strtolower($fileName), '.' . strtolower($extension))) {
-            $fileName .= '.' . $extension;
+        if ($extension && ! str_ends_with(strtolower($fileName), '.'.strtolower($extension))) {
+            $fileName .= '.'.$extension;
         }
 
         // Step 2: Upload file via FTP
@@ -203,6 +194,7 @@ class Z2VideoService
         }
 
         Log::error('[Z2] Get upload slot failed', ['response' => $response]);
+
         return null;
     }
 
@@ -222,11 +214,11 @@ class Z2VideoService
             if (str_ends_with($remotePath, '/')) {
                 $remotePath .= rawurlencode($fileName);
             } else {
-                $remotePath .= '/' . rawurlencode($fileName);
+                $remotePath .= '/'.rawurlencode($fileName);
             }
 
             // Ensure the remote path starts with a slash
-            $remotePath = '/' . ltrim($remotePath, '/');
+            $remotePath = '/'.ltrim($remotePath, '/');
 
             // Build full FTP URL
             $ftpUrl = "ftp://{$ftpHost}{$remotePath}";
@@ -235,6 +227,7 @@ class Z2VideoService
             $ch = curl_init();
             if ($ch === false) {
                 Log::error('[Z2] Failed to initialize curl for FTP upload');
+
                 return false;
             }
 
@@ -242,6 +235,7 @@ class Z2VideoService
             if ($fp === false) {
                 Log::error("[Z2] Failed to open local file for reading: {$localPath}");
                 curl_close($ch);
+
                 return false;
             }
 
@@ -265,15 +259,18 @@ class Z2VideoService
             if ($errNo !== 0) {
                 Log::error("[Z2] Curl FTP upload failed: [{$errNo}] {$errMsg}", [
                     'ftpUrl' => $ftpUrl,
-                    'username' => $ftpUsername
+                    'username' => $ftpUsername,
                 ]);
+
                 return false;
             }
 
-            Log::info("[Z2] Curl FTP upload successful", ['remotePath' => $remotePath]);
+            Log::info('[Z2] Curl FTP upload successful', ['remotePath' => $remotePath]);
+
             return true;
         } catch (\Throwable $e) {
-            Log::error('[Z2] Curl FTP upload error: ' . $e->getMessage());
+            Log::error('[Z2] Curl FTP upload error: '.$e->getMessage());
+
             return false;
         }
     }
@@ -307,6 +304,7 @@ class Z2VideoService
             'fileName' => $fileName,
             'response' => $response,
         ]);
+
         return false;
     }
 
@@ -317,6 +315,7 @@ class Z2VideoService
     {
         $baseUrl = config('z2.base_url', 'http://www.holographicdisplay.cn:8088');
         $name = pathinfo($fileName, PATHINFO_FILENAME);
+
         return "{$baseUrl}/ui/{$advertisersCode}/{$uiCode}/{$name}.jpg";
     }
 
@@ -339,18 +338,19 @@ class Z2VideoService
         if ($media) {
             Log::info('[Z2] Resolved filename to uiCode via local DB', [
                 'fileName' => $fileName,
-                'uiCode'   => $media->file_path,
+                'uiCode' => $media->file_path,
             ]);
+
             return $media->file_path;
         }
 
         // Fallback: fetch live list from Z2 cloud
         $response = $this->client->request('POST', '/Effect/getUiListIsVersion', [
-            'userName'       => $this->client->username,
-            'isVersion'      => '',
-            'effGroupID'     => 0,
-            'order'          => 0,
-            'iDisplayStart'  => 0,
+            'userName' => $this->client->username,
+            'isVersion' => '',
+            'effGroupID' => 0,
+            'order' => 0,
+            'iDisplayStart' => 0,
             'iDisplayLength' => 200,
         ]);
 
@@ -362,8 +362,9 @@ class Z2VideoService
                     if ($uiCode) {
                         Log::info('[Z2] Resolved filename to uiCode via cloud list', [
                             'fileName' => $fileName,
-                            'uiCode'   => $uiCode,
+                            'uiCode' => $uiCode,
                         ]);
+
                         return $uiCode;
                     }
                 }
@@ -371,6 +372,7 @@ class Z2VideoService
         }
 
         Log::warning('[Z2] Could not resolve filename to uiCode', ['fileName' => $fileName]);
+
         return null;
     }
 
@@ -390,6 +392,7 @@ class Z2VideoService
     public function getVideoUrl(string $uiCode, string $fileName): string
     {
         $baseUrl = config('z2.base_url', 'http://www.holographicdisplay.cn:8088');
+
         return "{$baseUrl}/ui/{$uiCode}/{$fileName}";
     }
 }

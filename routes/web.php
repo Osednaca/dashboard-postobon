@@ -1,20 +1,20 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Web\AnalyticsController;
+use App\Http\Controllers\Web\AuditController;
 use App\Http\Controllers\Web\AuthController;
+use App\Http\Controllers\Web\CampaignController;
 use App\Http\Controllers\Web\DashboardController;
-use App\Http\Controllers\Web\LocationController;
 use App\Http\Controllers\Web\DeviceController;
 use App\Http\Controllers\Web\GroupController;
-use App\Http\Controllers\Web\MediaController;
-use App\Http\Controllers\Web\CampaignController;
-use App\Http\Controllers\Web\ScheduleController;
-use App\Http\Controllers\Web\AnalyticsController;
-use App\Http\Controllers\Web\SubscriptionController;
-use App\Http\Controllers\Web\NotificationController;
-use App\Http\Controllers\Web\AuditController;
-use App\Http\Controllers\Web\UserController;
 use App\Http\Controllers\Web\InstantPlayController;
+use App\Http\Controllers\Web\LocationController;
+use App\Http\Controllers\Web\MediaController;
+use App\Http\Controllers\Web\NotificationController;
+use App\Http\Controllers\Web\ScheduleController;
+use App\Http\Controllers\Web\SubscriptionController;
+use App\Http\Controllers\Web\UserController;
+use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     return redirect()->route('login');
@@ -47,6 +47,7 @@ Route::middleware('auth')->group(function () {
     Route::post('devices/{device}/unbind', [DeviceController::class, 'unbind'])->name('devices.unbind');
     Route::post('devices/{device}/assign-media', [DeviceController::class, 'assignMedia'])->name('devices.assign-media');
     Route::post('devices/{device}/remove-media', [DeviceController::class, 'removeMedia'])->name('devices.remove-media');
+    Route::post('devices/bulk-operation', [DeviceController::class, 'bulkOperation'])->name('devices.bulk-operation');
     Route::post('devices/bulk-format-sd', [DeviceController::class, 'bulkFormatSd'])->name('devices.bulk-format-sd');
     Route::post('devices/{device}/format-sd', [DeviceController::class, 'formatSd'])->name('devices.format-sd');
     Route::post('devices/{device}/set-volume', [DeviceController::class, 'setVolume'])->name('devices.set-volume');

@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class BulkDeviceOperationRequest extends FormRequest
 {
@@ -16,7 +17,9 @@ class BulkDeviceOperationRequest extends FormRequest
         return [
             'device_ids' => ['required', 'array', 'min:1'],
             'device_ids.*' => ['required', 'integer', 'exists:devices,id'],
-            'action' => ['required', 'in:power_on,power_off,disable,enable'],
+            'action' => ['required', 'in:power_on,power_off,disable,enable,change_group,change_location,unbind'],
+            'target_group_id' => [Rule::requiredIf($this->input('action') === 'change_group'), 'nullable', 'integer', 'exists:groups,id'],
+            'target_location_id' => [Rule::requiredIf($this->input('action') === 'change_location'), 'nullable', 'integer', 'exists:locations,id'],
         ];
     }
 
@@ -31,6 +34,10 @@ class BulkDeviceOperationRequest extends FormRequest
             'device_ids.*.exists' => 'Uno de los dispositivos seleccionados no existe.',
             'action.required' => 'La acción es obligatoria.',
             'action.in' => 'La acción seleccionada no es válida.',
+            'target_group_id.exists' => 'El grupo seleccionado no existe.',
+            'target_location_id.exists' => 'La ubicación seleccionada no existe.',
+            'target_group_id.required' => 'Selecciona un grupo destino.',
+            'target_location_id.required' => 'Selecciona una ubicación destino.',
         ];
     }
 }

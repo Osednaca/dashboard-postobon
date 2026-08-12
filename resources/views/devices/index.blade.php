@@ -14,6 +14,14 @@
     deleteName: '',
     selectedIds: [],
     showBulkMenu: false,
+    bulkGroupId: '',
+    bulkLocationId: '',
+    submitBulk(action) {
+        document.getElementById('bulk-operation-action').value = action;
+        document.getElementById('bulk-operation-group').value = this.bulkGroupId;
+        document.getElementById('bulk-operation-location').value = this.bulkLocationId;
+        document.getElementById('bulk-operation-form').submit();
+    },
     toggleAll() {
         const checkboxes = document.querySelectorAll('input[name=&quot;device_ids[]&quot;]');
         if (this.selectedIds.length === checkboxes.length) {
@@ -74,9 +82,21 @@
         </div>
 
         <!-- Bulk Actions Bar -->
-        <div x-show="selectedIds.length > 0" x-transition class="mt-4 pt-4 border-t border-border flex flex-wrap items-center gap-3">
-            <span class="text-sm text-text-light font-medium" x-text="selectedIds.length + ' seleccionado(s)'"></span>
-            <div class="relative" x-data="{ open: false }">
+         <div x-show="selectedIds.length > 0" x-transition class="mt-4 pt-4 border-t border-border flex flex-wrap items-center gap-3">
+             <span class="text-sm text-text-light font-medium" x-text="selectedIds.length + ' seleccionado(s)'"></span>
+             <select x-model="bulkGroupId" class="rounded-lg border border-border px-3 py-2 text-sm">
+                 <option value="">Grupo destino</option>
+                 @foreach(App\Models\Group::orderBy('name')->get() as $group)
+                     <option value="{{ $group->id }}">{{ $group->name }}</option>
+                 @endforeach
+             </select>
+             <select x-model="bulkLocationId" class="rounded-lg border border-border px-3 py-2 text-sm">
+                 <option value="">Ubicación destino</option>
+                 @foreach(App\Models\Location::orderBy('name')->get() as $location)
+                     <option value="{{ $location->id }}">{{ $location->name }}</option>
+                 @endforeach
+             </select>
+             <div class="relative" x-data="{ open: false }">
                 <button @click="open = !open" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-sm font-medium text-text hover:bg-surface transition-colors">
                     Acciones en lote
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -84,13 +104,13 @@
                     </svg>
                 </button>
                 <div x-show="open" @click.away="open = false" class="absolute left-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-border py-1 z-50" style="display: none;">
-                    <button type="button" class="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface">Encender</button>
-                    <button type="button" class="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface">Apagar</button>
-                    <button type="button" class="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface">Deshabilitar</button>
-                    <button type="button" class="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface">Habilitar</button>
+                    <button type="button" @click="open = false; submitBulk('power_on')" class="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface">Encender</button>
+                    <button type="button" @click="open = false; submitBulk('power_off')" class="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface">Apagar</button>
+                    <button type="button" @click="open = false; submitBulk('disable')" class="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface">Deshabilitar</button>
+                    <button type="button" @click="open = false; submitBulk('enable')" class="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface">Habilitar</button>
                     <div class="border-t border-border my-1"></div>
-                    <button type="button" class="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface">Cambiar Grupo</button>
-                    <button type="button" class="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface">Cambiar Ubicación</button>
+                    <button type="button" @click="open = false; submitBulk('change_group')" class="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface">Cambiar Grupo</button>
+                    <button type="button" @click="open = false; submitBulk('change_location')" class="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface">Cambiar Ubicación</button>
                     <div class="border-t border-border my-1"></div>
                     <button type="button" @click="open = false; showBulkFormatSdModal = true" class="block w-full text-left px-4 py-2 text-sm text-danger hover:bg-surface font-medium flex items-center gap-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -98,9 +118,18 @@
                         </svg>
                         Formatear SD en Lote
                     </button>
-                    <button type="button" class="block w-full text-left px-4 py-2 text-sm text-danger hover:bg-surface">Desvincular</button>
+                    <button type="button" @click="open = false; submitBulk('unbind')" class="block w-full text-left px-4 py-2 text-sm text-danger hover:bg-surface">Desvincular</button>
                 </div>
             </div>
+            <form id="bulk-operation-form" action="{{ route('devices.bulk-operation') }}" method="POST" class="hidden">
+                @csrf
+                <input id="bulk-operation-action" type="hidden" name="action">
+                <input id="bulk-operation-group" type="hidden" name="target_group_id">
+                <input id="bulk-operation-location" type="hidden" name="target_location_id">
+                <template x-for="id in selectedIds" :key="id">
+                    <input type="hidden" name="device_ids[]" :value="id">
+                </template>
+            </form>
         </div>
     </div>
 

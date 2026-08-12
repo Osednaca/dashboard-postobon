@@ -5,6 +5,7 @@ namespace App\Services\Z2;
 use App\Models\Device;
 use App\Models\DeviceHeartbeat;
 use App\Models\Group;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 
 class Z2DeviceService
@@ -26,6 +27,12 @@ class Z2DeviceService
             'userName' => $this->client->username,
         ]);
 
+        if (! $groupResponse || ! array_key_exists('aaData', $groupResponse)) {
+            Log::error('[Z2] Device sync aborted: group list unavailable', ['response' => $groupResponse]);
+
+            return [];
+        }
+
         $groupIds = [];
         if ($groupResponse && isset($groupResponse['aaData'])) {
             foreach ($groupResponse['aaData'] as $group) {
@@ -38,6 +45,7 @@ class Z2DeviceService
         $devicesToUpsert = [];
         $macAddresses = [];
         $groupMap = [];
+        $cloudFetchComplete = true;
 
         // Step 2: For each group, fetch devices
         foreach ($groupIds as $groupId) {
@@ -50,6 +58,8 @@ class Z2DeviceService
             ]);
 
             if (! $response || ! isset($response['aaData'])) {
+                $cloudFetchComplete = false;
+
                 continue;
             }
 
@@ -92,7 +102,7 @@ class Z2DeviceService
 
                 $devicesToUpsert[] = [
                     'mac_address' => $mac,
-                    'name' => $deviceData['deviceName'] ?? 'Device ' . $mac,
+                    'name' => $deviceData['deviceName'] ?? 'Device '.$mac,
                     'firmware' => (string) ($deviceData['sysVersion'] ?? ''),
                     'hardware' => (string) ($deviceData['hardVersion'] ?? ''),
                     'rpm' => isset($deviceData['speed']) ? (float) $deviceData['speed'] : null,
@@ -146,12 +156,19 @@ class Z2DeviceService
             }
         }
 
-        // Mark devices not in cloud as offline
-        Device::whereNotIn('mac_address', $macAddresses)
-            ->where('status', '!=', 'offline')
-            ->update(['status' => 'offline']);
+        // Remove local devices that are no longer linked to the cloud.
+        // Only reconcile when every cloud request succeeded, otherwise a
+        // transient API failure could remove the entire local inventory.
+        if ($cloudFetchComplete) {
+            $query = Device::query();
+            if (! empty($macAddresses)) {
+                $query->whereNotIn('mac_address', $macAddresses);
+            }
+            $removed = $query->delete();
+            Log::info('[Z2] Removed devices absent from cloud', ['count' => $removed]);
+        }
 
-        Log::info('[Z2] Synced ' . count($syncedDevices) . ' devices from cloud');
+        Log::info('[Z2] Synced '.count($syncedDevices).' devices from cloud');
 
         return $syncedDevices->all();
     }
@@ -237,6 +254,7 @@ class Z2DeviceService
         }
 
         Log::error('[Z2] Power command failed', ['mac' => $mac, 'power' => $power, 'response' => $response]);
+
         return false;
     }
 
@@ -259,6 +277,7 @@ class Z2DeviceService
         }
 
         Log::error('[Z2] Unbind failed', ['mac' => $mac, 'response' => $response]);
+
         return false;
     }
 
@@ -279,6 +298,7 @@ class Z2DeviceService
         }
 
         Log::error('[Z2] Change video failed', ['mac' => $mac, 'uiCode' => $uiCode, 'response' => $response]);
+
         return false;
     }
 
@@ -308,11 +328,13 @@ class Z2DeviceService
             $deviceMac = str_replace(':', '', $mac);
             if (isset($deviceResult[$deviceMac]) && $deviceResult[$deviceMac] === 66) {
                 Log::info('[Z2] SD card format command sent successfully', ['mac' => $mac]);
+
                 return true;
             }
         }
 
         Log::error('[Z2] Format SD failed', ['mac' => $mac, 'response' => $response]);
+
         return false;
     }
 
@@ -336,6 +358,7 @@ class Z2DeviceService
         }
 
         Log::error('[Z2] Get device setting failed', ['mac' => $mac, 'parameter' => $parameter, 'response' => $response]);
+
         return null;
     }
 
@@ -348,6 +371,7 @@ class Z2DeviceService
         if ($data && isset($data['Volume'])) {
             return (int) $data['Volume'];
         }
+
         return null;
     }
 
@@ -371,10 +395,12 @@ class Z2DeviceService
 
         if ($response && ($response['result'] ?? -1) === 0) {
             Log::info('[Z2] Device parameter updated successfully', ['mac' => $mac, 'parameter' => $parameter, 'value' => $value]);
+
             return true;
         }
 
         Log::error('[Z2] Set device setting failed', ['mac' => $mac, 'parameter' => $parameter, 'value' => $value, 'response' => $response]);
+
         return false;
     }
 
@@ -384,6 +410,7 @@ class Z2DeviceService
     public function setVolume(string $mac, int $volume): bool
     {
         $volume = max(0, min(100, $volume));
+
         return $this->setDeviceSetting($mac, 'Volume', (string) $volume);
     }
 
@@ -397,6 +424,7 @@ class Z2DeviceService
         foreach ($macs as $mac) {
             $results[$mac] = $this->formatSd($mac);
         }
+
         return $results;
     }
 
@@ -418,10 +446,12 @@ class Z2DeviceService
 
         if ($response && ($response['result'] ?? -1) === 0) {
             Device::where('mac_address', $mac)->update(['group_id' => $groupId]);
+
             return true;
         }
 
         Log::error('[Z2] Move to group failed', ['mac' => $mac, 'groupId' => $groupId, 'response' => $response]);
+
         return false;
     }
 
@@ -451,14 +481,14 @@ class Z2DeviceService
     /**
      * Parse Z2 datetime string.
      */
-    private function parseDateTime(?string $dateTime): ?\Illuminate\Support\Carbon
+    private function parseDateTime(?string $dateTime): ?Carbon
     {
         if (! $dateTime) {
             return null;
         }
 
         try {
-            return \Illuminate\Support\Carbon::parse($dateTime);
+            return Carbon::parse($dateTime);
         } catch (\Throwable $e) {
             return null;
         }
