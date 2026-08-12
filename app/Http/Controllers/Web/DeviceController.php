@@ -472,6 +472,58 @@ class DeviceController extends Controller
     }
 
     /**
+     * Turn the device's Bluetooth on.
+     */
+    public function bluetoothOn(Device $device): RedirectResponse
+    {
+        $this->authorize('update', $device);
+
+        try {
+            if (! $device->mac_address) {
+                return back()->with('error', 'El dispositivo no tiene una dirección MAC asignada.');
+            }
+
+            if ($this->z2DeviceService->bluetoothOn($device->mac_address)) {
+                $device->update(['bluetooth_status' => 'on']);
+
+                return back()->with('success', 'Comando de Bluetooth enviado. El estado se actualizará en breve.');
+            }
+
+            return back()->with('error', 'No se pudo enviar el comando de Bluetooth al dispositivo.');
+        } catch (\Exception $e) {
+            Log::error('[DeviceController] Error al activar Bluetooth: '.$e->getMessage());
+
+            return back()->with('error', 'Ocurrió un error al activar el Bluetooth del dispositivo.');
+        }
+    }
+
+    /**
+     * Turn the device's Bluetooth off.
+     */
+    public function bluetoothOff(Device $device): RedirectResponse
+    {
+        $this->authorize('update', $device);
+
+        try {
+            if (! $device->mac_address) {
+                return back()->with('error', 'El dispositivo no tiene una dirección MAC asignada.');
+            }
+
+            if ($this->z2DeviceService->bluetoothOff($device->mac_address)) {
+                $device->update(['bluetooth_status' => 'off']);
+
+                return back()->with('success', 'Comando de Bluetooth enviado. El estado se actualizará en breve.');
+            }
+
+            return back()->with('error', 'No se pudo enviar el comando de Bluetooth al dispositivo.');
+        } catch (\Exception $e) {
+            Log::error('[DeviceController] Error al desactivar Bluetooth: '.$e->getMessage());
+
+            return back()->with('error', 'Ocurrió un error al desactivar el Bluetooth del dispositivo.');
+        }
+    }
+
+    /**
      * Disable the device.
      */
     public function disable(Device $device): RedirectResponse

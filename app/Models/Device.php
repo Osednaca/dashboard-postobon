@@ -32,6 +32,7 @@ class Device extends Model
         'last_heartbeat_at',
         'working_hours',
         'power_status',
+        'bluetooth_status',
     ];
 
     protected function casts(): array

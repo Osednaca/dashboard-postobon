@@ -259,6 +259,56 @@ class Z2DeviceService
     }
 
     /**
+     * Turn the device's Bluetooth on.
+     */
+    public function bluetoothOn(string $mac): bool
+    {
+        return $this->sendBluetoothCommand($mac, 1);
+    }
+
+    /**
+     * Turn the device's Bluetooth off.
+     */
+    public function bluetoothOff(string $mac): bool
+    {
+        return $this->sendBluetoothCommand($mac, 0);
+    }
+
+    /**
+     * Send a Bluetooth on/off command to the device.
+     *
+     * Endpoint mirrors the power command convention:
+     *   POST /User/deviceBluetooth
+     *     deviceBluetoothOn=1  (turn on)
+     *     deviceBluetoothOff=1 (turn off)
+     *
+     * NOTE: The exact Z2 endpoint name may need verification against the
+     * real API. If the cloud rejects it, adjust the path/params here.
+     */
+    private function sendBluetoothCommand(string $mac, int $state): bool
+    {
+        $param = $state === 1 ? 'deviceBluetoothOn' : 'deviceBluetoothOff';
+
+        $response = $this->client->request('POST', '/User/deviceBluetooth', [
+            'userName' => $this->client->username,
+            'deviceId' => $mac,
+            $param => 1,
+        ]);
+
+        if ($response && ($response['result'] ?? -1) === 0) {
+            $deviceResult = $response['DeviceResult'] ?? [];
+            $deviceMac = str_replace(':', '', $mac);
+            if (isset($deviceResult[$deviceMac]) && $deviceResult[$deviceMac] >= 0) {
+                return true;
+            }
+        }
+
+        Log::error('[Z2] Bluetooth command failed', ['mac' => $mac, 'state' => $state, 'response' => $response]);
+
+        return false;
+    }
+
+    /**
      * Unbind device from account.
      */
     public function unbindDevice(string $mac): bool

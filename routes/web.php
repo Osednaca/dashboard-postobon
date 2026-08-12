@@ -39,6 +39,8 @@ Route::middleware('auth')->group(function () {
     Route::resource('devices', DeviceController::class);
     Route::post('devices/{device}/power-on', [DeviceController::class, 'powerOn'])->name('devices.power-on');
     Route::post('devices/{device}/power-off', [DeviceController::class, 'powerOff'])->name('devices.power-off');
+    Route::post('devices/{device}/bluetooth-on', [DeviceController::class, 'bluetoothOn'])->name('devices.bluetooth-on');
+    Route::post('devices/{device}/bluetooth-off', [DeviceController::class, 'bluetoothOff'])->name('devices.bluetooth-off');
     Route::post('devices/{device}/disable', [DeviceController::class, 'disable'])->name('devices.disable');
     Route::post('devices/{device}/enable', [DeviceController::class, 'enable'])->name('devices.enable');
     Route::post('devices/{device}/change-group', [DeviceController::class, 'changeGroup'])->name('devices.change-group');

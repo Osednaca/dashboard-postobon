@@ -133,6 +133,25 @@
                             </div>
                         </form>
                     </div>
+                    <div class="p-4 rounded-lg bg-surface sm:col-span-2" x-data="{ bt: '{{ $device->bluetooth_status ?? 'off' }}' }">
+                        <div class="flex items-center justify-between">
+                            <p class="text-xs font-medium text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                                <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6.5 7.5L12 12l-5.5 4.5V7.5zM17.5 7.5L12 12l5.5 4.5V7.5zM12 12v6"/>
+                                </svg>
+                                Bluetooth
+                            </p>
+                            <form :action="bt === 'on' ? '{{ route('devices.bluetooth-off', $device) }}' : '{{ route('devices.bluetooth-on', $device) }}'" method="POST" class="inline">
+                                @csrf
+                                <button type="submit" role="switch" :aria-checked="bt === 'on'" title="Bluetooth"
+                                    class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                    :class="bt === 'on' ? 'bg-primary' : 'bg-border'">
+                                    <span class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform"
+                                        :class="bt === 'on' ? 'translate-x-5' : 'translate-x-0.5'"></span>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
                     <div class="p-4 rounded-lg bg-surface">
                         <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Firmware</p>
                         <p class="text-sm text-text">{{ $device->firmware ?? 'No especificado' }}</p>
