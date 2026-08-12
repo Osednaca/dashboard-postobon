@@ -10,6 +10,7 @@
     search: '', 
     showDeleteModal: false, 
     showBulkFormatSdModal: false,
+    showBulkAssignMediaModal: false,
     deleteId: null, 
     deleteName: '',
     selectedIds: [],
@@ -57,9 +58,9 @@
             <div class="sm:w-40">
                 <select x-model="statusFilter" class="w-full px-4 py-2.5 rounded-lg border border-border text-sm text-text focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all bg-white">
                     <option value="">Todos los estados</option>
-                    <option value="active">Activo</option>
-                    <option value="inactive">Inactivo</option>
-                    <option value="error">Error</option>
+                    <option value="online">En línea</option>
+                    <option value="offline">Fuera de línea</option>
+                    <option value="maintenance">En mantenimiento</option>
                     <option value="disabled">Deshabilitado</option>
                 </select>
             </div>
@@ -111,6 +112,8 @@
                     <div class="border-t border-border my-1"></div>
                     <button type="button" @click="open = false; submitBulk('change_group')" class="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface">Cambiar Grupo</button>
                     <button type="button" @click="open = false; submitBulk('change_location')" class="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface">Cambiar Ubicación</button>
+                    <div class="border-t border-border my-1"></div>
+                    <button type="button" @click="open = false; showBulkAssignMediaModal = true" class="block w-full text-left px-4 py-2 text-sm text-primary hover:bg-surface font-medium">Asignar medio</button>
                     <div class="border-t border-border my-1"></div>
                     <button type="button" @click="open = false; showBulkFormatSdModal = true" class="block w-full text-left px-4 py-2 text-sm text-danger hover:bg-surface font-medium flex items-center gap-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -180,10 +183,10 @@
                                 <td class="px-4 py-4">
                                     @php
                                         $indicatorStatus = match($device->status) {
-                                            'active' => 'online',
-                                            'inactive' => 'offline',
-                                            'error' => 'offline',
+                                            'online', 'active' => 'online',
+                                            'offline', 'inactive', 'error' => 'offline',
                                             'disabled' => 'disabled',
+                                            'maintenance' => 'maintenance',
                                             default => 'offline',
                                         };
                                     @endphp
@@ -312,6 +315,45 @@
                     <button type="submit" class="px-4 py-2.5 rounded-lg bg-danger text-white text-sm font-medium hover:bg-red-700 transition-colors">Formatear Dispositivos</button>
                 </form>
             </div>
+        </div>
+    </div>
+</div>
+
+    <!-- Bulk Assign Media Modal -->
+    <div x-show="showBulkAssignMediaModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" style="display: none;">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showBulkAssignMediaModal = false"></div>
+        <div class="relative bg-white rounded-xl shadow-xl border border-border p-6 w-full max-w-md" @click.away="showBulkAssignMediaModal = false">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-text">Asignar medio en lote</h3>
+                </div>
+            </div>
+            <p class="text-sm text-text-light mb-4">Se reproducirá el medio seleccionado en <strong class="text-text" x-text="selectedIds.length"></strong> dispositivos seleccionados.</p>
+            <form action="{{ route('devices.bulk-assign-media') }}" method="POST" class="space-y-4">
+                @csrf
+                <template x-for="id in selectedIds" :key="id">
+                    <input type="hidden" name="device_ids[]" :value="id">
+                </template>
+                <div>
+                    <label for="bulk-media-id" class="block text-sm font-medium text-text mb-2">Medio</label>
+                    <select id="bulk-media-id" name="media_id" required
+                            class="w-full px-4 py-2.5 rounded-lg border border-border text-sm text-text focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all bg-white">
+                        <option value="">Seleccionar medio</option>
+                        @foreach(App\Models\Media::orderBy('name')->get() as $media)
+                            <option value="{{ $media->id }}">{{ $media->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="flex justify-end gap-3">
+                    <button type="button" @click="showBulkAssignMediaModal = false" class="px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-text hover:bg-surface transition-colors">Cancelar</button>
+                    <button type="submit" class="px-4 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-red-700 transition-colors">Asignar Medio</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>

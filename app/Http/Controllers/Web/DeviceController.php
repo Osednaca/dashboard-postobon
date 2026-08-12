@@ -283,6 +283,59 @@ class DeviceController extends Controller
     }
 
     /**
+     * Assign a media item to multiple devices at once.
+     */
+    public function bulkAssignMedia(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'device_ids' => ['required', 'array', 'min:1'],
+            'device_ids.*' => ['integer', 'exists:devices,id'],
+            'media_id' => ['required', 'exists:media,id'],
+        ]);
+
+        $media = Media::find($data['media_id']);
+        if (! $media) {
+            return back()->with('error', 'El medio seleccionado no existe.');
+        }
+
+        $devices = Device::whereIn('id', $data['device_ids'])->get();
+        $successCount = 0;
+        $failCount = 0;
+
+        try {
+            foreach ($devices as $device) {
+                $this->authorize('update', $device);
+
+                if (! $device->mac_address) {
+                    $failCount++;
+
+                    continue;
+                }
+
+                if ($this->z2DeviceService->changeVideo($device->mac_address, $media->file_path)) {
+                    $successCount++;
+                } else {
+                    $failCount++;
+                }
+            }
+
+            if ($failCount === 0) {
+                return back()->with('success', "Medio «{$media->name}» asignado a {$successCount} dispositivos correctamente.");
+            }
+
+            if ($successCount > 0) {
+                return back()->with('warning', "Medio asignado a {$successCount} dispositivos, pero falló en {$failCount}.");
+            }
+
+            return back()->with('error', 'No se pudo asignar el medio a los dispositivos seleccionados.');
+        } catch (\Exception $e) {
+            Log::error('Error al asignar medio en lote: '.$e->getMessage());
+
+            return back()->with('error', 'Ocurrió un error al asignar el medio en lote.');
+        }
+    }
+
+    /**
      * Show the form for editing the specified device.
      */
     public function edit(Device $device): View
