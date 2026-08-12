@@ -169,11 +169,13 @@ class DeviceController extends Controller
 
             $volume = (int) $request->input('volume');
 
-            if ($this->z2DeviceService->setVolume($device->mac_address, $volume)) {
+            $response = $this->z2DeviceService->setVolume($device->mac_address, $volume);
+
+            if ($response && ($response['result'] ?? -1) === 0) {
                 return back()->with('success', "Volumen del dispositivo ajustado a {$volume}%.");
             }
 
-            return back()->with('error', 'No se pudo actualizar el volumen en la nube Z2.');
+            return back()->with('error', 'No se pudo actualizar el volumen en la nube Z2. '.$this->z2ErrorDetail($response));
         } catch (\Exception $e) {
             Log::error('Error al cambiar volumen del dispositivo: '.$e->getMessage());
 
@@ -483,13 +485,15 @@ class DeviceController extends Controller
                 return back()->with('error', 'El dispositivo no tiene una dirección MAC asignada.');
             }
 
-            if ($this->z2DeviceService->bluetoothOn($device->mac_address)) {
+            $response = $this->z2DeviceService->bluetoothOn($device->mac_address);
+
+            if ($response && ($response['result'] ?? -1) === 0) {
                 $device->update(['bluetooth_status' => 'on']);
 
                 return back()->with('success', 'Comando de Bluetooth enviado. El estado se actualizará en breve.');
             }
 
-            return back()->with('error', 'No se pudo enviar el comando de Bluetooth al dispositivo.');
+            return back()->with('error', 'No se pudo enviar el comando de Bluetooth al dispositivo. '.$this->z2ErrorDetail($response));
         } catch (\Exception $e) {
             Log::error('[DeviceController] Error al activar Bluetooth: '.$e->getMessage());
 
@@ -509,13 +513,15 @@ class DeviceController extends Controller
                 return back()->with('error', 'El dispositivo no tiene una dirección MAC asignada.');
             }
 
-            if ($this->z2DeviceService->bluetoothOff($device->mac_address)) {
+            $response = $this->z2DeviceService->bluetoothOff($device->mac_address);
+
+            if ($response && ($response['result'] ?? -1) === 0) {
                 $device->update(['bluetooth_status' => 'off']);
 
                 return back()->with('success', 'Comando de Bluetooth enviado. El estado se actualizará en breve.');
             }
 
-            return back()->with('error', 'No se pudo enviar el comando de Bluetooth al dispositivo.');
+            return back()->with('error', 'No se pudo enviar el comando de Bluetooth al dispositivo. '.$this->z2ErrorDetail($response));
         } catch (\Exception $e) {
             Log::error('[DeviceController] Error al desactivar Bluetooth: '.$e->getMessage());
 
@@ -823,5 +829,21 @@ class DeviceController extends Controller
 
             return back()->with('error', 'Ocurrió un error al quitar el video del dispositivo.');
         }
+    }
+
+    /**
+     * Build a human-readable detail string from a Z2 API response.
+     */
+    private function z2ErrorDetail(?array $response): string
+    {
+        if ($response === null) {
+            return 'No hubo respuesta del servidor Z2 (revisa conectividad y autenticación).';
+        }
+
+        $code = $response['result'] ?? 'n/a';
+        $msg = $response['msg'] ?? $response['message'] ?? '';
+        $extra = mb_strimwidth(json_encode($response, JSON_UNESCAPED_UNICODE), 0, 300, '...');
+
+        return "Respuesta Z2: result={$code}".($msg ? " msg={$msg}" : '')." {$extra}";
     }
 }

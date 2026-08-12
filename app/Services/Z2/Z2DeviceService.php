@@ -285,7 +285,7 @@ class Z2DeviceService
      * NOTE: The exact Z2 endpoint name may need verification against the
      * real API. If the cloud rejects it, adjust the path/params here.
      */
-    private function sendBluetoothCommand(string $mac, int $state): bool
+    private function sendBluetoothCommand(string $mac, int $state): ?array
     {
         $param = $state === 1 ? 'deviceBluetoothOn' : 'deviceBluetoothOff';
 
@@ -299,13 +299,13 @@ class Z2DeviceService
             $deviceResult = $response['DeviceResult'] ?? [];
             $deviceMac = str_replace(':', '', $mac);
             if (isset($deviceResult[$deviceMac]) && $deviceResult[$deviceMac] >= 0) {
-                return true;
+                return $response;
             }
         }
 
         Log::error('[Z2] Bluetooth command failed', ['mac' => $mac, 'state' => $state, 'response' => $response]);
 
-        return false;
+        return $response;
     }
 
     /**
@@ -431,7 +431,7 @@ class Z2DeviceService
      * POST /User/setDeviceSetting
      *   userName, deviceId, parameter, value
      */
-    public function setDeviceSetting(string $mac, string $parameter, string $value): bool
+    public function setDeviceSetting(string $mac, string $parameter, string $value): ?array
     {
         Log::info('[Z2] Setting device parameter', ['mac' => $mac, 'parameter' => $parameter, 'value' => $value]);
 
@@ -440,24 +440,21 @@ class Z2DeviceService
             'deviceId' => $mac,
             'parameter' => $parameter,
             'value' => $value,
-            $parameter => $value,
         ]);
 
         if ($response && ($response['result'] ?? -1) === 0) {
             Log::info('[Z2] Device parameter updated successfully', ['mac' => $mac, 'parameter' => $parameter, 'value' => $value]);
-
-            return true;
+        } else {
+            Log::error('[Z2] Set device setting failed', ['mac' => $mac, 'parameter' => $parameter, 'value' => $value, 'response' => $response]);
         }
 
-        Log::error('[Z2] Set device setting failed', ['mac' => $mac, 'parameter' => $parameter, 'value' => $value, 'response' => $response]);
-
-        return false;
+        return $response;
     }
 
     /**
      * Set device volume (0 to 100).
      */
-    public function setVolume(string $mac, int $volume): bool
+    public function setVolume(string $mac, int $volume): ?array
     {
         $volume = max(0, min(100, $volume));
 
