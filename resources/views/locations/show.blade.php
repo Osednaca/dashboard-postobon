@@ -95,7 +95,7 @@
                                             </span>
                                         </td>
                                         <td class="px-4 py-3 text-right">
-                                            <a href="{{ route('devices.show', $device) }}" class="inline-flex items-center gap-1 text-sm text-primary hover:text-red-700 font-medium transition-colors">
+                                            <a href="{{ route('devices.show', $device) }}" class="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80 font-medium transition-colors">
                                                 Ver
                                                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
@@ -143,7 +143,7 @@
                         </iframe>
                     </div>
                     <div class="mt-3 text-center">
-                        <a href="https://www.google.com/maps?q={{ $location->latitude }},{{ $location->longitude }}" target="_blank" class="inline-flex items-center gap-1.5 text-sm text-primary hover:text-red-700 font-medium transition-colors">
+                        <a href="https://www.google.com/maps?q={{ $location->latitude }},{{ $location->longitude }}" target="_blank" class="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 font-medium transition-colors">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
                             </svg>

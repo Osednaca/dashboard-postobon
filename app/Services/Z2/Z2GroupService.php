@@ -6,96 +6,60 @@ use App\Models\Device;
 use App\Models\Group;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * Adaptador de grupos sobre la nube privada (fan-private-cloud).
+ *
+ * La nube privada no tiene concepto de grupo: los grupos son locales. Toda la
+ * gestión es contra la base local y las operaciones por grupo delegan en
+ * Z2DeviceService (power on/off, cambio de contenido).
+ */
 class Z2GroupService
 {
-    private FanCloudService $client;
+    private Z2DeviceService $deviceService;
 
-    public function __construct(FanCloudService $client)
+    public function __construct(Z2DeviceService $deviceService)
     {
-        $this->client = $client;
+        $this->deviceService = $deviceService;
     }
 
     /**
-     * Sync groups from cloud.
+     * Los grupos son locales en la nube privada; se devuelven tal cual.
+     *
+     * @return array<int, Group>
      */
     public function syncGroups(): array
     {
-        $response = $this->client->request('POST', '/User/groupList', [
-            'userName' => $this->client->username,
-        ]);
+        $groups = Group::all();
 
-        if (! $response || ! isset($response['aaData'])) {
-            Log::error('[Z2] Failed to fetch groups from cloud');
-            return [];
-        }
+        Log::info('[PrivateCloud] Groups are local-only; returned '.count($groups).' groups');
 
-        $groupsToUpsert = [];
-        $groupNames = [];
-
-        foreach ($response['aaData'] as $groupData) {
-            $groupName = $groupData['groupName'] ?? null;
-            $z2GroupId = $groupData['idGroup'] ?? null;
-            if (! $groupName) {
-                continue;
-            }
-
-            $groupNames[] = $groupName;
-            $groupsToUpsert[] = [
-                'name' => $groupName,
-                'description' => 'Grupo sincronizado desde Z2 Cloud',
-                'z2_group_id' => $z2GroupId,
-            ];
-        }
-
-        // Restore soft-deleted groups that are back in the cloud
-        if (! empty($groupNames)) {
-            $trashedGroups = Group::onlyTrashed()->whereIn('name', $groupNames)->get();
-            foreach ($trashedGroups as $trashedGroup) {
-                $trashedGroup->restore();
-                Log::info('[Z2] Restored soft-deleted group', ['name' => $trashedGroup->name]);
-            }
-        }
-
-        // Atomic upsert to avoid race conditions
-        if (! empty($groupsToUpsert)) {
-            Group::upsert($groupsToUpsert, ['name'], ['description', 'z2_group_id']);
-        }
-
-        // Remove groups no longer in cloud
-        Group::whereNotIn('name', $groupNames)->delete();
-
-        $syncedGroups = Group::whereIn('name', $groupNames)->get()->all();
-
-        Log::info('[Z2] Synced ' . count($syncedGroups) . ' groups from cloud');
-
-        return $syncedGroups;
+        return $groups->all();
     }
 
     /**
-     * Create a new group in cloud.
+     * Crear un grupo local.
      */
     public function createGroup(string $name): ?Group
     {
-        $response = $this->client->request('POST', '/User/addGroup', [
-            'userName' => $this->client->username,
-            'groupName' => $name,
-        ]);
+        if (Group::where('name', $name)->exists()) {
+            Log::warning('[PrivateCloud] Group already exists', ['name' => $name]);
 
-        if ($response && ($response['result'] ?? -1) === 0) {
-            $group = Group::create([
-                'name' => $name,
-                'description' => 'Grupo creado en Z2 Cloud',
-                'z2_group_id' => $response['idGroup'] ?? null,
-            ]);
-            return $group;
+            return null;
         }
 
-        Log::error('[Z2] Create group failed', ['name' => $name, 'response' => $response]);
-        return null;
+        $group = Group::create([
+            'name' => $name,
+            'description' => 'Grupo creado en el dashboard',
+            'z2_group_id' => null,
+        ]);
+
+        Log::info('[PrivateCloud] Group created locally', ['id' => $group->id, 'name' => $name]);
+
+        return $group;
     }
 
     /**
-     * Delete group from cloud.
+     * Eliminar un grupo local (los dispositivos quedan sin grupo).
      */
     public function deleteGroup(int $groupId): bool
     {
@@ -104,35 +68,16 @@ class Z2GroupService
             return false;
         }
 
-        // Delete from Z2 cloud first (requires z2_group_id and groupName)
-        if ($group->z2_group_id) {
-            $response = $this->client->request('POST', '/User/delGroup', [
-                'userName' => $this->client->username,
-                'groupId' => $group->z2_group_id,
-                'groupName' => $group->name,
-            ]);
-
-            if (! $response || ($response['result'] ?? -1) !== 0) {
-                Log::error('[Z2] Delete group from cloud failed', [
-                    'groupId' => $groupId,
-                    'z2_group_id' => $group->z2_group_id,
-                    'response' => $response,
-                ]);
-                return false;
-            }
-        }
-
-        // Move all devices to no group first
         Device::where('group_id', $groupId)->update(['group_id' => null]);
-
-        // Delete locally
         $group->delete();
+
+        Log::info('[PrivateCloud] Group deleted locally', ['id' => $groupId]);
 
         return true;
     }
 
     /**
-     * Assign device to group.
+     * Asignar dispositivo a un grupo (local).
      */
     public function assignDevice(int $groupId, string $mac): bool
     {
@@ -141,69 +86,48 @@ class Z2GroupService
             return false;
         }
 
-        $response = $this->client->request('POST', '/User/updateDeviceGroup', [
-            'userName' => $this->client->username,
-            'deviceId' => $mac,
-            'groupId' => $group->z2_group_id ?? $groupId,
-        ]);
+        Device::where('mac_address', $mac)->update(['group_id' => $groupId]);
 
-        if ($response && ($response['result'] ?? -1) === 0) {
-            Device::where('mac_address', $mac)->update(['group_id' => $groupId]);
-            return true;
-        }
-
-        Log::error('[Z2] Assign device to group failed', ['mac' => $mac, 'groupId' => $groupId, 'response' => $response]);
-        return false;
-    }
-
-    /**
-     * Remove device from group.
-     */
-    public function removeDevice(int $groupId, string $mac): bool
-    {
-        Device::where('mac_address', $mac)->where('group_id', $groupId)->update(['group_id' => null]);
         return true;
     }
 
     /**
-     * Power on all devices in group.
+     * Quitar dispositivo del grupo (local).
+     */
+    public function removeDevice(int $groupId, string $mac): bool
+    {
+        Device::where('mac_address', $mac)->where('group_id', $groupId)->update(['group_id' => null]);
+
+        return true;
+    }
+
+    /**
+     * Encender todos los dispositivos del grupo.
      */
     public function powerOnGroup(int $groupId): bool
     {
-        $devices = Device::where('group_id', $groupId)->get();
-        $success = true;
-
-        foreach ($devices as $device) {
-            $result = $this->client->request('POST', '/User/devicePower', [
-                'userName' => $this->client->username,
-                'deviceId' => $device->mac_address,
-                'devicePowerOn' => 1,
-            ]);
-
-            if (! $result || ($result['result'] ?? -1) !== 0) {
-                $success = false;
-            }
-        }
-
-        return $success;
+        return $this->powerGroup($groupId, true);
     }
 
     /**
-     * Power off all devices in group.
+     * Apagar todos los dispositivos del grupo.
      */
     public function powerOffGroup(int $groupId): bool
+    {
+        return $this->powerGroup($groupId, false);
+    }
+
+    private function powerGroup(int $groupId, bool $powerOn): bool
     {
         $devices = Device::where('group_id', $groupId)->get();
         $success = true;
 
         foreach ($devices as $device) {
-            $result = $this->client->request('POST', '/User/devicePower', [
-                'userName' => $this->client->username,
-                'deviceId' => $device->mac_address,
-                'devicePowerOff' => 1,
-            ]);
+            $result = $powerOn
+                ? $this->deviceService->powerOn($device->mac_address)
+                : $this->deviceService->powerOff($device->mac_address);
 
-            if (! $result || ($result['result'] ?? -1) !== 0) {
+            if (! $result) {
                 $success = false;
             }
         }
@@ -212,7 +136,7 @@ class Z2GroupService
     }
 
     /**
-     * Change content for all devices in group.
+     * Cambiar contenido de todos los dispositivos del grupo.
      */
     public function changeGroupContent(int $groupId, string $uiCode): bool
     {
@@ -220,13 +144,9 @@ class Z2GroupService
         $success = true;
 
         foreach ($devices as $device) {
-            $result = $this->client->request('POST', '/User/upgradeDeviceUi', [
-                'userName' => $this->client->username,
-                'deviceId' => $device->mac_address,
-                'uiCode' => $uiCode,
-            ]);
+            $result = $this->deviceService->changeVideo($device->mac_address, $uiCode);
 
-            if (! $result || ($result['result'] ?? -1) !== 0) {
+            if (! $result) {
                 $success = false;
             }
         }

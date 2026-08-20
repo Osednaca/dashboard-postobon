@@ -2,47 +2,54 @@
 
 namespace App\Services\Z2;
 
+use App\Services\PrivateCloud\PrivateCloudClient;
+use Illuminate\Support\Facades\Cache;
+
+/**
+ * Autenticación contra la nube privada (fan-private-cloud).
+ *
+ * La nube privada usa un token Bearer opcional (no sesiones JSESSIONID), así
+ * que "login" equivale a verificar conectividad y "checkSession" a un ping.
+ */
 class Z2AuthService
 {
-    private FanCloudService $client;
+    private PrivateCloudClient $client;
 
-    public function __construct(FanCloudService $client)
+    public function __construct(PrivateCloudClient $client)
     {
         $this->client = $client;
     }
 
     /**
-     * Authenticate and return user info.
+     * Verifica la conexión con la nube privada.
      */
     public function login(): ?array
     {
-        if ($this->client->isAuthenticated()) {
-            return ['authenticated' => true];
-        }
-
-        $result = $this->client->authenticate();
-        if ($result) {
-            return ['authenticated' => true, 'session_id' => $this->client->getSessionId()];
+        if ($this->client->ping()) {
+            return [
+                'authenticated' => true,
+                'base_url' => $this->client->baseUrl(),
+                'token' => $this->client->tokenConfigured() ? 'SET' : 'NOT SET',
+            ];
         }
 
         return null;
     }
 
     /**
-     * Check if session is valid.
+     * Comprueba que la nube privada responda.
      */
     public function checkSession(): bool
     {
-        return $this->client->isAuthenticated();
+        return $this->client->ping();
     }
 
     /**
-     * Logout and clear session.
+     * No hay sesión que cerrar; se limpia la caché por compatibilidad.
      */
     public function logout(): void
     {
-        // No explicit logout endpoint documented, just clear local session
-        \Illuminate\Support\Facades\Cache::forget('z2_session_cookies');
-        \Illuminate\Support\Facades\Cache::forget('z2_advertiser_id');
+        Cache::forget('z2_session_cookies');
+        Cache::forget('z2_advertiser_id');
     }
 }

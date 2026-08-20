@@ -43,4 +43,27 @@ class Media extends Model
     {
         return $this->hasMany(CampaignMedia::class);
     }
+
+    /**
+     * URL de visualización/descarga del medio.
+     *
+     * - file_path absoluto (http) -> tal cual
+     * - filename simple (nube privada) -> servido por la nube privada
+     * - ruta local (media/...) -> storage público
+     */
+    public function getUrlAttribute(): string
+    {
+        if (str_starts_with($this->file_path, 'http')) {
+            return $this->file_path;
+        }
+
+        if (! str_contains($this->file_path, '/')) {
+            $base = rtrim((string) config('privatecloud.base_url', ''), '/');
+            if ($base !== '') {
+                return $base.'/fileDownload/Videos/'.rawurlencode($this->file_path);
+            }
+        }
+
+        return asset('storage/'.$this->file_path);
+    }
 }

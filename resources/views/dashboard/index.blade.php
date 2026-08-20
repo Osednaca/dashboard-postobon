@@ -234,8 +234,9 @@
                         datasets: [{
                             label: 'Dispositivos',
                             data: {!! json_encode(collect($activityByGroup)->pluck('device_count')->toArray()) !!},
-                            backgroundColor: '#FF0000',
-                            borderRadius: 4,
+                            backgroundColor: '#2D5795',
+                            hoverBackgroundColor: '#1E3F73',
+                            borderRadius: 6,
                             barPercentage: 0.6
                         }]
                     },
@@ -246,7 +247,7 @@
                             legend: { display: false }
                         },
                         scales: {
-                            y: { beginAtZero: true, grid: { color: '#F0F0F0' } },
+                            y: { beginAtZero: true, grid: { color: '#F1F5F9' } },
                             x: { grid: { display: false } }
                         }
                     }
@@ -263,8 +264,9 @@
                         datasets: [{
                             label: 'Reproducciones',
                             data: {!! json_encode(collect($activityByCampaign)->pluck('total_plays')->toArray()) !!},
-                            backgroundColor: '#F57CB6',
-                            borderRadius: 4,
+                            backgroundColor: '#0284C7',
+                            hoverBackgroundColor: '#0369A1',
+                            borderRadius: 6,
                             barPercentage: 0.6
                         }]
                     },
@@ -275,7 +277,7 @@
                             legend: { display: false }
                         },
                         scales: {
-                            y: { beginAtZero: true, grid: { color: '#F0F0F0' } },
+                            y: { beginAtZero: true, grid: { color: '#F1F5F9' } },
                             x: { grid: { display: false } }
                         }
                     }
@@ -297,7 +299,7 @@
                     'active': '#10B981',
                     'inactive': '#EF4444',
                     'error': '#F59E0B',
-                    'disabled': '#3B82F6'
+                    'disabled': '#94A3B8'
                 };
                 new Chart(ctxDeviceStatus, {
                     type: 'doughnut',
@@ -305,8 +307,9 @@
                         labels: deviceLabels.map(l => labelMap[l] || l),
                         datasets: [{
                             data: deviceCounts,
-                            backgroundColor: deviceLabels.map(l => colorMap[l] || '#999'),
-                            borderWidth: 0,
+                            backgroundColor: deviceLabels.map(l => colorMap[l] || '#94A3B8'),
+                            borderWidth: 2,
+                            borderColor: '#FFFFFF',
                             hoverOffset: 4
                         }]
                     },
@@ -315,7 +318,7 @@
                         maintainAspectRatio: false,
                         cutout: '70%',
                         plugins: {
-                            legend: { position: 'bottom', labels: { usePointStyle: true, padding: 15 } }
+                            legend: { position: 'bottom', labels: { usePointStyle: true, padding: 15, font: { family: 'Inter' } } }
                         }
                     }
                 });
@@ -334,9 +337,9 @@
                     'finished': 'Finalizada'
                 };
                 const colorMap = {
-                    'draft': '#666666',
-                    'scheduled': '#3B82F6',
-                    'active': '#FF0000',
+                    'draft': '#94A3B8',
+                    'scheduled': '#0284C7',
+                    'active': '#2D5795',
                     'paused': '#F59E0B',
                     'finished': '#10B981'
                 };
@@ -346,8 +349,9 @@
                         labels: campaignLabels.map(l => labelMap[l] || l),
                         datasets: [{
                             data: campaignCounts,
-                            backgroundColor: campaignLabels.map(l => colorMap[l] || '#999'),
-                            borderWidth: 0,
+                            backgroundColor: campaignLabels.map(l => colorMap[l] || '#94A3B8'),
+                            borderWidth: 2,
+                            borderColor: '#FFFFFF',
                             hoverOffset: 4
                         }]
                     },
@@ -356,7 +360,7 @@
                         maintainAspectRatio: false,
                         cutout: '70%',
                         plugins: {
-                            legend: { position: 'bottom', labels: { usePointStyle: true, padding: 15 } }
+                            legend: { position: 'bottom', labels: { usePointStyle: true, padding: 15, font: { family: 'Inter' } } }
                         }
                     }
                 });

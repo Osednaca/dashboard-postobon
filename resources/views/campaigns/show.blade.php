@@ -177,10 +177,7 @@
                     @forelse($campaign->media as $mediaItem)
                         @php
                             $mediaUrl = function($item) {
-                                if (str_starts_with($item->file_path, 'http')) {
-                                    return $item->file_path;
-                                }
-                                return asset('storage/' . $item->file_path);
+                                return $item->url;
                             };
                             $thumbUrl = function($item) {
                                 if ($item->thumbnail) {

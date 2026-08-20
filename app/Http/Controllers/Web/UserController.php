@@ -77,7 +77,7 @@ class UserController extends Controller
     /**
      * Display the specified user.
      */
-    public function show(User $user): View
+    public function show(User $user): View|RedirectResponse
     {
         $this->authorize('view', $user);
 

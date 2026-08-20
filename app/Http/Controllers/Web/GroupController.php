@@ -90,7 +90,7 @@ class GroupController extends Controller
     /**
      * Display the specified group.
      */
-    public function show(Group $group): View
+    public function show(Group $group): View|RedirectResponse
     {
         $this->authorize('view', $group);
 

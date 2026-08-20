@@ -122,7 +122,7 @@ class MediaController extends Controller
     /**
      * Display the specified media.
      */
-    public function show(Media $media): View
+    public function show(Media $media): View|RedirectResponse
     {
         $this->authorize('view', $media);
 
@@ -255,7 +255,7 @@ class MediaController extends Controller
         $this->authorize('view', $media);
 
         try {
-            $url = $this->mediaService->getUrl($media->id);
+            $url = $media->url;
 
             return view('media.preview', compact('media', 'url'));
         } catch (\Exception $e) {

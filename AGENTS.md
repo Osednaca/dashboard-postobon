@@ -89,7 +89,8 @@ See `routes/api.php` for full list.
 
 ## UI Design System
 
-- Colors: Primary #FF0000, Secondary #F57CB6, Accent #FFD200, Background #FFFFFF, Text #333333
+- Colors: Primary #2D5795 (Postobón Blue), Secondary #0284C7 (Sky/Cyan), Accent #F59E0B (Amber), Background #F8FAFC, Surface #FFFFFF, Text #0F172A, Text Light #475569, Text Muted #94A3B8, Danger #EF4444, Warning #F59E0B, Success #10B981
+- Brand Assets: `public/logo_postobon.png` used across app layout headers and authentication cards
 - Components: resources/views/components/ (card, button, input, modal, table, badge, etc.)
 - Layouts: resources/views/layouts/ (app, guest, blank)
 - All text in Spanish

@@ -77,7 +77,7 @@
                 </div>
 
                 <div class="mt-6 pt-6 border-t border-border">
-                    <a href="{{ route('groups.edit', $group) }}" class="inline-flex items-center justify-center w-full gap-2 px-4 py-2.5 bg-primary text-white rounded-lg font-medium text-sm hover:bg-red-700 transition-colors">
+                    <a href="{{ route('groups.edit', $group) }}" class="inline-flex items-center justify-center w-full gap-2 px-4 py-2.5 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary/90 transition-colors shadow-sm shadow-primary/20">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                         </svg>
@@ -131,7 +131,7 @@
                                         </td>
                                         <td class="px-4 py-3 text-text-light">{{ $device->location->name ?? '-' }}</td>
                                         <td class="px-4 py-3 text-right">
-                                            <a href="{{ route('devices.show', $device) }}" class="inline-flex items-center gap-1 text-sm text-primary hover:text-red-700 font-medium transition-colors">
+                                            <a href="{{ route('devices.show', $device) }}" class="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80 font-medium transition-colors">
                                                 Ver
                                                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
@@ -185,7 +185,7 @@
                 </div>
                 <div class="flex justify-end gap-3 pt-2">
                     <button type="button" @click="showCampaignModal = false" class="px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-text hover:bg-surface transition-colors">Cancelar</button>
-                    <button type="submit" class="px-4 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-red-700 transition-colors">Publicar</button>
+                    <button type="submit" class="px-4 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm shadow-primary/20">Publicar</button>
                 </div>
             </form>
         </div>

@@ -38,7 +38,7 @@
             <h1 class="text-2xl font-bold text-text">Dispositivos</h1>
             <p class="text-sm text-text-light mt-1">Gestiona y monitorea todos tus dispositivos 3D Fan</p>
         </div>
-        <a href="{{ route('devices.create') }}" class="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg font-medium text-sm hover:bg-red-700 transition-colors shadow-[0_1px_3px_rgba(0,0,0,0.08)]">
+        <a href="{{ route('devices.create') }}" class="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary/90 transition-colors shadow-sm shadow-primary/20">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
             </svg>
@@ -261,7 +261,7 @@
                 </div>
                 <h3 class="text-lg font-semibold text-text mb-1">No hay dispositivos</h3>
                 <p class="text-sm text-text-light mb-4">Aún no has registrado ningún dispositivo.</p>
-                <a href="{{ route('devices.create') }}" class="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg font-medium text-sm hover:bg-red-700 transition-colors">
+                <a href="{{ route('devices.create') }}" class="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary/90 transition-colors shadow-sm shadow-primary/20">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                     </svg>
@@ -291,7 +291,7 @@
                 <form :action="'/devices/' + deleteId" method="POST" class="inline">
                     @csrf
                     @method('DELETE')
-                    <button type="submit" class="px-4 py-2.5 rounded-lg bg-danger text-white text-sm font-medium hover:bg-red-700 transition-colors">Eliminar</button>
+                    <button type="submit" class="px-4 py-2.5 rounded-lg bg-danger text-white text-sm font-medium hover:bg-danger/90 transition-colors">Eliminar</button>
                 </form>
             </div>
         </div>
@@ -320,7 +320,7 @@
                     <template x-for="id in selectedIds" :key="id">
                         <input type="hidden" name="device_ids[]" :value="id">
                     </template>
-                    <button type="submit" class="px-4 py-2.5 rounded-lg bg-danger text-white text-sm font-medium hover:bg-red-700 transition-colors">Formatear Dispositivos</button>
+                    <button type="submit" class="px-4 py-2.5 rounded-lg bg-danger text-white text-sm font-medium hover:bg-danger/90 transition-colors">Formatear Dispositivos</button>
                 </form>
             </div>
         </div>
@@ -357,7 +357,7 @@
                 </div>
                 <div class="flex justify-end gap-3">
                     <button type="button" @click="showBulkAssignMediaModal = false" class="px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-text hover:bg-surface transition-colors">Cancelar</button>
-                    <button type="submit" class="px-4 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-red-700 transition-colors">Asignar Medio</button>
+                    <button type="submit" class="px-4 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm shadow-primary/20">Asignar Medio</button>
                 </div>
             </form>
         </div>

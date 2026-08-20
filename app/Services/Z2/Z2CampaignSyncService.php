@@ -9,17 +9,10 @@ use Illuminate\Support\Facades\Log;
 
 class Z2CampaignSyncService
 {
-    private FanCloudService $client;
-    private Z2DeviceService $deviceService;
     private Z2PlaylistService $playlistService;
 
-    public function __construct(
-        FanCloudService $client,
-        Z2DeviceService $deviceService,
-        Z2PlaylistService $playlistService
-    ) {
-        $this->client = $client;
-        $this->deviceService = $deviceService;
+    public function __construct(Z2PlaylistService $playlistService)
+    {
         $this->playlistService = $playlistService;
     }
 
@@ -39,7 +32,7 @@ class Z2CampaignSyncService
             // Get campaign media
             $media = $campaign->media()->first();
             if (! $media) {
-                Log::warning('[Z2] Campaign has no media', ['campaign' => $campaign->id]);
+                Log::warning('[PrivateCloud] Campaign has no media', ['campaign' => $campaign->id]);
                 continue;
             }
 

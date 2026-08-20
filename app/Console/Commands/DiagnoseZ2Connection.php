@@ -8,11 +8,11 @@ use Illuminate\Console\Command;
 class DiagnoseZ2Connection extends Command
 {
     protected $signature = 'z2:diagnose';
-    protected $description = 'Diagnose Z2 Cloud connection step by step';
+    protected $description = 'Diagnose private cloud connection step by step';
 
     public function handle(Z2Diagnostics $diagnostics): void
     {
-        $this->info('Running Z2 Cloud diagnostics...');
+        $this->info('Running private cloud diagnostics...');
         $this->newLine();
 
         $results = $diagnostics->run();
@@ -21,8 +21,8 @@ class DiagnoseZ2Connection extends Command
         $this->info('=== Configuration ===');
         $this->table(['Key', 'Value'], [
             ['Base URL', $results['config']['base_url']],
-            ['Username', $results['config']['username']],
-            ['Password', $results['config']['password']],
+            ['Token', $results['config']['token']],
+            ['Timeout', $results['config']['timeout']],
         ]);
         $this->newLine();
 
@@ -34,47 +34,33 @@ class DiagnoseZ2Connection extends Command
         } else {
             $this->info('HTTP Code: ' . $http['http_code']);
             $this->info('Response Length: ' . $http['response_length']);
-            $this->info('Has JSESSIONID: ' . ($http['has_jsessionid'] ? 'YES' : 'NO'));
         }
         $this->newLine();
 
-        // RSA Key
-        $this->info('=== RSA Key Test ===');
-        $rsa = $results['rsa_key'];
-        if ($rsa['success']) {
+        // Status
+        $this->info('=== Status Endpoint Test ===');
+        $status = $results['status'];
+        if ($status['success']) {
             $this->info('Success: YES');
-            $this->info('Has pubmodules_base64: ' . ($rsa['has_pubmodules_base64'] ? 'YES' : 'NO'));
-            $this->info('Has pubexponent: ' . ($rsa['has_pubexponent'] ? 'YES' : 'NO'));
-            $this->info('Base64 Length: ' . $rsa['pubmodules_base64_length']);
-        } else {
-            $this->error('RSA Key Error: ' . ($rsa['error'] ?? 'Unknown'));
-        }
-        $this->newLine();
-
-        // RSA Encryption
-        $this->info('=== RSA Encryption Test ===');
-        $enc = $results['rsa_encrypt'];
-        if ($enc['success']) {
-            $this->info('Success: YES');
-            $this->info('Encrypted Length: ' . $enc['encrypted_length']);
-            $this->info('Hex Length: ' . $enc['hex_length']);
-        } else {
-            $this->error('RSA Encryption Error: ' . ($enc['error'] ?? 'Unknown'));
-        }
-        $this->newLine();
-
-        // Login
-        $this->info('=== Login Test ===');
-        $login = $results['login'];
-        if ($login['success']) {
-            $this->info('Success: YES');
-            $this->info('Authenticated: ' . ($login['authenticated'] ? 'YES' : 'NO'));
-            $this->info('Session ID: ' . $login['session_id']);
-        } else {
-            $this->error('Login Error: ' . ($login['error'] ?? 'Unknown'));
-            if (isset($login['raw_response'])) {
-                $this->warn('Raw Response: ' . json_encode($login['raw_response']));
+            $this->info('Devices reported: ' . $status['devices']);
+            $this->info('Online: ' . $status['online']);
+            if (! empty($status['raw_keys'])) {
+                $this->info('Response Keys: ' . implode(', ', $status['raw_keys']));
             }
+        } else {
+            $this->error('Status Error: ' . ($status['error'] ?? 'Unknown'));
+        }
+        $this->newLine();
+
+        // Auth
+        $this->info('=== Auth Test ===');
+        $auth = $results['auth'];
+        if ($auth['success']) {
+            $this->info('Success: YES');
+            $this->info('Authenticated: ' . ($auth['authenticated'] ? 'YES' : 'NO'));
+            $this->info('Token: ' . $auth['token']);
+        } else {
+            $this->error('Auth Error: ' . ($auth['error'] ?? 'Unknown'));
         }
         $this->newLine();
 
@@ -83,10 +69,24 @@ class DiagnoseZ2Connection extends Command
             $this->info('=== Device List Test ===');
             $dl = $results['device_list'];
             $this->info('Has Response: ' . ($dl['has_response'] ? 'YES' : 'NO'));
-            $this->info('Has aaData: ' . ($dl['has_aaData'] ? 'YES' : 'NO'));
             $this->info('Device Count: ' . $dl['count']);
-            if (!empty($dl['raw_keys'])) {
+            if (! empty($dl['raw_keys'])) {
                 $this->info('Response Keys: ' . implode(', ', $dl['raw_keys']));
+            }
+            if (! empty($dl['first_device'])) {
+                $this->info('First Device Fields: ' . implode(', ', $dl['first_device']));
+            }
+        }
+        $this->newLine();
+
+        // Media List
+        if (isset($results['media_list'])) {
+            $this->info('=== Media List Test ===');
+            $ml = $results['media_list'];
+            $this->info('Has Response: ' . ($ml['has_response'] ? 'YES' : 'NO'));
+            $this->info('Media Count: ' . $ml['count']);
+            if ($ml['first_file']) {
+                $this->info('First File: ' . $ml['first_file']);
             }
         }
     }

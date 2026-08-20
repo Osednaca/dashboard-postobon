@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', $device->name)
 
@@ -175,7 +175,7 @@
                             <p class="text-xs text-text-light mt-0.5">{{ $device->city ?? '' }}@if($device->city && $device->country), @endif{{ $device->country ?? '' }}</p>
                         @endif
                         @if($device->latitude && $device->longitude)
-                            <a href="https://www.google.com/maps?q={{ $device->latitude }},{{ $device->longitude }}" target="_blank" class="inline-flex items-center gap-1.5 text-xs text-primary hover:text-red-700 font-medium transition-colors mt-1">
+                            <a href="https://www.google.com/maps?q={{ $device->latitude }},{{ $device->longitude }}" target="_blank" class="inline-flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 font-medium transition-colors mt-1">
                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z"/>
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
@@ -448,13 +448,13 @@
             </div>
             <p class="text-sm text-text-light mb-1">Se quitará el siguiente video de la lista de reproducción del dispositivo:</p>
             <p class="text-sm font-medium text-text mb-2" x-text="removeVideoName"></p>
-            <p class="text-xs text-text-muted mb-6"><strong>Nota:</strong> Se formatea la SD del dispositivo y se re-asignan los videos restantes. El dispositivo descargará nuevamente los videos.</p>
+            <p class="text-xs text-text-muted mb-6"><strong>Nota:</strong> El video se quita de la SD del dispositivo (FileDelect). El resto de la lista de reproducción no se altera y el archivo permanece en la biblioteca.</p>
             <div class="flex justify-end gap-3">
                 <button @click="showRemoveVideoModal = false" class="px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-text hover:bg-surface transition-colors">Cancelar</button>
                 <form action="{{ route('devices.remove-media', $device) }}" method="POST" class="inline">
                     @csrf
                     <input type="hidden" name="ui_code" :value="removeVideoCode">
-                    <button type="submit" class="px-4 py-2.5 rounded-lg bg-danger text-white text-sm font-medium hover:bg-red-700 transition-colors">Quitar Video</button>
+                    <button type="submit" class="px-4 py-2.5 rounded-lg bg-danger text-white text-sm font-medium hover:bg-danger/90 transition-colors">Quitar Video</button>
                 </form>
             </div>
         </div>
@@ -480,7 +480,7 @@
                 <button @click="showFormatSdModal = false" class="px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-text hover:bg-surface transition-colors">Cancelar</button>
                 <form action="{{ route('devices.format-sd', $device) }}" method="POST" class="inline">
                     @csrf
-                    <button type="submit" class="px-4 py-2.5 rounded-lg bg-danger text-white text-sm font-medium hover:bg-red-700 transition-colors">Formatear SD</button>
+                    <button type="submit" class="px-4 py-2.5 rounded-lg bg-danger text-white text-sm font-medium hover:bg-danger/90 transition-colors">Formatear SD</button>
                 </form>
             </div>
         </div>

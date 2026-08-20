@@ -49,8 +49,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(\App\Repositories\Contracts\DeviceHeartbeatRepositoryInterface::class, \App\Repositories\DeviceHeartbeatRepository::class);
         $this->app->bind(\App\Repositories\Contracts\CampaignStatisticRepositoryInterface::class, \App\Repositories\CampaignStatisticRepository::class);
 
-        // Z2 Cloud Services
-        $this->app->singleton(\App\Services\Z2\FanCloudService::class);
+        // Nube privada (reemplaza a la nube china Z2)
+        $this->app->singleton(\App\Services\PrivateCloud\PrivateCloudClient::class);
         $this->app->singleton(\App\Services\Z2\Z2AuthService::class);
         $this->app->singleton(\App\Services\Z2\Z2DeviceService::class);
         $this->app->singleton(\App\Services\Z2\Z2GroupService::class);

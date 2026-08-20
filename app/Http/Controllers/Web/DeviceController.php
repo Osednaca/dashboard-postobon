@@ -97,7 +97,7 @@ class DeviceController extends Controller
     /**
      * Display the specified device.
      */
-    public function show(Device $device): View
+    public function show(Device $device): View|RedirectResponse
     {
         $this->authorize('view', $device);
 
@@ -715,13 +715,11 @@ class DeviceController extends Controller
     }
 
     /**
-     * Remove a specific video from the device playlist.
+     * Remove a specific video from the device SD card.
      *
-     * Uses the Z2 API flow: format SD card (clears all videos) → re-assign
-     * only the remaining videos. The device stays bound to the account.
-     *
-     * POST /User/needFormatSd  — clears SD without unbinding
-     * POST /User/upgradeDeviceUi — re-assigns each remaining video
+     * The private cloud delivers the removal via heartbeat with FileDelect +
+     * PlayList (hardware-verified combo). The video stays in the server
+     * library and the rest of the device playlist is untouched.
      */
     public function removeMedia(Request $request, Device $device): RedirectResponse
     {
@@ -736,103 +734,19 @@ class DeviceController extends Controller
                 return back()->with('error', 'El dispositivo no tiene una dirección MAC asignada.');
             }
 
-            $videoToRemove = $request->input('ui_code');
+            $filename = $request->input('ui_code');
 
-            // Get current playlist (filenames from Z2 cloud)
-            $currentPlaylist = $this->z2PlaylistService->getDevicePlaylist($device->mac_address);
-
-            Log::info('removeMedia: playlist actual del dispositivo', [
-                'device_id' => $device->id,
-                'mac' => $device->mac_address,
-                'playlist' => $currentPlaylist,
-                'removing' => $videoToRemove,
-            ]);
-
-            // Build list of remaining videos
-            $remainingFiles = array_values(array_filter(
-                $currentPlaylist,
-                fn ($file) => $file !== $videoToRemove
-            ));
-
-            // Step 1: Format the SD card (clears ALL videos, keeps device bound)
-            $formatResult = $this->z2DeviceService->formatSd($device->mac_address);
-            if (! $formatResult) {
-                Log::error('removeMedia: fallo al formatear SD', [
+            if ($this->z2DeviceService->removeVideoFromDevice($device->mac_address, $filename)) {
+                Log::info('Video quitado del dispositivo', [
                     'device_id' => $device->id,
                     'mac' => $device->mac_address,
+                    'filename' => $filename,
                 ]);
 
-                return back()->with('error', 'No se pudo formatear la tarjeta SD del dispositivo.');
+                return back()->with('success', 'Video quitado del dispositivo exitosamente. El cambio se refleja en el próximo heartbeat.');
             }
 
-            Log::info('removeMedia: SD formateada, playlist limpia', [
-                'device_id' => $device->id,
-            ]);
-
-            // If no videos remain, we're done — SD is clean
-            if (empty($remainingFiles)) {
-                Log::info('removeMedia: no quedan videos tras formatear SD', [
-                    'device_id' => $device->id,
-                    'mac' => $device->mac_address,
-                ]);
-
-                return back()->with('success', 'Video quitado exitosamente. No quedan videos en el dispositivo.');
-            }
-
-            // Small delay to let the device process the format command
-            usleep(500000); // 500ms
-
-            // Step 2: Re-assign only the remaining videos
-            $reassigned = 0;
-            $failedFiles = [];
-
-            foreach ($remainingFiles as $fileName) {
-                $uiCode = $this->z2VideoService->getUiCodeByFileName($fileName);
-                if (! $uiCode) {
-                    Log::warning('removeMedia: no se pudo resolver uiCode, saltando', [
-                        'device_id' => $device->id,
-                        'file' => $fileName,
-                    ]);
-                    $failedFiles[] = $fileName;
-
-                    continue;
-                }
-
-                $result = $this->z2DeviceService->changeVideo($device->mac_address, $uiCode);
-                if ($result) {
-                    $reassigned++;
-                    Log::info('removeMedia: video re-asignado al dispositivo', [
-                        'device_id' => $device->id,
-                        'file' => $fileName,
-                        'uiCode' => $uiCode,
-                    ]);
-                } else {
-                    $failedFiles[] = $fileName;
-                    Log::error('removeMedia: fallo al re-asignar video', [
-                        'device_id' => $device->id,
-                        'file' => $fileName,
-                        'uiCode' => $uiCode,
-                    ]);
-                }
-            }
-
-            Log::info('removeMedia: proceso completado', [
-                'device_id' => $device->id,
-                'removed' => $videoToRemove,
-                'reassigned' => $reassigned,
-                'failed_count' => count($failedFiles),
-                'failed_files' => $failedFiles,
-            ]);
-
-            if ($reassigned === 0 && ! empty($failedFiles)) {
-                return back()->with('warning', 'Video quitado pero no se pudieron re-asignar los videos restantes. El dispositivo quedó sin playlist.');
-            }
-
-            if (! empty($failedFiles)) {
-                return back()->with('success', "Video quitado exitosamente. Se re-asignaron {$reassigned} videos, pero ".count($failedFiles).' no se pudieron resolver.');
-            }
-
-            return back()->with('success', 'Video quitado del dispositivo exitosamente.');
+            return back()->with('error', 'No se pudo quitar el video del dispositivo.');
         } catch (\Exception $e) {
             Log::error('Error al quitar video del dispositivo: '.$e->getMessage());
 

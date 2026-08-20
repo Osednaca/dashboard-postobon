@@ -58,9 +58,8 @@ class InstantPlayController extends Controller
             ];
         });
 
-        // Get all synced Z2 media (file_path is numeric uiCode)
-        $allMedia = Media::whereRaw('file_path REGEXP ?', ['^[0-9]+$'])
-            ->orderBy('name')
+        // Get all synced media (file_path es el filename en la nube privada)
+        $allMedia = Media::orderBy('name')
             ->get();
 
         // Get active campaigns with media
@@ -92,13 +91,8 @@ class InstantPlayController extends Controller
                 return back()->with('error', 'El dispositivo no tiene una dirección MAC asignada.');
             }
 
-            // file_path stores the numeric uiCode for Z2-synced media
+            // file_path almacena el filename del video en la nube privada
             $uiCode = $media->file_path;
-
-            // Verify it's a valid Z2 uiCode (numeric)
-            if (!preg_match('/^\d+$/', $uiCode)) {
-                return back()->with('error', 'El medio seleccionado no es un video sincronizado con la nube Z2.');
-            }
 
             $success = $this->z2DeviceService->changeVideo($device->mac_address, $uiCode);
 
@@ -148,14 +142,10 @@ class InstantPlayController extends Controller
                 return back()->with('error', "La campaña \"{$campaign->name}\" no tiene medios asociados.");
             }
 
-            // Resolve uiCode
+            // Resolve filename (file_path del media)
             $uiCode = $media->file_path;
-            if (!preg_match('/^\d+$/', $uiCode)) {
-                // Try to resolve from filename
-                $resolved = $this->z2VideoService->getUiCodeByFileName($media->name);
-                if (!$resolved) {
-                    return back()->with('error', 'No se pudo resolver el video de la campaña en la nube Z2.');
-                }
+            $resolved = $this->z2VideoService->getUiCodeByFileName($media->name);
+            if ($resolved) {
                 $uiCode = $resolved;
             }
 
@@ -196,10 +186,6 @@ class InstantPlayController extends Controller
         $media = Media::findOrFail($request->input('media_id'));
         $deviceIds = $request->input('device_ids');
         $uiCode = $media->file_path;
-
-        if (!preg_match('/^\d+$/', $uiCode)) {
-            return back()->with('error', 'El medio seleccionado no es un video sincronizado con la nube Z2.');
-        }
 
         $successCount = 0;
         $failCount    = 0;

@@ -31,7 +31,7 @@ $trendIcon = $changeType === 'increase' ? 'trending-up' : 'trending-down';
 $trendColor = $changeType === 'increase' ? 'text-success' : 'text-danger';
 @endphp
 
-<div class="bg-white rounded-xl border border-border p-6 shadow-sm hover:shadow-md transition-shadow duration-200">
+<div class="bg-white rounded-xl border border-border p-6 shadow-sm hover:border-primary/30 hover:shadow-md transition-all duration-200">
     <div class="flex items-center justify-between mb-4">
         <div class="w-10 h-10 rounded-lg {{ $colorClasses }} flex items-center justify-center">
             @if (isset($icons[$icon]))

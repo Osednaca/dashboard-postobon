@@ -46,7 +46,7 @@ class AuditController extends Controller
     /**
      * Display the specified audit log.
      */
-    public function show(AuditLog $auditLog): View
+    public function show(AuditLog $auditLog): View|RedirectResponse
     {
         try {
             return view('audits.show', compact('auditLog'));

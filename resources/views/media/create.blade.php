@@ -86,7 +86,7 @@
                             </svg>
                         </div>
                         <p class="text-sm text-text font-medium" x-text="fileName"></p>
-                        <button type="button" @click="file = null; fileName = ''; $refs.fileInput.value = ''" class="text-xs text-danger hover:text-red-700 font-medium transition-colors">
+                        <button type="button" @click="file = null; fileName = ''; $refs.fileInput.value = ''" class="text-xs text-danger hover:text-danger/80 font-medium transition-colors">
                             Cambiar archivo
                         </button>
                     </div>
@@ -115,7 +115,7 @@
             <!-- Actions -->
             <div class="flex items-center justify-end gap-3 pt-6 border-t border-border">
                 <a href="{{ route('media.index') }}" class="px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-text hover:bg-surface transition-colors">Cancelar</a>
-                <button type="submit" :disabled="isUploading" class="inline-flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-lg font-medium text-sm hover:bg-red-700 transition-colors shadow-[0_1px_3px_rgba(0,0,0,0.08)] disabled:opacity-50 disabled:cursor-not-allowed">
+                <button type="submit" :disabled="isUploading" class="inline-flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary/90 transition-colors shadow-sm shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
                     </svg>

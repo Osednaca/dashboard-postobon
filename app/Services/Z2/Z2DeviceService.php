@@ -5,215 +5,134 @@ namespace App\Services\Z2;
 use App\Models\Device;
 use App\Models\DeviceHeartbeat;
 use App\Models\Group;
+use App\Models\Media;
+use App\Services\PrivateCloud\PrivateCloudClient;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
+/**
+ * Adaptador de dispositivos sobre la nube privada (fan-private-cloud).
+ *
+ * Mantiene la misma interfaz pública que el antiguo Z2DeviceService (nube china)
+ * para no tocar los controladores, pero internamente habla con la API REST de
+ * la nube privada. El identificador de dispositivo es la MAC en mayúsculas sin
+ * dos puntos (mismo formato que reporta el ventilador).
+ */
 class Z2DeviceService
 {
-    private FanCloudService $client;
+    private PrivateCloudClient $client;
 
-    public function __construct(FanCloudService $client)
+    public function __construct(PrivateCloudClient $client)
     {
         $this->client = $client;
     }
 
     /**
-     * Fetch all devices from cloud and sync to local database.
+     * Sincroniza los dispositivos de la nube privada a la base local.
+     *
+     * @return array<int, Device>
      */
     public function syncDevices(): array
     {
-        // Step 1: Get group list
-        $groupResponse = $this->client->request('POST', '/User/groupList', [
-            'userName' => $this->client->username,
-        ]);
+        $response = $this->client->get('/api/devices');
 
-        if (! $groupResponse || ! array_key_exists('aaData', $groupResponse)) {
-            Log::error('[Z2] Device sync aborted: group list unavailable', ['response' => $groupResponse]);
+        if ($response === null) {
+            Log::error('[PrivateCloud] Device sync aborted: API unavailable');
 
             return [];
         }
 
-        $groupIds = [];
-        if ($groupResponse && isset($groupResponse['aaData'])) {
-            foreach ($groupResponse['aaData'] as $group) {
-                $groupIds[] = $group['idGroup'] ?? 0;
-            }
-        }
-        // Also check ungrouped devices
-        $groupIds[] = 0;
+        $cloudDevices = $response['devices'] ?? [];
 
-        $devicesToUpsert = [];
         $macAddresses = [];
-        $groupMap = [];
-        $cloudFetchComplete = true;
+        $devicesToUpsert = [];
 
-        // Step 2: For each group, fetch devices
-        foreach ($groupIds as $groupId) {
-            $response = $this->client->request('POST', '/User/groupDeviceList', [
-                'userName' => $this->client->username,
-                'iDisplayStart' => 0,
-                'iDisplayLength' => 50,
-                'deviceCode' => '',
-                'groupID' => $groupId,
-            ]);
-
-            if (! $response || ! isset($response['aaData'])) {
-                $cloudFetchComplete = false;
-
+        foreach ($cloudDevices as $data) {
+            $mac = strtoupper((string) ($data['deviceId'] ?? ''));
+            if ($mac === '') {
                 continue;
             }
 
-            foreach ($response['aaData'] as $deviceData) {
-                $mac = $deviceData['macIpAddress'] ?? null;
-                if (! $mac) {
-                    continue;
-                }
+            $macAddresses[] = $mac;
 
-                // Skip if already synced
-                if (in_array($mac, $macAddresses)) {
-                    continue;
-                }
+            $online = (bool) ($data['online'] ?? false);
+            $power = (int) ($data['power'] ?? 0);
 
-                $macAddresses[] = $mac;
-
-                // Map Z2 status to local status
-                $status = $this->mapStatus($deviceData);
-                $powerStatus = ($deviceData['devicePower'] ?? 0) === 1 ? 'on' : 'off';
-
-                // Find or create group
-                $groupId = null;
-                if (! empty($deviceData['groupName'])) {
-                    if (! isset($groupMap[$deviceData['groupName']])) {
-                        $group = Group::withTrashed()->where('name', $deviceData['groupName'])->first();
-                        if ($group) {
-                            if ($group->trashed()) {
-                                $group->restore();
-                            }
-                        } else {
-                            $group = Group::create([
-                                'name' => $deviceData['groupName'],
-                                'description' => 'Grupo sincronizado desde Z2 Cloud',
-                            ]);
-                        }
-                        $groupMap[$deviceData['groupName']] = $group->id;
-                    }
-                    $groupId = $groupMap[$deviceData['groupName']];
-                }
-
-                $devicesToUpsert[] = [
-                    'mac_address' => $mac,
-                    'name' => $deviceData['deviceName'] ?? 'Device '.$mac,
-                    'firmware' => (string) ($deviceData['sysVersion'] ?? ''),
-                    'hardware' => (string) ($deviceData['hardVersion'] ?? ''),
-                    'rpm' => isset($deviceData['speed']) ? (float) $deviceData['speed'] : null,
-                    'status' => $status,
-                    'group_id' => $groupId,
-                    'last_heartbeat_at' => $this->parseDateTime($deviceData['lastHeartDate'] ?? null),
-                    'working_hours' => isset($deviceData['workTime']) ? (float) $deviceData['workTime'] : 0,
-                    'power_status' => $powerStatus,
-                ];
-            }
+            $devicesToUpsert[] = [
+                'mac_address' => $mac,
+                'name' => $data['name'] && $data['name'] !== $mac ? $data['name'] : 'Device '.$mac,
+                'firmware' => (string) ($data['version'] ?? ''),
+                'hardware' => (string) ($data['hardVersion'] ?? ''),
+                'rpm' => isset($data['speed']) ? (float) $data['speed'] : null,
+                'status' => $online ? 'online' : 'offline',
+                'last_heartbeat_at' => $this->parseDateTime($data['lastSeenIso'] ?? null),
+                'power_status' => $power === 1 ? 'on' : 'off',
+                'bluetooth_status' => ((int) ($data['btSwitch'] ?? 0)) === 1 ? 'on' : 'off',
+            ];
         }
 
-        // Restore soft-deleted devices that are back in the cloud
+        // Restaurar dispositivos borrados suavemente que volvieron a aparecer
         if (! empty($macAddresses)) {
-            $trashedDevices = Device::onlyTrashed()->whereIn('mac_address', $macAddresses)->get();
-            foreach ($trashedDevices as $trashedDevice) {
-                $trashedDevice->restore();
-                Log::info('[Z2] Restored soft-deleted device', ['mac' => $trashedDevice->mac_address]);
+            $trashed = Device::onlyTrashed()->whereIn('mac_address', $macAddresses)->get();
+            foreach ($trashed as $device) {
+                $device->restore();
+                Log::info('[PrivateCloud] Restored soft-deleted device', ['mac' => $device->mac_address]);
             }
         }
 
-        // Atomic upsert to avoid race conditions
         if (! empty($devicesToUpsert)) {
             Device::upsert(
                 $devicesToUpsert,
                 ['mac_address'],
-                ['name', 'firmware', 'hardware', 'rpm', 'status', 'group_id', 'last_heartbeat_at', 'working_hours', 'power_status']
+                ['name', 'firmware', 'hardware', 'rpm', 'status', 'last_heartbeat_at', 'power_status', 'bluetooth_status']
             );
         }
 
-        // Fetch synced devices and sync heartbeats
-        $syncedDevices = Device::whereIn('mac_address', $macAddresses)->get();
+        $synced = Device::whereIn('mac_address', $macAddresses)->get();
 
-        foreach ($syncedDevices as $device) {
-            // Record heartbeat
-            $deviceData = null;
+        // Registrar heartbeats (historial RPM)
+        foreach ($synced as $device) {
+            $data = null;
             foreach ($devicesToUpsert as $d) {
                 if ($d['mac_address'] === $device->mac_address) {
-                    $deviceData = $d;
+                    $data = $d;
                     break;
                 }
             }
 
-            if ($deviceData && isset($deviceData['rpm'])) {
+            if ($data && isset($data['rpm'])) {
                 DeviceHeartbeat::create([
                     'device_id' => $device->id,
-                    'rpm' => $deviceData['rpm'],
-                    'status' => $deviceData['status'],
+                    'rpm' => $data['rpm'],
+                    'status' => $data['status'],
                     'received_at' => now(),
                 ]);
             }
         }
 
-        // Remove local devices that are no longer linked to the cloud.
-        // Only reconcile when every cloud request succeeded, otherwise a
-        // transient API failure could remove the entire local inventory.
-        if ($cloudFetchComplete) {
-            $query = Device::query();
-            if (! empty($macAddresses)) {
-                $query->whereNotIn('mac_address', $macAddresses);
-            }
-            $removed = $query->delete();
-            Log::info('[Z2] Removed devices absent from cloud', ['count' => $removed]);
-        }
+        Log::info('[PrivateCloud] Synced '.count($synced).' devices');
 
-        Log::info('[Z2] Synced '.count($syncedDevices).' devices from cloud');
-
-        return $syncedDevices->all();
+        return $synced->all();
     }
 
     /**
-     * Get device detail from cloud.
+     * Detalle en vivo del dispositivo (array de la nube privada, se muestra
+     * tal cual en la vista de dispositivo).
      */
     public function getDeviceDetail(string $mac): ?array
     {
-        // Get group list first
-        $groupResponse = $this->client->request('POST', '/User/groupList', [
-            'userName' => $this->client->username,
-        ]);
+        $response = $this->client->get('/api/devices/'.$this->normalizeMac($mac));
 
-        $groupIds = [0]; // Always check ungrouped
-        if ($groupResponse && isset($groupResponse['aaData'])) {
-            foreach ($groupResponse['aaData'] as $group) {
-                $groupIds[] = $group['idGroup'] ?? 0;
-            }
+        if ($response === null || ! isset($response['device'])) {
+            return null;
         }
 
-        // Search in each group
-        foreach ($groupIds as $groupId) {
-            $response = $this->client->request('POST', '/User/groupDeviceList', [
-                'userName' => $this->client->username,
-                'iDisplayStart' => 0,
-                'iDisplayLength' => 50,
-                'deviceCode' => '',
-                'groupID' => $groupId,
-            ]);
-
-            if ($response && isset($response['aaData'])) {
-                foreach ($response['aaData'] as $deviceData) {
-                    if (($deviceData['macIpAddress'] ?? '') === $mac) {
-                        return $deviceData;
-                    }
-                }
-            }
-        }
-
-        return null;
+        return $response['device'];
     }
 
     /**
-     * Power on device.
+     * Encender el dispositivo.
      */
     public function powerOn(string $mac): bool
     {
@@ -221,245 +140,191 @@ class Z2DeviceService
     }
 
     /**
-     * Power off device.
+     * Apagar el dispositivo.
      */
     public function powerOff(string $mac): bool
     {
         return $this->sendPowerCommand($mac, 0);
     }
 
-    /**
-     * Send power command to device.
-     */
     private function sendPowerCommand(string $mac, int $power): bool
     {
-        $param = $power === 1 ? 'devicePowerOn' : 'devicePowerOff';
+        $response = $this->client->post('/api/devices/'.$this->normalizeMac($mac).'/power', ['value' => $power]);
 
-        $response = $this->client->request('POST', '/User/devicePower', [
-            'userName' => $this->client->username,
-            'deviceId' => $mac,
-            $param => 1,
-        ]);
-
-        if ($response && ($response['result'] ?? -1) === 0) {
-            $deviceResult = $response['DeviceResult'] ?? [];
-            $deviceMac = str_replace(':', '', $mac);
-            if (isset($deviceResult[$deviceMac]) && $deviceResult[$deviceMac] >= 0) {
-                // Command sent successfully to cloud
-                // Note: We do NOT update local DB here because the device state
-                // will only change after the device responds. The next sync
-                // will update the real state from the cloud.
-                return true;
-            }
+        if ($response !== null && ($response['result'] ?? -1) === 0) {
+            return true;
         }
 
-        Log::error('[Z2] Power command failed', ['mac' => $mac, 'power' => $power, 'response' => $response]);
+        Log::error('[PrivateCloud] Power command failed', ['mac' => $mac, 'power' => $power, 'response' => $response]);
 
         return false;
     }
 
-    /**
-     * Turn the device's Bluetooth on.
-     *
-     * Bluetooth is exposed as a device setting (same write endpoint used for
-     * volume). The parameter name may differ per Z2 build — adjust if the
-     * cloud rejects it.
-     */
     public function bluetoothOn(string $mac): ?array
     {
-        return $this->setDeviceSetting($mac, 'BTSwitch', '1');
+        return $this->setBluetooth($mac, 1);
     }
 
-    /**
-     * Turn the device's Bluetooth off.
-     */
     public function bluetoothOff(string $mac): ?array
     {
-        return $this->setDeviceSetting($mac, 'BTSwitch', '0');
+        return $this->setBluetooth($mac, 0);
     }
 
     /**
-     * Read the live Bluetooth status from Z2 Cloud.
-     *
-     * Uses the same BTSwitch parameter the write uses, read via
-     * /User/selectDeviceSetting. Returns 'on'/'off' or null on failure.
+     * Bluetooth con estado deseado: la nube privada reinyecta la orden en cada
+     * heartbeat (variantes BTSWITCH/BTSwitch/btswitch) hasta que el
+     * dispositivo la confirma con su telemetría.
+     */
+    private function setBluetooth(string $mac, int $value): ?array
+    {
+        $response = $this->client->post('/api/devices/'.$this->normalizeMac($mac).'/bluetooth', ['value' => $value]);
+
+        if ($response === null) {
+            return null;
+        }
+
+        return ['result' => $response['result'] ?? -1];
+    }
+
+    /**
+     * Quitar un video de la SD del dispositivo sin borrarlo de la biblioteca.
+     * La nube privada lo entrega por heartbeat con FileDelect + PlayList
+     * (combinación verificada en hardware).
+     */
+    public function removeVideoFromDevice(string $mac, string $filename): bool
+    {
+        $response = $this->client->post('/api/devices/'.$this->normalizeMac($mac).'/remove-media', ['filename' => $filename]);
+
+        if ($response !== null && ($response['result'] ?? -1) === 0) {
+            return true;
+        }
+
+        Log::error('[PrivateCloud] Remove video from device failed', ['mac' => $mac, 'filename' => $filename, 'response' => $response]);
+
+        return false;
+    }
+
+    private function sendCommand(string $mac, string $command): ?array
+    {
+        $response = $this->client->post('/api/devices/'.$this->normalizeMac($mac).'/command', ['command' => $command]);
+
+        if ($response === null) {
+            return null;
+        }
+
+        return ['result' => $response['result'] ?? -1];
+    }
+
+    /**
+     * Estado Bluetooth en vivo ('on'/'off' o null).
      */
     public function getBluetoothStatus(string $mac): ?string
     {
-        $data = $this->getDeviceSetting($mac, 'BTSwitch');
+        $data = $this->getDeviceDetail($mac);
 
-        if ($data && isset($data['BTSwitch'])) {
-            return (string) $data['BTSwitch'] === '1' ? 'on' : 'off';
+        if ($data === null) {
+            return null;
         }
 
-        return null;
+        return ((int) ($data['btSwitch'] ?? 0)) === 1 ? 'on' : 'off';
     }
 
     /**
-     * Unbind device from account.
+     * La nube privada no tiene "desvincular": el dispositivo deja de existir
+     * cuando deja de reportar. Se devuelve true para que el flujo de borrado
+     * local de la UI funcione.
      */
     public function unbindDevice(string $mac): bool
     {
-        $response = $this->client->request('POST', '/User/unbindDevice', [
-            'userName' => $this->client->username,
-            'deviceId' => $mac,
-        ]);
+        Log::info('[PrivateCloud] unbindDevice (no-op en nube privada)', ['mac' => $mac]);
 
-        if ($response && ($response['result'] ?? -1) === 0) {
-            $deviceResult = $response['DeviceResult'] ?? [];
-            $deviceMac = str_replace(':', '', $mac);
-            if (isset($deviceResult[$deviceMac]) && $deviceResult[$deviceMac] >= 0) {
-                return true;
-            }
-        }
-
-        Log::error('[Z2] Unbind failed', ['mac' => $mac, 'response' => $response]);
-
-        return false;
+        return true;
     }
 
-    public function changeVideo(string $mac, string $uiCode): bool
+    /**
+     * Reproducir/asignar un video (identificado por filename) en el dispositivo.
+     */
+    public function changeVideo(string $mac, string $filename): bool
     {
-        $response = $this->client->request('POST', '/User/upgradeDeviceUi', [
-            'userName' => $this->client->username,
-            'deviceId' => $mac,
-            'displayImageId' => $uiCode,
-        ]);
+        $cloudFilename = $this->resolveCloudFilename($mac, $filename);
+        $response = $this->client->post('/api/devices/'.$this->normalizeMac($mac).'/play', ['filename' => $cloudFilename]);
 
-        if ($response && ($response['result'] ?? -1) === 0) {
-            $deviceResult = $response['DeviceResult'] ?? [];
-            $deviceMac = str_replace(':', '', $mac);
-            if (isset($deviceResult[$deviceMac]) && $deviceResult[$deviceMac] === 66) {
-                return true;
-            }
+        if ($response !== null && ($response['result'] ?? -1) === 0) {
+            return true;
         }
 
-        Log::error('[Z2] Change video failed', ['mac' => $mac, 'uiCode' => $uiCode, 'response' => $response]);
+        Log::error('[PrivateCloud] Change video failed', ['mac' => $mac, 'filename' => $cloudFilename, 'response' => $response]);
 
         return false;
     }
 
     /**
-     * Format the device's SD card, clearing all videos from the playlist.
+     * Resolve legacy local media to a filename known by the private cloud.
      *
-     * This does NOT unbind the device from the account — it only wipes the
-     * SD card contents. The device remains associated and can receive new
-     * video assignments immediately after.
-     *
-     * POST /User/needFormatSd
-     *   userName, deviceId, needFormatSd=1
-     *   Success: {"result":0,"DeviceResult":{"MAC":66}}
+     * Older records can contain paths such as media/hash.mp4 because the
+     * upload controller falls back to local storage when the cloud upload
+     * fails. Migrate that file on first assignment and update the record so
+     * subsequent assignments use the cloud filename directly.
+     */
+    public function resolveCloudFilename(string $mac, string $filename): string
+    {
+        if (! str_contains($filename, '/') && ! str_contains($filename, '\\')) {
+            return $filename;
+        }
+
+        $disk = Storage::disk('public');
+        if (! $disk->exists($filename)) {
+            return basename($filename);
+        }
+
+        $media = Media::where('file_path', $filename)->first();
+        $uploadName = $media?->original_name ?: basename($filename);
+        $response = $this->client->postFile(
+            '/api/devices/'.$this->normalizeMac($mac).'/upload',
+            $disk->path($filename),
+            $uploadName,
+            ['assign' => 'false'],
+        );
+
+        $cloudFilename = (string) ($response['filename'] ?? '');
+        if ($response !== null && ($response['result'] ?? -1) === 0 && $cloudFilename !== '') {
+            Media::where('file_path', $filename)->update(['file_path' => $cloudFilename]);
+            $disk->delete($filename);
+            Log::info('[PrivateCloud] Legacy local media migrated to cloud', [
+                'from' => $filename,
+                'to' => $cloudFilename,
+            ]);
+
+            return $cloudFilename;
+        }
+
+        Log::error('[PrivateCloud] Legacy local media migration failed', [
+            'filename' => $filename,
+            'response' => $response,
+        ]);
+
+        return basename($filename);
+    }
+
+    /**
+     * Formatear la SD del dispositivo (borra todos sus videos, sigue vinculado).
+     * La nube privada lo entrega con NeedFormatSdCard=1 en el heartbeat (el
+     * equivalente del /User/needFormatSd de la nube china) hasta que el
+     * dispositivo confirme con SdCardEmpty=1.
      */
     public function formatSd(string $mac): bool
     {
-        Log::info('[Z2] Formatting SD card', ['mac' => $mac]);
+        $response = $this->client->post('/api/devices/'.$this->normalizeMac($mac).'/format-sd');
 
-        $response = $this->client->request('POST', '/User/needFormatSd', [
-            'userName' => $this->client->username,
-            'deviceId' => $mac,
-            'needFormatSd' => 1,
-        ]);
-
-        if ($response && ($response['result'] ?? -1) === 0) {
-            $deviceResult = $response['DeviceResult'] ?? [];
-            $deviceMac = str_replace(':', '', $mac);
-            if (isset($deviceResult[$deviceMac]) && $deviceResult[$deviceMac] === 66) {
-                Log::info('[Z2] SD card format command sent successfully', ['mac' => $mac]);
-
-                return true;
-            }
+        if ($response !== null && ($response['result'] ?? -1) === 0) {
+            return true;
         }
 
-        Log::error('[Z2] Format SD failed', ['mac' => $mac, 'response' => $response]);
+        Log::error('[PrivateCloud] Format SD failed', ['mac' => $mac, 'response' => $response]);
 
         return false;
     }
 
-    /**
-     * Query a setting from the device (e.g. Volume).
-     *
-     * POST /User/selectDeviceSetting
-     *   userName, deviceId, parameter
-     *   Success: {"result":0,"aaData":{"Volume":"50","MacIpAddress":"9097D5E4D9FC"}}
-     */
-    public function getDeviceSetting(string $mac, string $parameter = 'Volume'): ?array
-    {
-        $deviceId = strtoupper(str_replace(':', '', $mac));
-
-        $response = $this->client->request('POST', '/User/selectDeviceSetting', [
-            'userName' => $this->client->username,
-            'deviceId' => $deviceId,
-            'parameter' => $parameter,
-        ]);
-
-        if ($response && ($response['result'] ?? -1) === 0 && isset($response['aaData'])) {
-            return $response['aaData'];
-        }
-
-        Log::error('[Z2] Get device setting failed', ['mac' => $mac, 'parameter' => $parameter, 'response' => $response]);
-
-        return null;
-    }
-
-    /**
-     * Convenience method to get device volume level.
-     */
-    public function getVolume(string $mac): ?int
-    {
-        $data = $this->getDeviceSetting($mac, 'Volume');
-        if ($data && isset($data['Volume'])) {
-            return (int) $data['Volume'];
-        }
-
-        return null;
-    }
-
-    /**
-     * Set a device setting parameter in Z2 Cloud (e.g. Volume, BTSwitch).
-     *
-     * Verified working request (captured from the official mobile app):
-     *   POST /User/updateDeviceSetting
-     *     userName, deviceId (MAC WITHOUT colons, uppercase), <Parameter>=<value>
-     *   e.g. userName=oscarleon210&deviceId=9097D5E4D9FC&Volume=79
-     *        userName=oscarleon210&deviceId=9097D5E4D9FC&BTSwitch=0
-     */
-    public function setDeviceSetting(string $mac, string $parameter, string $value): ?array
-    {
-        $deviceId = strtoupper(str_replace(':', '', $mac));
-
-        Log::info('[Z2] Setting device parameter', ['deviceId' => $deviceId, 'parameter' => $parameter, 'value' => $value]);
-
-        $payload = [
-            'userName' => $this->client->username,
-            'deviceId' => $deviceId,
-            $parameter => $value,
-        ];
-
-        $response = $this->client->request('POST', '/User/updateDeviceSetting', $payload);
-
-        if ($response && ($response['result'] ?? -1) === 0) {
-            Log::info('[Z2] Device parameter updated', ['deviceId' => $deviceId, 'parameter' => $parameter, 'value' => $value]);
-        } else {
-            Log::warning('[Z2] Device setting failed', ['deviceId' => $deviceId, 'parameter' => $parameter, 'value' => $value, 'response' => $response]);
-        }
-
-        return $response;
-    }
-
-    /**
-     * Set device volume (0 to 100).
-     */
-    public function setVolume(string $mac, int $volume): ?array
-    {
-        $volume = max(0, min(100, $volume));
-
-        return $this->setDeviceSetting($mac, 'Volume', (string) $volume);
-    }
-
-    /**
-     * Format SD cards for multiple devices.
-     * Returns an array of results keyed by MAC address.
-     */
     public function formatSdMultiple(array $macs): array
     {
         $results = [];
@@ -471,7 +336,77 @@ class Z2DeviceService
     }
 
     /**
-     * Move device to group.
+     * Lectura de un parámetro del dispositivo desde la telemetría en vivo.
+     */
+    public function getDeviceSetting(string $mac, string $parameter = 'Volume'): ?array
+    {
+        $data = $this->getDeviceDetail($mac);
+
+        if ($data === null) {
+            return null;
+        }
+
+        $map = [
+            'Volume' => 'volume',
+            'BTSwitch' => 'btSwitch',
+            'Luminance' => 'luminance',
+            'Angle' => 'angle',
+        ];
+
+        $field = $map[$parameter] ?? strtolower($parameter);
+        if (! array_key_exists($field, $data)) {
+            return null;
+        }
+
+        return [$parameter => (string) $data[$field]];
+    }
+
+    public function getVolume(string $mac): ?int
+    {
+        $data = $this->getDeviceDetail($mac);
+
+        if ($data === null || ! isset($data['volume'])) {
+            return null;
+        }
+
+        return (int) $data['volume'];
+    }
+
+    /**
+     * Ajustar un parámetro (volumen / bluetooth) en el dispositivo.
+     */
+    public function setDeviceSetting(string $mac, string $parameter, string $value): ?array
+    {
+        if ($parameter === 'Volume') {
+            return $this->setVolume($mac, (int) $value);
+        }
+
+        if ($parameter === 'BTSwitch') {
+            return $value === '1' ? $this->bluetoothOn($mac) : $this->bluetoothOff($mac);
+        }
+
+        return $this->sendCommand($mac, $parameter.'='.$value);
+    }
+
+    /**
+     * Ajustar el volumen (0-100). Devuelve ['result' => 0] en éxito para
+     * compatibilidad con el controlador.
+     */
+    public function setVolume(string $mac, int $volume): ?array
+    {
+        $volume = max(0, min(100, $volume));
+
+        $response = $this->client->post('/api/devices/'.$this->normalizeMac($mac).'/volume', ['value' => $volume]);
+
+        if ($response === null) {
+            return null;
+        }
+
+        return ['result' => $response['result'] ?? -1];
+    }
+
+    /**
+     * Mover dispositivo a grupo (los grupos son locales en la nube privada).
      */
     public function moveToGroup(string $mac, int $groupId): bool
     {
@@ -480,46 +415,19 @@ class Z2DeviceService
             return false;
         }
 
-        $response = $this->client->request('POST', '/User/updateDeviceGroup', [
-            'userName' => $this->client->username,
-            'deviceId' => $mac,
-            'groupId' => $groupId,
-        ]);
+        Device::where('mac_address', $mac)->update(['group_id' => $groupId]);
 
-        if ($response && ($response['result'] ?? -1) === 0) {
-            Device::where('mac_address', $mac)->update(['group_id' => $groupId]);
-
-            return true;
-        }
-
-        Log::error('[Z2] Move to group failed', ['mac' => $mac, 'groupId' => $groupId, 'response' => $response]);
-
-        return false;
+        return true;
     }
 
     /**
-     * Map Z2 device status to local status.
+     * Normaliza una MAC al formato de la nube privada (mayúsculas sin dos puntos).
      */
-    private function mapStatus(array $deviceData): string
+    private function normalizeMac(string $mac): string
     {
-        // `runStatus` reflects cloud connectivity. The Z2 API returns
-        // 0 when the device is disconnected and a non-zero value
-        // (1 = running, 10 = active/normal) when it is online.
-        // `devicePower` is intentionally NOT used here: the power
-        // command is unreliable (returns DeviceResult 82 without
-        // changing state), so it cannot be trusted as an online signal.
-        $runStatus = (int) ($deviceData['runStatus'] ?? 0);
-
-        if ($runStatus === 0) {
-            return 'offline';
-        }
-
-        return 'online';
+        return strtoupper(str_replace(':', '', trim($mac)));
     }
 
-    /**
-     * Parse Z2 datetime string.
-     */
     private function parseDateTime(?string $dateTime): ?Carbon
     {
         if (! $dateTime) {
@@ -531,15 +439,5 @@ class Z2DeviceService
         } catch (\Throwable $e) {
             return null;
         }
-    }
-
-    /**
-     * Sync device playlist from cloud.
-     */
-    private function syncDevicePlaylist(Device $device, string $playlist): void
-    {
-        // Store playlist in device or sync with media library
-        // This is a placeholder for playlist synchronization
-        Log::info('[Z2] Device playlist synced', ['device' => $device->mac_address, 'playlist' => $playlist]);
     }
 }

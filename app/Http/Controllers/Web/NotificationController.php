@@ -46,7 +46,7 @@ class NotificationController extends Controller
     /**
      * Display the specified notification.
      */
-    public function show(Notification $notification): View
+    public function show(Notification $notification): View|RedirectResponse
     {
         try {
             return view('notifications.show', compact('notification'));

@@ -7,14 +7,13 @@
     'disabled' => false,
 ])
 
-@php
 $variantClasses = match($variant) {
     'primary' => 'bg-primary text-white hover:bg-primary/90 shadow-sm shadow-primary/20 focus:ring-primary/40',
     'secondary' => 'bg-secondary text-white hover:bg-secondary/90 shadow-sm shadow-secondary/20 focus:ring-secondary/40',
-    'accent' => 'bg-accent text-text hover:bg-accent/90 shadow-sm shadow-accent/20 focus:ring-accent/40',
+    'accent' => 'bg-accent text-white hover:bg-accent/90 shadow-sm shadow-accent/20 focus:ring-accent/40',
     'danger' => 'bg-danger text-white hover:bg-danger/90 shadow-sm shadow-danger/20 focus:ring-danger/40',
-    'ghost' => 'bg-transparent text-text hover:bg-surface border border-border hover:border-border focus:ring-border/40',
-    default => 'bg-primary text-white hover:bg-primary/90',
+    'ghost' => 'bg-transparent text-text hover:bg-surface-dark border border-border hover:border-text-muted/30 focus:ring-primary/20',
+    default => 'bg-primary text-white hover:bg-primary/90 shadow-sm shadow-primary/20',
 };
 
 $sizeClasses = match($size) {

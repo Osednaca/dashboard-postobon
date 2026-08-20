@@ -3,84 +3,65 @@
 namespace App\Services\Z2;
 
 use App\Models\Device;
+use App\Services\PrivateCloud\PrivateCloudClient;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * Adaptador de playlists/contenido sobre la nube privada (fan-private-cloud).
+ *
+ * En la nube privada no existe "playlist" persistente como en Z2; el video en
+ * reproducción es la telemetría displayImageId y asignar contenido equivale a
+ * enviar el comando "play" con el filename.
+ */
 class Z2PlaylistService
 {
-    private FanCloudService $client;
+    private PrivateCloudClient $client;
 
-    public function __construct(FanCloudService $client)
+    private Z2DeviceService $deviceService;
+
+    public function __construct(PrivateCloudClient $client, Z2DeviceService $deviceService)
     {
         $this->client = $client;
+        $this->deviceService = $deviceService;
     }
 
     /**
-     * Get device playlist from cloud.
+     * Playlist del dispositivo desde la telemetría en vivo.
+     *
+     * @return array<int, string>
      */
     public function getDevicePlaylist(string $mac): array
     {
-        // Get group list first
-        $groupResponse = $this->client->request('POST', '/User/groupList', [
-            'userName' => $this->client->username,
-        ]);
+        $response = $this->client->get('/api/devices/'.$this->normalizeMac($mac));
 
-        $groupIds = [0]; // Always check ungrouped
-        if ($groupResponse && isset($groupResponse['aaData'])) {
-            foreach ($groupResponse['aaData'] as $group) {
-                $groupIds[] = $group['idGroup'] ?? 0;
-            }
+        if ($response === null || ! isset($response['device'])) {
+            return [];
         }
 
-        // Search in each group
-        foreach ($groupIds as $groupId) {
-            $response = $this->client->request('POST', '/User/groupDeviceList', [
-                'userName' => $this->client->username,
-                'iDisplayStart' => 0,
-                'iDisplayLength' => 50,
-                'deviceCode' => '',
-                'groupID' => $groupId,
-            ]);
+        $playlist = $response['device']['playlist'] ?? [];
 
-            if ($response && isset($response['aaData'])) {
-                foreach ($response['aaData'] as $deviceData) {
-                    if (($deviceData['macIpAddress'] ?? '') === $mac) {
-                        $playlist = $deviceData['playList'] ?? '';
-                        return $playlist
-                            ? array_values(array_filter(explode(',', $playlist), fn($s) => $s !== ''))
-                            : [];
-                    }
-                }
-            }
-        }
-
-        return [];
+        return is_array($playlist) ? array_values(array_filter($playlist, fn ($f) => $f !== '')) : [];
     }
 
     /**
-     * Assign video to device playlist.
+     * Asignar video (filename) a un dispositivo.
      */
     public function assignVideoToDevice(string $mac, string $uiCode): bool
     {
-        $response = $this->client->request('POST', '/User/upgradeDeviceUi', [
-            'userName' => $this->client->username,
-            'deviceId' => $mac,
-            'uiCode' => $uiCode,
-        ]);
+        $filename = $this->deviceService->resolveCloudFilename($mac, $uiCode);
+        $response = $this->client->post('/api/devices/'.$this->normalizeMac($mac).'/play', ['filename' => $filename]);
 
-        if ($response && ($response['result'] ?? -1) === 0) {
-            $deviceResult = $response['DeviceResult'] ?? [];
-            $deviceMac = str_replace(':', '', $mac);
-            if (isset($deviceResult[$deviceMac]) && $deviceResult[$deviceMac] === 66) {
-                return true;
-            }
+        if ($response !== null && ($response['result'] ?? -1) === 0) {
+            return true;
         }
 
-        Log::error('[Z2] Assign video to device failed', ['mac' => $mac, 'uiCode' => $uiCode, 'response' => $response]);
+        Log::error('[PrivateCloud] Assign video to device failed', ['mac' => $mac, 'uiCode' => $filename, 'response' => $response]);
+
         return false;
     }
 
     /**
-     * Assign video to all devices in group.
+     * Asignar video a todos los dispositivos de un grupo.
      */
     public function assignVideoToGroup(int $groupId, string $uiCode): bool
     {
@@ -98,29 +79,28 @@ class Z2PlaylistService
     }
 
     /**
-     * Get currently playing media on a device.
+     * Obtener el video en reproducción actual en el dispositivo.
      *
-     * Uses POST /User/displayImageId to retrieve the active display.
-     * Returns array with 'displayImageId' (filename) and 'playingCount'.
+     * @return array{displayImageId: string|null, playingCount: string}|null
      */
     public function getCurrentPlaying(string $mac): ?array
     {
-        $response = $this->client->request('POST', '/User/displayImageId', [
-            'userName'       => $this->client->username,
-            'iDisplayStart'  => 0,
-            'iDisplayLength' => 40,
-            'deviceId'       => $mac,
-            'playings'       => '',
-        ]);
+        $response = $this->client->get('/api/devices/'.$this->normalizeMac($mac));
 
-        if ($response && ($response['result'] ?? -1) === 0) {
-            return [
-                'displayImageId' => $response['displayImageId'] ?? null,
-                'playingCount'   => $response['playingCount'] ?? '0',
-            ];
+        if ($response === null || ! isset($response['device'])) {
+            return null;
         }
 
-        Log::error('[Z2] Get current playing failed', ['mac' => $mac, 'response' => $response]);
-        return null;
+        $data = $response['device'];
+
+        return [
+            'displayImageId' => $data['displayImageId'] ?? null,
+            'playingCount' => '1',
+        ];
+    }
+
+    private function normalizeMac(string $mac): string
+    {
+        return strtoupper(str_replace(':', '', trim($mac)));
     }
 }

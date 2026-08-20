@@ -25,20 +25,17 @@ $icons = [
 <a
     href="{{ $href }}"
     class="group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150
-    {{ $active ? 'bg-primary/10 text-primary' : 'text-text-muted hover:bg-surface hover:text-text' }}"
+    {{ $active ? 'bg-primary text-white font-semibold shadow-sm shadow-primary/25' : 'text-text-light hover:bg-surface-dark hover:text-text' }}"
 >
     @if (isset($icons[$icon]))
-        <svg class="w-5 h-5 shrink-0 {{ $active ? 'text-primary' : 'text-text-muted group-hover:text-text' }} transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-5 h-5 shrink-0 {{ $active ? 'text-white' : 'text-text-muted group-hover:text-primary' }} transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ $icons[$icon] }}"></path>
         </svg>
     @endif
     <span class="flex-1 truncate">{{ $label }}</span>
     @if ($badge)
-        <span class="inline-flex items-center justify-center px-2 py-0.5 text-xs font-medium bg-primary text-white rounded-full">
+        <span class="inline-flex items-center justify-center px-2 py-0.5 text-xs font-medium {{ $active ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary' }} rounded-full">
             {{ $badge }}
         </span>
-    @endif
-    @if ($active)
-        <span class="w-1 h-5 rounded-full bg-primary ml-auto"></span>
     @endif
 </a>

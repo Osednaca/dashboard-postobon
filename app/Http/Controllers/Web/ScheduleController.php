@@ -89,7 +89,7 @@ class ScheduleController extends Controller
     /**
      * Display the specified schedule.
      */
-    public function show(Schedule $schedule): View
+    public function show(Schedule $schedule): View|RedirectResponse
     {
         $this->authorize('view', $schedule);
 

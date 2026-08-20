@@ -77,7 +77,7 @@ class LocationController extends Controller
     /**
      * Display the specified location.
      */
-    public function show(Location $location): View
+    public function show(Location $location): View|RedirectResponse
     {
         $this->authorize('view', $location);
 

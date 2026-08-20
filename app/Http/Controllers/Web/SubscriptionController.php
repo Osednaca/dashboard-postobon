@@ -73,7 +73,7 @@ class SubscriptionController extends Controller
     /**
      * Display the specified subscription.
      */
-    public function show(Subscription $subscription): View
+    public function show(Subscription $subscription): View|RedirectResponse
     {
         try {
             return view('subscriptions.show', compact('subscription'));

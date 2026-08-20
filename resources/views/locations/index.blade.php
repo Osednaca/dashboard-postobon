@@ -10,7 +10,7 @@
             <h1 class="text-2xl font-bold text-text">Ubicaciones</h1>
             <p class="text-sm text-text-light mt-1">Gestiona las ubicaciones de tus dispositivos</p>
         </div>
-        <a href="{{ route('locations.create') }}" class="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg font-medium text-sm hover:bg-red-700 transition-colors shadow-[0_1px_3px_rgba(0,0,0,0.08)]">
+        <a href="{{ route('locations.create') }}" class="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary/90 transition-colors shadow-sm shadow-primary/20">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
             </svg>
@@ -128,7 +128,7 @@
                 </div>
                 <h3 class="text-lg font-semibold text-text mb-1">No hay ubicaciones</h3>
                 <p class="text-sm text-text-light mb-4">Aún no has registrado ninguna ubicación.</p>
-                <a href="{{ route('locations.create') }}" class="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg font-medium text-sm hover:bg-red-700 transition-colors">
+                <a href="{{ route('locations.create') }}" class="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary/90 transition-colors shadow-sm shadow-primary/20">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                     </svg>
@@ -158,7 +158,7 @@
                 <form :action="'/locations/' + deleteId" method="POST" class="inline">
                     @csrf
                     @method('DELETE')
-                    <button type="submit" class="px-4 py-2.5 rounded-lg bg-danger text-white text-sm font-medium hover:bg-red-700 transition-colors">Eliminar</button>
+                    <button type="submit" class="px-4 py-2.5 rounded-lg bg-danger text-white text-sm font-medium hover:bg-danger/90 transition-colors">Eliminar</button>
                 </form>
             </div>
         </div>

@@ -94,7 +94,7 @@ class CampaignController extends Controller
     /**
      * Display the specified campaign.
      */
-    public function show(Campaign $campaign): View
+    public function show(Campaign $campaign): View|RedirectResponse
     {
         $this->authorize('view', $campaign);
 
