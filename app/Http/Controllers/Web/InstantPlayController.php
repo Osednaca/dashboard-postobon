@@ -50,7 +50,7 @@ class InstantPlayController extends Controller
         // Get all active devices with MAC addresses
         $devices = Device::whereNotNull('mac_address')
             ->where('status', '!=', 'disabled')
-            ->with('group', 'location')
+            ->with('group', 'location', 'establishmentProfile.businessType')
             ->orderBy('name')
             ->get();
 
@@ -70,7 +70,7 @@ class InstantPlayController extends Controller
         $fleetZ2Devices = $fleetDevices
             ->where('type', 'z2')
             ->keyBy(fn (array $device): string => strtoupper((string) ($device['id'] ?? '')));
-        $wl35Profiles = Wl35DeviceProfile::with(['location', 'group'])->get()->keyBy('device_id');
+        $wl35Profiles = Wl35DeviceProfile::with(['location', 'group', 'establishmentProfile.businessType'])->get()->keyBy('device_id');
 
         // Normalize local Z2 devices into the same shape used by gateway WL35 devices.
         $devicesWithPlaying = $devices->map(function (Device $device) use ($fleetZ2Devices) {
@@ -92,6 +92,7 @@ class InstantPlayController extends Controller
                 'identifier' => $device->mac_address,
                 'online' => $online,
                 'status_label' => $online ? 'En línea' : ucfirst((string) $device->status),
+                'establishment' => $device->establishmentProfile?->name ?? $device->establishment,
                 'group' => $device->group?->name,
                 'location' => $device->location?->name,
                 'current_playing' => $live['current_video'] ?? $currentPlaying['displayImageId'] ?? null,
@@ -113,6 +114,7 @@ class InstantPlayController extends Controller
                     'identifier' => (string) ($device['id'] ?? ''),
                     'online' => $online,
                     'status_label' => $online ? 'En línea' : 'Fuera de línea',
+                    'establishment' => $profile?->establishmentProfile?->name ?? $profile?->establishment,
                     'group' => $profile?->group?->name,
                     'location' => $profile?->location?->name ?? $device['ip'] ?? null,
                     'current_playing' => $currentVideo !== null ? 'Video '.$currentVideo : null,
@@ -131,6 +133,7 @@ class InstantPlayController extends Controller
                 'identifier' => $profile->device_id,
                 'online' => false,
                 'status_label' => 'Fuera de línea',
+                'establishment' => $profile->establishmentProfile?->name ?? $profile->establishment,
                 'group' => $profile->group?->name,
                 'location' => $profile->location?->name,
                 'current_playing' => null,

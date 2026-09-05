@@ -48,7 +48,8 @@ class DeviceController extends Controller
         try {
             $this->authorize('viewAny', Device::class);
             $this->z2DeviceService->syncDevices();
-            $devices = Device::paginate(request()->input('per_page', 15));
+            $devices = Device::with('establishmentProfile.businessType')
+                ->paginate(request()->input('per_page', 15));
 
             return response()->json($devices);
         } catch (\Exception $e) {
@@ -84,6 +85,7 @@ class DeviceController extends Controller
     {
         try {
             $this->authorize('view', $device);
+            $device->load('establishmentProfile.businessType');
             $deviceDetail = null;
             if ($device->mac_address) {
                 $deviceDetail = $this->z2DeviceService->getDeviceDetail($device->mac_address);

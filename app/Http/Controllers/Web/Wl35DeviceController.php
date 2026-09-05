@@ -7,8 +7,7 @@ use App\Http\Requests\DeleteWl35VideoRequest;
 use App\Http\Requests\SetWl35VolumeRequest;
 use App\Http\Requests\UpdateWl35DeviceProfileRequest;
 use App\Models\Device;
-use App\Models\Group;
-use App\Models\Location;
+use App\Models\Establishment;
 use App\Models\Wl35DeviceMedia;
 use App\Models\Wl35DeviceProfile;
 use App\Services\Fleet\UnifiedFleetClient;
@@ -26,7 +25,7 @@ class Wl35DeviceController extends Controller
     {
         $this->authorize('viewAny', Device::class);
 
-        $profile = Wl35DeviceProfile::with(['location', 'group'])
+        $profile = Wl35DeviceProfile::with(['location', 'group', 'establishmentProfile.businessType'])
             ->where('device_id', $deviceId)
             ->first();
         $gatewayError = null;
@@ -64,14 +63,12 @@ class Wl35DeviceController extends Controller
             'uploading' => false,
         ];
 
-        $locations = Location::orderBy('name')->get();
-        $groups = Group::orderBy('name')->get();
+        $establishments = Establishment::with('businessType')->orderBy('name')->get();
 
         return view('devices.wl35-show', compact(
             'device',
             'profile',
-            'locations',
-            'groups',
+            'establishments',
             'gatewayError'
         ));
     }

@@ -15,7 +15,7 @@
 @endphp
 
 <div x-data="{
-    statusFilter: '', protocolFilter: '', locationFilter: '', search: '',
+    statusFilter: '', protocolFilter: '', establishmentFilter: '', search: '',
     showDeleteModal: false, showBulkAssignMediaModal: false,
     showFleetPlayModal: false, showFleetUploadModal: false, showFleetFormatModal: false,
     bulkAssigningMedia: false, fleetSubmitting: false,
@@ -423,9 +423,9 @@
             <select x-model="statusFilter" class="rounded-lg border border-border bg-white px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
                 <option value="">Todos los estados</option><option value="online">En línea</option><option value="powered_off">Apagados</option><option value="offline">Fuera de línea</option>
             </select>
-            <select x-model="locationFilter" class="rounded-lg border border-border bg-white px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
-                <option value="">Todas las ubicaciones</option>
-                @foreach(App\Models\Location::orderBy('name')->get() as $location)<option value="{{ $location->id }}">{{ $location->name }}</option>@endforeach
+            <select x-model="establishmentFilter" class="rounded-lg border border-border bg-white px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
+                <option value="">Todos los establecimientos</option>
+                @foreach($establishments as $establishment)<option value="{{ $establishment->id }}">{{ $establishment->name }}</option>@endforeach
             </select>
         </div>
 
@@ -469,7 +469,7 @@
         @if($devices->count() > 0 || $wl35Devices->isNotEmpty())
             <div class="overflow-x-auto">
                 <table class="w-full min-w-[1050px] text-left text-sm">
-                    <thead><tr class="border-b border-border bg-surface"><th class="px-4 py-4"><input type="checkbox" @click="toggleAll()" class="rounded border-border text-primary focus:ring-primary/20"></th><th class="px-4 py-4 font-semibold text-text">Nombre</th><th class="px-4 py-4 font-semibold text-text">Tipo</th><th class="px-4 py-4 font-semibold text-text">Identificador</th><th class="px-4 py-4 font-semibold text-text">Estado</th><th class="px-4 py-4 font-semibold text-text">Ubicación / Grupo</th><th class="px-4 py-4 font-semibold text-text">Video actual</th><th class="px-4 py-4 font-semibold text-text">Último reporte</th><th class="px-4 py-4 text-right font-semibold text-text">Acciones</th></tr></thead>
+                    <thead><tr class="border-b border-border bg-surface"><th class="px-4 py-4"><input type="checkbox" @click="toggleAll()" class="rounded border-border text-primary focus:ring-primary/20"></th><th class="px-4 py-4 font-semibold text-text">Nombre</th><th class="px-4 py-4 font-semibold text-text">Tipo</th><th class="px-4 py-4 font-semibold text-text">Identificador</th><th class="px-4 py-4 font-semibold text-text">Estado</th><th class="px-4 py-4 font-semibold text-text">Establecimiento</th><th class="px-4 py-4 font-semibold text-text">Video actual</th><th class="px-4 py-4 font-semibold text-text">Último reporte</th><th class="px-4 py-4 text-right font-semibold text-text">Acciones</th></tr></thead>
                     <tbody class="divide-y divide-border">
                         @foreach($devices as $device)
                             @php
@@ -479,15 +479,15 @@
                                 $isOnline = (bool) ($live['online'] ?? in_array($device->status, ['online', 'active'], true));
                                 $isPowered = (bool) ($live['power'] ?? ($device->power_status !== 'off'));
                                 $indicatorStatus = !$isOnline ? 'offline' : ($isPowered ? 'online' : 'powered_off');
-                                $searchable = strtolower($device->name.' '.$device->mac_address);
+                                $searchable = strtolower($device->name.' '.$device->mac_address.' '.($device->establishmentProfile?->name ?? '').' '.($device->establishmentProfile?->address ?? ''));
                             @endphp
-                            <tr class="transition hover:bg-surface/50" x-show="(!search || {{ Js::from($searchable) }}.includes(search.toLowerCase())) && (!protocolFilter || protocolFilter === 'z2') && (!statusFilter || statusFilter === '{{ $indicatorStatus }}') && (!locationFilter || locationFilter === '{{ $device->location_id }}')">
+                            <tr class="transition hover:bg-surface/50" x-show="(!search || {{ Js::from($searchable) }}.includes(search.toLowerCase())) && (!protocolFilter || protocolFilter === 'z2') && (!statusFilter || statusFilter === '{{ $indicatorStatus }}') && (!establishmentFilter || establishmentFilter === '{{ $device->establishment_id }}')">
                                 <td class="px-4 py-4"><input type="checkbox" data-fleet-selector data-local-id="{{ $device->id }}" value="{{ $fleetKey }}" :checked="selectedFleetKeys.includes({{ Js::from($fleetKey) }})" @change="toggleDevice({{ Js::from($fleetKey) }}, '{{ $device->id }}', $event.target.checked)" class="rounded border-border text-primary focus:ring-primary/20"></td>
                                 <td class="px-4 py-4"><div class="flex items-center gap-3"><div class="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-700"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg></div><span class="font-medium text-text">{{ $device->name }}</span></div></td>
                                 <td class="px-4 py-4"><span class="rounded-md bg-amber-100 px-2 py-1 text-[10px] font-bold tracking-widest text-amber-700">Z2</span></td>
                                 <td class="px-4 py-4 font-mono text-xs text-text-light">{{ $device->mac_address }}</td>
                                 <td class="px-4 py-4"><x-device-status-indicator :status="$indicatorStatus" /></td>
-                                <td class="px-4 py-4 text-xs text-text-light"><div>{{ $device->location?->name ?? 'Sin ubicación' }}</div><div class="mt-1 text-text-muted">{{ $device->group?->name ?? 'Sin grupo' }}</div></td>
+                                <td class="px-4 py-4 text-xs text-text-light"><div class="max-w-48 break-words font-medium text-text">{{ $device->establishmentProfile?->name ?? $device->establishment ?? 'Sin establecimiento' }}</div><div class="mt-1 max-w-56 break-words text-text-muted">{{ $device->establishmentProfile?->address ?? $device->address ?? 'Sin dirección' }}</div></td>
                                 <td class="max-w-40 truncate px-4 py-4 text-xs text-text-light" title="{{ $live['current_video'] ?? '' }}">{{ $live['current_video'] ?? '—' }}</td>
                                 <td class="px-4 py-4 text-xs text-text-light">{{ $device->last_heartbeat_at ? $device->last_heartbeat_at->diffForHumans() : 'Nunca' }}</td>
                                 <td class="px-4 py-4"><div class="flex items-center justify-end gap-1">
@@ -508,17 +508,17 @@
                                 $isOnline = (bool) (($device['online'] ?? false) && ($device['connected'] ?? false));
                                 $isPowered = (bool) ($device['power'] ?? false);
                                 $indicatorStatus = !$isOnline ? 'offline' : ($isPowered ? 'online' : 'powered_off');
-                                $searchable = strtolower(($device['name'] ?? '').' '.($device['id'] ?? '').' '.($device['ip'] ?? ''));
+                                $searchable = strtolower(($device['name'] ?? '').' '.($device['id'] ?? '').' '.($device['ip'] ?? '').' '.($device['profile_establishment'] ?? '').' '.($device['profile_address'] ?? ''));
                             @endphp
-                            <tr class="transition hover:bg-sky-50/40" x-show="(!search || {{ Js::from($searchable) }}.includes(search.toLowerCase())) && (!protocolFilter || protocolFilter === 'wl35') && (!statusFilter || statusFilter === '{{ $indicatorStatus }}') && (!locationFilter || locationFilter === {{ Js::from((string) ($device['profile_location_id'] ?? '')) }})">
+                            <tr class="transition hover:bg-sky-50/40" x-show="(!search || {{ Js::from($searchable) }}.includes(search.toLowerCase())) && (!protocolFilter || protocolFilter === 'wl35') && (!statusFilter || statusFilter === '{{ $indicatorStatus }}') && (!establishmentFilter || establishmentFilter === {{ Js::from((string) ($device['profile_establishment_id'] ?? '')) }})">
                                 <td class="px-4 py-4"><input type="checkbox" data-fleet-selector value="{{ $key }}" :checked="selectedFleetKeys.includes({{ Js::from($key) }})" @change="toggleDevice({{ Js::from($key) }}, null, $event.target.checked)" class="rounded border-border text-primary focus:ring-primary/20"></td>
                                 <td class="px-4 py-4"><div class="flex items-center gap-3"><div class="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-100 text-sky-700"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18.5A6.5 6.5 0 1012 5a6.5 6.5 0 000 13.5zm0 0V22m-3 0h6M12 5V2"/></svg></div><span class="font-medium text-text">{{ $device['name'] ?? $device['id'] ?? 'WL35' }}</span></div></td>
                                 <td class="px-4 py-4"><span class="rounded-md bg-sky-100 px-2 py-1 text-[10px] font-bold tracking-widest text-sky-700">WL35</span></td>
                                 <td class="px-4 py-4"><div class="font-mono text-xs text-text-light">{{ $device['id'] ?? '—' }}</div><div class="mt-1 text-[10px] text-text-muted">{{ $device['ip'] ?? '' }}</div></td>
                                 <td class="px-4 py-4"><x-device-status-indicator :status="$indicatorStatus" /></td>
                                 <td class="px-4 py-4 text-xs text-text-light">
-                                    <div>{{ $device['profile_location'] ?? $device['profile_address'] ?? 'Sin ubicación' }}</div>
-                                    <div class="mt-1 text-text-muted">{{ $device['profile_group'] ?? 'Sin grupo' }}</div>
+                                    <div class="max-w-48 break-words font-medium text-text">{{ $device['profile_establishment'] ?? 'Sin establecimiento' }}</div>
+                                    <div class="mt-1 max-w-56 break-words text-text-muted">{{ $device['profile_address'] ?? 'Sin dirección' }}</div>
                                 </td>
                                 <td class="max-w-40 truncate px-4 py-4 text-xs text-text-light">{{ $device['current_video'] ?? '—' }}</td>
                                 <td class="px-4 py-4 text-xs text-text-light">{{ isset($device['last_seen']) ? \Illuminate\Support\Carbon::parse($device['last_seen'])->diffForHumans() : 'Nunca' }}</td>

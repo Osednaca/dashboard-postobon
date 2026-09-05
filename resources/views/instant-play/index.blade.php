@@ -145,6 +145,12 @@
                                         </div>
                                         <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
                                             <span class="font-mono">{{ $item['identifier'] }}</span>
+                                            @if($item['establishment'] ?? null)
+                                                <span class="flex items-center gap-1">
+                                                    <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21h18M5 21V7l7-4 7 4v14M9 10h.01M15 10h.01"/></svg>
+                                                    {{ $item['establishment'] }}
+                                                </span>
+                                            @endif
                                             @if($item['group'])
                                                 <span class="flex items-center gap-1">
                                                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">

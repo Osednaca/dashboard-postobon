@@ -3,8 +3,10 @@
 namespace App\Providers;
 
 use App\Models\AuditLog;
+use App\Models\BusinessType;
 use App\Models\Campaign;
 use App\Models\Device;
+use App\Models\Establishment;
 use App\Models\Group;
 use App\Models\Location;
 use App\Models\Media;
@@ -13,8 +15,10 @@ use App\Models\Schedule;
 use App\Models\Subscription;
 use App\Models\User;
 use App\Policies\AuditLogPolicy;
+use App\Policies\BusinessTypePolicy;
 use App\Policies\CampaignPolicy;
 use App\Policies\DevicePolicy;
+use App\Policies\EstablishmentPolicy;
 use App\Policies\GroupPolicy;
 use App\Policies\LocationPolicy;
 use App\Policies\MediaPolicy;
@@ -69,6 +73,8 @@ class AppServiceProvider extends ServiceProvider
         });
 
         Gate::policy(User::class, UserPolicy::class);
+        Gate::policy(BusinessType::class, BusinessTypePolicy::class);
+        Gate::policy(Establishment::class, EstablishmentPolicy::class);
         Gate::policy(Location::class, LocationPolicy::class);
         Gate::policy(Device::class, DevicePolicy::class);
         Gate::policy(Group::class, GroupPolicy::class);

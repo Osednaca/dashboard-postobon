@@ -241,64 +241,19 @@
                         <input id="name" name="name" value="{{ old('name', $profile?->name ?? $displayName) }}" required maxlength="255" class="w-full rounded-lg border border-border px-3.5 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
                     </div>
                     <div>
-                        <label for="establishment" class="mb-1.5 block text-sm font-medium text-text">Establecimiento</label>
-                        <input id="establishment" name="establishment" value="{{ old('establishment', $profile?->establishment) }}" maxlength="255" placeholder="Sucursal, tienda o sede" class="w-full rounded-lg border border-border px-3.5 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
-                    </div>
-                    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                        <div>
-                            <label for="location_id" class="mb-1.5 block text-sm font-medium text-text">Ubicación</label>
-                            <select id="location_id" name="location_id" class="w-full rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
-                                <option value="">Sin ubicación</option>
-                                @foreach($locations as $location)<option value="{{ $location->id }}" @selected((string) old('location_id', $profile?->location_id) === (string) $location->id)>{{ $location->name }}</option>@endforeach
-                            </select>
-                        </div>
-                        <div>
-                            <label for="group_id" class="mb-1.5 block text-sm font-medium text-text">Grupo</label>
-                            <select id="group_id" name="group_id" class="w-full rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
-                                <option value="">Sin grupo</option>
-                                @foreach($groups as $group)<option value="{{ $group->id }}" @selected((string) old('group_id', $profile?->group_id) === (string) $group->id)>{{ $group->name }}</option>@endforeach
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label for="address" class="mb-1.5 block text-sm font-medium text-text">Dirección</label>
-                        <input id="address" name="address" value="{{ old('address', $profile?->address) }}" maxlength="500" autocomplete="street-address" placeholder="Calle, número y complemento" class="w-full rounded-lg border border-border px-3.5 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
-                    </div>
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label for="city" class="mb-1.5 block text-sm font-medium text-text">Ciudad</label>
-                            <input id="city" name="city" value="{{ old('city', $profile?->city) }}" maxlength="255" autocomplete="address-level2" class="w-full rounded-lg border border-border px-3.5 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
-                        </div>
-                        <div>
-                            <label for="country" class="mb-1.5 block text-sm font-medium text-text">País</label>
-                            <input id="country" name="country" value="{{ old('country', $profile?->country) }}" maxlength="255" autocomplete="country-name" class="w-full rounded-lg border border-border px-3.5 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
-                        </div>
+                        <div class="mb-1.5 flex items-center justify-between gap-3"><label for="establishment_id" class="text-sm font-medium text-text">Establecimiento <span class="text-danger">*</span></label><a href="{{ route('establishments.create') }}" class="text-xs font-semibold text-primary hover:underline">Crear nuevo</a></div>
+                        <select id="establishment_id" name="establishment_id" required class="w-full rounded-lg border border-border bg-white px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
+                            <option value="">Seleccionar establecimiento</option>
+                            @foreach($establishments as $establishment)<option value="{{ $establishment->id }}" @selected((string) old('establishment_id', $profile?->establishment_id) === (string) $establishment->id)>{{ $establishment->name }} · {{ $establishment->businessType?->name }} — {{ $establishment->address }}</option>@endforeach
+                        </select>
+                        <p class="mt-1.5 text-xs leading-5 text-text-muted">Dirección, contacto y Wi‑Fi se toman del establecimiento seleccionado.</p>
                     </div>
 
-                    <div class="border-t border-border pt-4">
-                        <h3 class="text-sm font-semibold text-text">Contacto responsable</h3>
-                        <div class="mt-3 space-y-3">
-                            <input name="contact_name" value="{{ old('contact_name', $profile?->contact_name) }}" maxlength="255" autocomplete="name" aria-label="Nombre del contacto" placeholder="Nombre" class="w-full rounded-lg border border-border px-3.5 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
-                            <div class="grid grid-cols-2 gap-3">
-                                <input name="contact_phone" value="{{ old('contact_phone', $profile?->contact_phone) }}" maxlength="50" autocomplete="tel" aria-label="Teléfono del contacto" placeholder="Teléfono" class="w-full rounded-lg border border-border px-3.5 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
-                                <input type="email" name="contact_email" value="{{ old('contact_email', $profile?->contact_email) }}" maxlength="255" autocomplete="email" aria-label="Correo del contacto" placeholder="Correo" class="w-full rounded-lg border border-border px-3.5 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
-                            </div>
-                        </div>
-                    </div>
+                    @if($profile?->establishmentProfile)
+                        <div class="rounded-lg bg-surface px-4 py-3 text-xs leading-5 text-text-light"><span class="font-semibold text-text">{{ $profile->establishmentProfile->name }}</span><br>{{ $profile->establishmentProfile->address }}@if($profile->establishmentProfile->contact_name)<br>Contacto: {{ $profile->establishmentProfile->contact_name }} · {{ $profile->establishmentProfile->contact_phone ?: 'sin teléfono' }}@endif</div>
+                    @endif
 
-                    <details class="rounded-lg border border-border bg-surface/60 p-3">
-                        <summary class="cursor-pointer text-sm font-semibold text-text">Coordenadas y notas</summary>
-                        <div class="mt-4 space-y-3">
-                            <div class="grid grid-cols-2 gap-3">
-                                <div><label for="latitude" class="mb-1 block text-xs text-text-muted">Latitud</label><input id="latitude" name="latitude" type="number" step="0.00000001" min="-90" max="90" value="{{ old('latitude', $profile?->latitude) }}" class="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"></div>
-                                <div><label for="longitude" class="mb-1 block text-xs text-text-muted">Longitud</label><input id="longitude" name="longitude" type="number" step="0.00000001" min="-180" max="180" value="{{ old('longitude', $profile?->longitude) }}" class="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"></div>
-                            </div>
-                            @if($profile?->latitude !== null && $profile?->longitude !== null)
-                                <a href="https://www.google.com/maps?q={{ $profile->latitude }},{{ $profile->longitude }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline">Abrir coordenadas en el mapa <span aria-hidden="true">↗</span></a>
-                            @endif
-                            <div><label for="notes" class="mb-1 block text-xs text-text-muted">Notas</label><textarea id="notes" name="notes" rows="3" maxlength="2000" class="w-full resize-y rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">{{ old('notes', $profile?->notes) }}</textarea></div>
-                        </div>
-                    </details>
+                    <div><label for="notes" class="mb-1.5 block text-sm font-medium text-text">Notas del dispositivo</label><textarea id="notes" name="notes" rows="3" maxlength="2000" class="w-full resize-y rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">{{ old('notes', $profile?->notes) }}</textarea></div>
                 </div>
 
                 <button type="submit" class="mt-5 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-primary/20 transition hover:bg-primary/90">Guardar información</button>

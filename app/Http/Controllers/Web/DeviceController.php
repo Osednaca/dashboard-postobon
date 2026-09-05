@@ -11,6 +11,7 @@ use App\Http\Requests\StoreDeviceRequest;
 use App\Http\Requests\UpdateDeviceRequest;
 use App\Models\Campaign;
 use App\Models\Device;
+use App\Models\Establishment;
 use App\Models\Media;
 use App\Models\Wl35DeviceProfile;
 use App\Services\DeviceService;
@@ -68,11 +69,11 @@ class DeviceController extends Controller
                 ]);
             }
 
-            $devices = Device::paginate(15);
+            $devices = Device::with(['location', 'group', 'establishmentProfile.businessType'])->paginate(15);
             $wl35Devices = collect();
             $fleetZ2Devices = collect();
             $fleetMedia = collect();
-            $wl35Profiles = Wl35DeviceProfile::with(['location', 'group'])->get()->keyBy('device_id');
+            $wl35Profiles = Wl35DeviceProfile::with(['location', 'group', 'establishmentProfile.businessType'])->get()->keyBy('device_id');
             $gatewayError = null;
             $gatewayConfigured = $this->unifiedFleetClient->isConfigured();
 
@@ -90,7 +91,9 @@ class DeviceController extends Controller
                             'profile_location_id' => $profile?->location_id,
                             'profile_group' => $profile?->group?->name,
                             'profile_group_id' => $profile?->group_id,
-                            'profile_address' => $profile?->address,
+                            'profile_establishment' => $profile?->establishmentProfile?->name ?? $profile?->establishment,
+                            'profile_establishment_id' => $profile?->establishment_id,
+                            'profile_address' => $profile?->establishmentProfile?->address ?? $profile?->address,
                         ]);
                     })
                     ->values();
@@ -114,7 +117,9 @@ class DeviceController extends Controller
                         'profile_location_id' => $profile->location_id,
                         'profile_group' => $profile->group?->name,
                         'profile_group_id' => $profile->group_id,
-                        'profile_address' => $profile->address,
+                        'profile_establishment' => $profile->establishmentProfile?->name ?? $profile->establishment,
+                        'profile_establishment_id' => $profile->establishment_id,
+                        'profile_address' => $profile->establishmentProfile?->address ?? $profile->address,
                     ]);
                 $wl35Devices = $wl35Devices->concat($savedOfflineWl35)->values();
                 $fleetZ2Devices = $fleetDevices
@@ -139,7 +144,9 @@ class DeviceController extends Controller
                     'profile_location_id' => $profile->location_id,
                     'profile_group' => $profile->group?->name,
                     'profile_group_id' => $profile->group_id,
-                    'profile_address' => $profile->address,
+                    'profile_establishment' => $profile->establishmentProfile?->name ?? $profile->establishment,
+                    'profile_establishment_id' => $profile->establishment_id,
+                    'profile_address' => $profile->establishmentProfile?->address ?? $profile->address,
                 ])->values();
                 Log::warning('Los WL35 no pudieron agregarse a la pantalla de dispositivos.', [
                     'gateway_url' => $this->unifiedFleetClient->baseUrl(),
@@ -147,8 +154,11 @@ class DeviceController extends Controller
                 ]);
             }
 
+            $establishments = Establishment::orderBy('name')->get();
+
             return view('devices.index', compact(
                 'devices',
+                'establishments',
                 'wl35Devices',
                 'fleetZ2Devices',
                 'fleetMedia',
@@ -170,7 +180,9 @@ class DeviceController extends Controller
     {
         $this->authorize('create', Device::class);
 
-        return view('devices.create');
+        return view('devices.create', [
+            'establishments' => Establishment::with('businessType')->orderBy('name')->get(),
+        ]);
     }
 
     /**
@@ -200,6 +212,7 @@ class DeviceController extends Controller
         $this->authorize('view', $device);
 
         try {
+            $device->load(['establishmentProfile.businessType', 'location', 'group']);
             $deviceDetail = null;
             $devicePlaylist = [];
             $deviceVolume = null;
@@ -468,7 +481,10 @@ class DeviceController extends Controller
     {
         $this->authorize('update', $device);
 
-        return view('devices.edit', compact('device'));
+        return view('devices.edit', [
+            'device' => $device,
+            'establishments' => Establishment::with('businessType')->orderBy('name')->get(),
+        ]);
     }
 
     /**

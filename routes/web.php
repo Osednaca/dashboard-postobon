@@ -3,9 +3,11 @@
 use App\Http\Controllers\Web\AnalyticsController;
 use App\Http\Controllers\Web\AuditController;
 use App\Http\Controllers\Web\AuthController;
+use App\Http\Controllers\Web\BusinessTypeController;
 use App\Http\Controllers\Web\CampaignController;
 use App\Http\Controllers\Web\DashboardController;
 use App\Http\Controllers\Web\DeviceController;
+use App\Http\Controllers\Web\EstablishmentController;
 use App\Http\Controllers\Web\GroupController;
 use App\Http\Controllers\Web\InstantPlayController;
 use App\Http\Controllers\Web\LocationController;
@@ -43,6 +45,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/fleet/operations/{fleetOperation}', [UnifiedFleetController::class, 'operationStatus'])->name('fleet.operation.status');
 
     Route::resource('locations', LocationController::class);
+    Route::resource('business-types', BusinessTypeController::class)->only(['index', 'store', 'update', 'destroy']);
+    Route::resource('establishments', EstablishmentController::class)->except(['show']);
 
     Route::get('devices/wl35/{deviceId}', [Wl35DeviceController::class, 'show'])
         ->where('deviceId', '[A-Za-z0-9_.:-]+')

@@ -14,6 +14,7 @@ class Device extends Model
 
     protected $fillable = [
         'name',
+        'establishment_id',
         'establishment',
         'contact_name',
         'contact_phone',
@@ -48,6 +49,11 @@ class Device extends Model
     public function location(): BelongsTo
     {
         return $this->belongsTo(Location::class);
+    }
+
+    public function establishmentProfile(): BelongsTo
+    {
+        return $this->belongsTo(Establishment::class, 'establishment_id');
     }
 
     public function group(): BelongsTo
