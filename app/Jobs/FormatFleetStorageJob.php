@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\FleetOperation;
+use App\Models\Wl35DeviceMedia;
 use App\Services\Fleet\UnifiedFleetClient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -41,6 +42,14 @@ class FormatFleetStorageJob implements ShouldQueue
 
         try {
             $result = $fleetClient->sendCommand($operation->payload, true);
+
+            collect($result['results'] ?? [])
+                ->filter(fn ($item): bool => is_array($item)
+                    && ($item['success'] ?? false) === true
+                    && ($item['type'] ?? null) === 'wl35')
+                ->each(function (array $item): void {
+                    Wl35DeviceMedia::where('device_id', (string) ($item['id'] ?? ''))->delete();
+                });
 
             $operation->update([
                 'status' => 'completed',

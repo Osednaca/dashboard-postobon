@@ -29,6 +29,12 @@ los Z2 reciben el nombre del archivo de la biblioteca y los WL35 reciben el índ
 video que ya existe en su SD. Una selección masiva mixta envía ambos valores en una sola orden y
 el gateway aplica a cada ventilador el valor correspondiente a su protocolo.
 
+En `/instant-play` se selecciona el mismo medio de la biblioteca para ambos protocolos. El primer
+uso en un WL35 descarga una copia temporal al worker, la convierte, la transmite y reproduce el
+nuevo índice después del reinicio del agente. La asociación entre medio e índice se guarda en
+`wl35_device_media`; las reproducciones siguientes usan ese índice sin volver a transmitir el MP4.
+El borrado individual reajusta los índices conocidos y el formateo exitoso elimina sus asociaciones.
+
 Cada WL35 tiene además una página de detalle accesible desde `/devices`. Allí se muestra el estado
 en vivo y se pueden ejecutar energía, Bluetooth, reproducción, volumen, carga de video, borrado
 individual y formateo de SD. El nombre, establecimiento, dirección, ciudad, país, contacto,

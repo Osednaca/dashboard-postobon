@@ -109,6 +109,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('users', UserController::class);
 
     Route::get('/instant-play', [InstantPlayController::class, 'index'])->name('instant-play.index');
+    Route::post('/instant-play/media', [InstantPlayController::class, 'playMedia'])->name('instant-play.media');
     Route::post('/instant-play/play', [InstantPlayController::class, 'play'])->name('instant-play.play');
     Route::post('/instant-play/play-campaign', [InstantPlayController::class, 'playCampaign'])->name('instant-play.play-campaign');
     Route::post('/instant-play/play-bulk', [InstantPlayController::class, 'playBulk'])->name('instant-play.play-bulk');

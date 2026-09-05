@@ -9,9 +9,11 @@ use App\Http\Requests\UpdateWl35DeviceProfileRequest;
 use App\Models\Device;
 use App\Models\Group;
 use App\Models\Location;
+use App\Models\Wl35DeviceMedia;
 use App\Models\Wl35DeviceProfile;
 use App\Services\Fleet\UnifiedFleetClient;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 use Throwable;
@@ -97,6 +99,16 @@ class Wl35DeviceController extends Controller
 
         try {
             $this->fleetClient->deleteWl35Video($deviceId, $index);
+            DB::transaction(function () use ($deviceId, $index): void {
+                Wl35DeviceMedia::where('device_id', $deviceId)
+                    ->where('video_index', $index)
+                    ->delete();
+                Wl35DeviceMedia::where('device_id', $deviceId)
+                    ->where('video_index', '>', $index)
+                    ->orderBy('video_index')
+                    ->get()
+                    ->each(fn (Wl35DeviceMedia $mapping) => $mapping->decrement('video_index'));
+            });
 
             return back()->with('success', "Video {$index} eliminado del WL35.");
         } catch (Throwable $exception) {

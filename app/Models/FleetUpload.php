@@ -17,9 +17,11 @@ class FleetUpload extends Model
     protected $fillable = [
         'id',
         'user_id',
+        'source_media_id',
         'original_name',
         'file_path',
         'targets',
+        'play_after_upload',
         'status',
         'phase',
         'progress',
@@ -33,6 +35,7 @@ class FleetUpload extends Model
     {
         return [
             'targets' => 'array',
+            'play_after_upload' => 'boolean',
             'result' => 'array',
             'progress' => 'integer',
             'started_at' => 'datetime',
@@ -43,5 +46,10 @@ class FleetUpload extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function sourceMedia(): BelongsTo
+    {
+        return $this->belongsTo(Media::class, 'source_media_id');
     }
 }

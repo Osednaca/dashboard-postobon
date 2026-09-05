@@ -58,6 +58,43 @@
         </div>
     @endif
 
+    <section x-show="playback.status !== 'idle'" x-cloak
+             class="mb-6 overflow-hidden rounded-xl border border-border bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
+             aria-live="polite" aria-atomic="true">
+        <div class="flex items-start gap-4 p-5 sm:p-6">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                 :class="playback.status === 'failed' ? 'bg-danger/10 text-danger' : (playback.status === 'completed' ? 'bg-success/10 text-success' : 'bg-primary/10 text-primary')">
+                <svg x-show="!['completed', 'failed'].includes(playback.status)" class="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="opacity-20" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3"></circle><path fill="currentColor" d="M21 12a9 9 0 00-9-9v3a6 6 0 016 6h3z"></path></svg>
+                <svg x-show="playback.status === 'completed'" class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                <svg x-show="playback.status === 'failed'" class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </div>
+            <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-start justify-between gap-2">
+                    <div class="min-w-0">
+                        <h2 class="font-semibold text-text" x-text="playbackTitle()"></h2>
+                        <p class="mt-1 truncate text-xs text-text-muted" x-text="playback.mediaName"></p>
+                    </div>
+                    <span class="font-mono text-xs tabular-nums text-text-muted" x-text="playbackElapsed()"></span>
+                </div>
+                <p class="mt-3 text-sm leading-6 text-text-light" x-text="playbackDescription()"></p>
+                <div x-show="playback.status !== 'failed'" class="mt-4">
+                    <div class="mb-1.5 flex items-center justify-between text-xs"><span class="text-text-muted">Progreso</span><span class="font-semibold tabular-nums text-primary" x-text="playback.progress + '%' "></span></div>
+                    <div class="h-2 overflow-hidden rounded-full bg-surface" role="progressbar" aria-label="Progreso de reproducción" :aria-valuenow="playback.progress" aria-valuemin="0" aria-valuemax="100"><div class="h-full rounded-full bg-primary transition-[width] duration-500" :style="`width: ${playback.progress}%`"></div></div>
+                </div>
+                <p x-show="playback.error" class="mt-3 rounded-lg px-3 py-2 text-xs leading-5"
+                   :class="playback.status === 'failed' ? 'bg-danger/5 text-danger' : 'bg-warning/10 text-amber-800'" x-text="playback.error"></p>
+                <div x-show="playback.status === 'failed'" class="mt-4 flex justify-end">
+                    <button type="button" @click="dismissPlayback()" class="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-text-light transition hover:bg-surface">Cerrar e intentar de nuevo</button>
+                </div>
+                <div x-show="playback.status === 'completed' && playback.result" class="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+                    <span><strong class="text-success" x-text="playback.result?.succeeded ?? 0"></strong> completados</span>
+                    <span><strong class="text-danger" x-text="playback.result?.failed ?? 0"></strong> fallidos</span>
+                    <button type="button" @click="dismissPlayback()" class="ml-auto rounded-lg border border-border px-3 py-1.5 font-semibold text-text-light transition hover:bg-surface">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {{-- Left: Devices panel --}}
         <div class="lg:col-span-2 space-y-6">
@@ -208,24 +245,19 @@
 
                         {{-- Single mode: select media --}}
                         <template x-if="mode === 'single'">
-                            <form action="{{ route('fleet.command') }}" method="POST" class="space-y-4" @submit="submitting = true">
+                            <form action="{{ route('instant-play.media') }}" method="POST" class="space-y-4" @submit="submitPlayback($event)">
                                 @csrf
-                                <input type="hidden" name="command" value="play">
                                 <input type="hidden" name="targets[]" :value="selectedDevice">
-                                <div x-show="selectionHasZ2()">
+                                <div>
                                     <label for="media_id_single" class="block text-xs font-medium text-text-muted uppercase tracking-wider mb-1.5">Video</label>
-                                    <select name="z2_filename" id="media_id_single" :required="selectionHasZ2()"
+                                    <select name="media_id" id="media_id_single" required
                                             class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors">
                                         <option value="">-- Seleccione un video --</option>
                                         @foreach($allMedia as $m)
-                                            <option value="{{ $m->file_path }}">{{ $m->name }} {{ $m->duration ? '(' . gmdate('i:s', $m->duration) . ')' : '' }}</option>
+                                            <option value="{{ $m->id }}">{{ $m->name }} {{ $m->duration ? '(' . gmdate('i:s', $m->duration) . ')' : '' }}</option>
                                         @endforeach
                                     </select>
-                                </div>
-                                <div x-show="selectionHasWl35()" x-cloak>
-                                    <label for="wl35_video_index_single" class="block text-xs font-medium text-text-muted uppercase tracking-wider mb-1.5">Índice de video WL35</label>
-                                    <input type="number" name="wl35_video_index" id="wl35_video_index_single" min="1" max="255" value="1" :required="selectionHasWl35()" class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary">
-                                    <p class="mt-1.5 text-xs leading-5 text-text-muted">El WL35 identifica sus videos por posición, no por nombre de archivo.</p>
+                                    <p class="mt-1.5 text-xs leading-5 text-text-muted">Si el video no existe en un WL35, se cargará y reproducirá automáticamente.</p>
                                 </div>
                                 <button type="submit"
                                         :disabled="!selectedDevice || submitting"
@@ -234,36 +266,30 @@
                                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
                                     </svg>
-                                    <span x-text="submitting ? 'Enviando orden…' : 'Reproducir ahora'"></span>
+                                    <span x-text="submitting ? 'Preparando reproducción…' : 'Reproducir ahora'"></span>
                                 </button>
                             </form>
                         </template>
 
                         {{-- Campaign mode: select campaign --}}
                         <template x-if="mode === 'campaign'">
-                            <form action="{{ route('fleet.command') }}" method="POST" class="space-y-4" @submit="submitting = true">
+                            <form action="{{ route('instant-play.media') }}" method="POST" class="space-y-4" @submit="submitPlayback($event)">
                                 @csrf
-                                <input type="hidden" name="command" value="play">
                                 <input type="hidden" name="targets[]" :value="selectedDevice">
-                                <div x-show="selectionHasZ2()">
+                                <div>
                                     <label for="campaign_id" class="block text-xs font-medium text-text-muted uppercase tracking-wider mb-1.5">Campaña</label>
-                                    <select name="z2_filename" id="campaign_id" :required="selectionHasZ2()"
+                                    <select name="media_id" id="campaign_id" required
                                             class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors">
                                         <option value="">-- Seleccione una campaña --</option>
                                         @foreach($campaigns as $c)
                                             @php($campaignMedia = $c->media->first())
-                                            <option value="{{ $campaignMedia?->file_path }}" @disabled(!$campaignMedia)>
+                                            <option value="{{ $campaignMedia?->id }}" @disabled(!$campaignMedia)>
                                                 {{ $c->name }}
                                                 ({{ $c->media->count() }} {{ $c->media->count() === 1 ? 'video' : 'videos' }})
                                             </option>
                                         @endforeach
                                     </select>
-                                    <p class="mt-1.5 text-xs leading-5 text-text-muted">Se reproduce el primer video asociado a la campaña.</p>
-                                </div>
-                                <div x-show="selectionHasWl35()" x-cloak>
-                                    <label for="wl35_video_index_campaign" class="block text-xs font-medium text-text-muted uppercase tracking-wider mb-1.5">Índice de campaña en WL35</label>
-                                    <input type="number" name="wl35_video_index" id="wl35_video_index_campaign" min="1" max="255" value="1" :required="selectionHasWl35()" class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary">
-                                    <p class="mt-1.5 text-xs leading-5 text-text-muted">Indica la posición del video ya cargado en este ventilador.</p>
+                                    <p class="mt-1.5 text-xs leading-5 text-text-muted">Se reproduce el primer video asociado. Si falta en un WL35, se carga automáticamente.</p>
                                 </div>
                                 <button type="submit"
                                         :disabled="!selectedDevice || submitting"
@@ -272,7 +298,7 @@
                                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/>
                                     </svg>
-                                    <span x-text="submitting ? 'Enviando orden…' : 'Publicar campaña'"></span>
+                                    <span x-text="submitting ? 'Preparando reproducción…' : 'Publicar campaña'"></span>
                                 </button>
                             </form>
                         </template>
@@ -312,26 +338,21 @@
                             </button>
                         </div>
 
-                        <form action="{{ route('fleet.command') }}" method="POST" class="space-y-4" @submit="submitting = true">
+                        <form action="{{ route('instant-play.media') }}" method="POST" class="space-y-4" @submit="submitPlayback($event)">
                             @csrf
-                            <input type="hidden" name="command" value="play">
                             <template x-for="deviceKey in selectedDevices" :key="deviceKey">
                                 <input type="hidden" name="targets[]" :value="deviceKey">
                             </template>
-                            <div x-show="selectionHasZ2()">
-                                <label for="media_id_bulk" class="block text-xs font-medium text-text-muted uppercase tracking-wider mb-1.5">Video para Z2</label>
-                                <select name="z2_filename" id="media_id_bulk" :required="selectionHasZ2()"
+                            <div>
+                                <label for="media_id_bulk" class="block text-xs font-medium text-text-muted uppercase tracking-wider mb-1.5">Video</label>
+                                <select name="media_id" id="media_id_bulk" required
                                         class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors">
                                     <option value="">-- Seleccione un video --</option>
                                     @foreach($allMedia as $m)
-                                        <option value="{{ $m->file_path }}">{{ $m->name }} {{ $m->duration ? '(' . gmdate('i:s', $m->duration) . ')' : '' }}</option>
+                                        <option value="{{ $m->id }}">{{ $m->name }} {{ $m->duration ? '(' . gmdate('i:s', $m->duration) . ')' : '' }}</option>
                                     @endforeach
                                 </select>
-                            </div>
-                            <div x-show="selectionHasWl35()" x-cloak>
-                                <label for="wl35_video_index_bulk" class="block text-xs font-medium text-text-muted uppercase tracking-wider mb-1.5">Índice para WL35</label>
-                                <input type="number" name="wl35_video_index" id="wl35_video_index_bulk" min="1" max="255" value="1" :required="selectionHasWl35()" class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary">
-                                <p class="mt-1.5 text-xs leading-5 text-text-muted">Todos los WL35 seleccionados reproducirán el mismo índice.</p>
+                                <p class="mt-1.5 text-xs leading-5 text-text-muted">Cada Z2 reproduce desde la biblioteca; cada WL35 recibe el archivo y selecciona su nuevo índice.</p>
                             </div>
                             <button type="submit"
                                     :disabled="selectedDevices.length === 0 || submitting"
@@ -340,7 +361,7 @@
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                                 </svg>
-                                <span x-text="submitting ? 'Enviando orden…' : 'Enviar a ' + selectedDevices.length + ' dispositivo(s)'"></span>
+                                <span x-text="submitting ? 'Preparando reproducción…' : 'Enviar a ' + selectedDevices.length + ' dispositivo(s)'"></span>
                             </button>
                         </form>
                     </div>
@@ -401,6 +422,10 @@
             selectedDevice: null,
             selectedDevices: [],
             submitting: false,
+            playback: { id: null, status: 'idle', phase: 'idle', progress: 0, mediaName: '', error: '', result: null, elapsed: 0 },
+            playbackPoller: null,
+            playbackClock: null,
+            playbackStatusTemplate: {{ Js::from(route('fleet.upload.status', ['fleetUpload' => '__UPLOAD_ID__'])) }},
 
             devices: {{ Js::from($devicesWithPlaying->map(fn (array $item): array => [
                 'key' => $item['key'],
@@ -409,23 +434,173 @@
                 'online' => $item['online'],
             ])->values()) }},
 
+            init() {
+                const uploadId = window.localStorage.getItem('instant-play-upload-id');
+                if (!uploadId) return;
+
+                this.playback.id = uploadId;
+                this.playback.status = 'queued';
+                this.playback.phase = 'queued';
+                this.playback.progress = 10;
+                this.submitting = true;
+                this.startPlaybackPolling();
+            },
+
+            async submitPlayback(event) {
+                event.preventDefault();
+                if (this.submitting) return;
+
+                const form = event.currentTarget;
+                const select = form.querySelector('[name=media_id]');
+                this.submitting = true;
+                this.playback = {
+                    id: null,
+                    status: 'queued',
+                    phase: 'queued',
+                    progress: 5,
+                    mediaName: select?.selectedOptions?.[0]?.textContent?.trim() || 'Video seleccionado',
+                    error: '',
+                    result: null,
+                    elapsed: 0,
+                };
+                this.startPlaybackClock();
+
+                try {
+                    const response = await fetch(form.action, {
+                        method: 'POST',
+                        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        body: new FormData(form),
+                    });
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.upload_id) {
+                        const validationError = payload.errors ? Object.values(payload.errors).flat()[0] : null;
+                        throw new Error(validationError || payload.message || `No fue posible iniciar la reproducción (HTTP ${response.status}).`);
+                    }
+
+                    this.playback.id = payload.upload_id;
+                    this.playback.progress = 10;
+                    window.localStorage.setItem('instant-play-upload-id', payload.upload_id);
+                    this.startPlaybackPolling();
+                } catch (error) {
+                    this.failPlayback(error.message || 'No fue posible iniciar la reproducción.');
+                }
+            },
+
+            startPlaybackPolling() {
+                this.stopPlaybackPolling(false);
+                this.startPlaybackClock();
+                this.pollPlayback();
+                this.playbackPoller = window.setInterval(() => this.pollPlayback(), 2500);
+            },
+
+            async pollPlayback() {
+                if (!this.playback.id) return;
+                const url = this.playbackStatusTemplate.replace('__UPLOAD_ID__', encodeURIComponent(this.playback.id));
+
+                try {
+                    const response = await fetch(url, {
+                        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    });
+                    if (response.status === 404 || response.status === 403) {
+                        window.localStorage.removeItem('instant-play-upload-id');
+                        this.failPlayback('Ya no fue posible recuperar esta operación. Inicia una nueva reproducción.');
+                        return;
+                    }
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                    const payload = await response.json();
+                    this.playback.mediaName = payload.filename || this.playback.mediaName;
+                    this.playback.status = payload.status;
+                    this.playback.phase = payload.phase;
+                    this.playback.progress = payload.progress ?? this.playback.progress;
+                    this.playback.error = payload.error || '';
+                    this.playback.result = payload.result || null;
+
+                    if (payload.started_at && this.playback.elapsed === 0) {
+                        this.playback.elapsed = Math.max(0, Math.floor((Date.now() - new Date(payload.started_at).getTime()) / 1000));
+                    }
+
+                    if (['completed', 'failed'].includes(payload.status)) {
+                        this.submitting = false;
+                        this.stopPlaybackPolling();
+                    }
+                } catch (_) {
+                    this.playback.error = 'No se pudo actualizar el progreso. El trabajo continúa en el servidor y se consultará nuevamente.';
+                }
+            },
+
+            startPlaybackClock() {
+                if (this.playbackClock) return;
+                const startedAt = Date.now() - (this.playback.elapsed * 1000);
+                this.playbackClock = window.setInterval(() => {
+                    this.playback.elapsed = Math.floor((Date.now() - startedAt) / 1000);
+                }, 1000);
+            },
+
+            stopPlaybackPolling(stopClock = true) {
+                if (this.playbackPoller) window.clearInterval(this.playbackPoller);
+                this.playbackPoller = null;
+                if (stopClock && this.playbackClock) window.clearInterval(this.playbackClock);
+                if (stopClock) this.playbackClock = null;
+            },
+
+            failPlayback(message) {
+                this.playback.status = 'failed';
+                this.playback.phase = 'failed';
+                this.playback.progress = 100;
+                this.playback.error = message;
+                this.submitting = false;
+                this.stopPlaybackPolling();
+            },
+
+            dismissPlayback() {
+                window.localStorage.removeItem('instant-play-upload-id');
+                this.stopPlaybackPolling();
+                this.playback = { id: null, status: 'idle', phase: 'idle', progress: 0, mediaName: '', error: '', result: null, elapsed: 0 };
+            },
+
+            playbackTitle() {
+                if (this.playback.status === 'completed' && (this.playback.result?.failed ?? 0) > 0) return 'Reproducción finalizada con errores';
+                return {
+                    queued: 'Reproducción en cola',
+                    preparing_media: 'Preparando el video',
+                    sending_z2: 'Enviando la orden a Z2',
+                    downloading_media: 'Recuperando el video de la biblioteca',
+                    uploading_gateway: 'Enviando el video al gateway',
+                    distributing: 'Convirtiendo y cargando en WL35',
+                    finalizing: 'Confirmando la reproducción',
+                    completed: 'Reproducción preparada',
+                    failed: 'La reproducción falló',
+                }[this.playback.phase] || 'Preparando reproducción';
+            },
+
+            playbackDescription() {
+                if (this.playback.status === 'completed') {
+                    return (this.playback.result?.failed ?? 0) > 0
+                        ? 'La operación terminó, pero uno o más ventiladores no confirmaron la reproducción.'
+                        : 'Todos los ventiladores seleccionados confirmaron la orden.';
+                }
+                return {
+                    queued: 'El worker procesará la selección sin mantener abierta esta petición.',
+                    preparing_media: 'Se está validando el medio y separando los destinos por protocolo.',
+                    sending_z2: 'Los Z2 reproducen directamente el archivo existente en la nube privada.',
+                    downloading_media: 'El worker descarga una copia temporal para convertirla al formato WL35.',
+                    uploading_gateway: 'El MP4 temporal se está transfiriendo al gateway WL35.',
+                    distributing: 'El gateway convierte y transmite el video. El ventilador puede detenerse durante esta fase.',
+                    finalizing: 'El WL35 está reiniciando; al reconectarse se seleccionará automáticamente el nuevo índice.',
+                    failed: 'Revisa el mensaje y vuelve a intentarlo cuando el dispositivo esté conectado.',
+                }[this.playback.phase] || 'La operación continúa en segundo plano.';
+            },
+
+            playbackElapsed() {
+                const minutes = Math.floor(this.playback.elapsed / 60);
+                const seconds = String(this.playback.elapsed % 60).padStart(2, '0');
+                return `${minutes}:${seconds}`;
+            },
+
             getDeviceName(key) {
                 const dev = this.devices.find(device => device.key === key);
                 return dev ? dev.name : 'Desconocido';
-            },
-
-            activeTargets() {
-                return this.mode === 'bulk'
-                    ? this.selectedDevices
-                    : (this.selectedDevice ? [this.selectedDevice] : []);
-            },
-
-            selectionHasZ2() {
-                return this.activeTargets().some(key => key.startsWith('z2:'));
-            },
-
-            selectionHasWl35() {
-                return this.activeTargets().some(key => key.startsWith('wl35:'));
             },
 
             selectAllDevices() {

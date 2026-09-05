@@ -117,6 +117,7 @@ class UnifiedFleetClient
         string $originalName,
         array $targets,
         ?callable $progress = null,
+        bool $playAfterUpload = false,
     ): array {
         $this->ensureConfigured();
         $baseUrl = $this->resolveReachableBaseUrl();
@@ -166,7 +167,10 @@ class UnifiedFleetClient
         $result = $this->send(
             fn (): Response => $this->request(true, $baseUrl)->post(
                 '/api/fleet/uploads/'.rawurlencode($uploadId).'/distribute',
-                ['targets' => array_values($targets)]
+                [
+                    'targets' => array_values($targets),
+                    'play_after_upload' => $playAfterUpload,
+                ]
             ),
             'distribuir el video a los equipos seleccionados',
             $baseUrl

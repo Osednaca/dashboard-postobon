@@ -3,17 +3,22 @@
 namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\InstantPlayMediaRequest;
+use App\Jobs\PlayFleetMediaJob;
 use App\Models\Campaign;
 use App\Models\Device;
+use App\Models\FleetUpload;
 use App\Models\Media;
 use App\Models\Wl35DeviceProfile;
 use App\Services\Fleet\UnifiedFleetClient;
 use App\Services\Z2\Z2DeviceService;
 use App\Services\Z2\Z2PlaylistService;
 use App\Services\Z2\Z2VideoService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class InstantPlayController extends Controller
@@ -155,6 +160,75 @@ class InstantPlayController extends Controller
             'campaigns',
             'gatewayError'
         ));
+    }
+
+    /**
+     * Reproduce un medio de la biblioteca en una selección mixta.
+     *
+     * Los Z2 reciben el filename existente. Para cada WL35 el worker descarga
+     * el MP4, lo convierte, lo carga y selecciona el índice recién creado.
+     */
+    public function playMedia(InstantPlayMediaRequest $request): JsonResponse|RedirectResponse
+    {
+        $this->authorize('viewAny', Device::class);
+        $data = $request->validated();
+        $media = Media::findOrFail($data['media_id']);
+        $this->authorize('view', $media);
+        $upload = null;
+
+        try {
+            if (in_array(config('queue.default'), ['sync', 'null'], true)) {
+                throw new \RuntimeException('La carga automática a WL35 requiere QUEUE_CONNECTION=database o redis.');
+            }
+
+            $uploadId = (string) Str::uuid();
+            $originalName = basename((string) ($media->original_name ?: $media->name ?: $media->file_path));
+            if (! str_ends_with(mb_strtolower($originalName), '.mp4')) {
+                $originalName .= '.mp4';
+            }
+
+            $upload = FleetUpload::create([
+                'id' => $uploadId,
+                'user_id' => $request->user()->id,
+                'source_media_id' => $media->id,
+                'original_name' => Str::limit($originalName, 250, ''),
+                'file_path' => 'fleet-uploads/'.$uploadId.'.mp4',
+                'targets' => array_values($data['targets']),
+                'play_after_upload' => true,
+                'status' => 'queued',
+                'phase' => 'queued',
+                'progress' => 10,
+            ]);
+
+            PlayFleetMediaJob::dispatch($upload->id);
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'upload_id' => $upload->id,
+                    'status_url' => route('fleet.upload.status', $upload),
+                    'message' => 'La reproducción quedó en cola. Los WL35 recibirán el video automáticamente si hace falta.',
+                ], 202);
+            }
+
+            return back()->with('success', 'La reproducción quedó en cola y continuará en segundo plano.');
+        } catch (\Throwable $exception) {
+            $upload?->delete();
+            Log::error('No fue posible encolar la reproducción instantánea unificada.', [
+                'media_id' => $media->id,
+                'targets' => $data['targets'],
+                'error' => $exception->getMessage(),
+            ]);
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $exception->getMessage(),
+                ], 500);
+            }
+
+            return back()->withInput()->with('error', $exception->getMessage());
+        }
     }
 
     /**
