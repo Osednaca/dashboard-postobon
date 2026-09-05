@@ -35,7 +35,16 @@
                 <div class="space-y-4">
                     <div class="flex justify-between py-2 border-b border-border">
                         <span class="text-sm text-text-muted">Tipo</span>
-                        <span class="text-sm font-medium text-text">{{ $schedule->type === 'power_off' ? 'Apagado' : ($schedule->type === 'power_on' ? 'Encendido' : ($schedule->type === 'change_content' ? 'Cambio Contenido' : 'Activar Campaña')) }}</span>
+                        @php
+                            $typeLabels = [
+                                'power_on' => 'Encendido',
+                                'power_off' => 'Apagado',
+                                'change_content' => 'Cambio de contenido',
+                                'activate_campaign' => 'Activar campaña',
+                                'format_sd' => 'Formatear SD',
+                            ];
+                        @endphp
+                        <span class="text-sm font-medium text-text">{{ $typeLabels[$schedule->type] ?? $schedule->type }}</span>
                     </div>
                     <div class="flex justify-between py-2 border-b border-border">
                         <span class="text-sm text-text-muted">Dispositivo</span>
@@ -46,8 +55,12 @@
                         <span class="text-sm font-medium text-text">{{ $schedule->group?->name ?? 'Todos' }}</span>
                     </div>
                     <div class="flex justify-between py-2 border-b border-border">
-                        <span class="text-sm text-text-muted">Fecha programada</span>
-                        <span class="text-sm font-medium text-text">{{ $schedule->scheduled_at }}</span>
+                        <span class="text-sm text-text-muted">Frecuencia</span>
+                        <span class="text-right text-sm font-medium text-text">{{ $schedule->recurrenceLabel() }}</span>
+                    </div>
+                    <div class="flex justify-between py-2 border-b border-border">
+                        <span class="text-sm text-text-muted">Próxima ejecución</span>
+                        <span class="text-sm font-medium text-text">{{ $schedule->scheduled_at?->format('d/m/Y H:i') ?? '—' }}</span>
                     </div>
                     <div class="flex justify-between py-2 border-b border-border">
                         <span class="text-sm text-text-muted">Estado</span>

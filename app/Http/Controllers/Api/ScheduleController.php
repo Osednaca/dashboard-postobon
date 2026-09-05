@@ -9,6 +9,7 @@ use App\Models\Schedule;
 use App\Services\ScheduleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Validation\ValidationException;
 
 class ScheduleController extends Controller
 {
@@ -61,6 +62,8 @@ class ScheduleController extends Controller
             $schedule = $this->scheduleService->create($request->validated());
 
             return response()->json($schedule, 201);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Error al crear la programación.',
@@ -97,6 +100,8 @@ class ScheduleController extends Controller
             $updated = $this->scheduleService->update($schedule->id, $request->validated());
 
             return response()->json($updated);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Error al actualizar la programación.',

@@ -53,7 +53,8 @@
                                 <th class="px-6 py-4">Nombre</th>
                                 <th class="px-6 py-4">Tipo</th>
                                 <th class="px-6 py-4">Dispositivo/Grupo</th>
-                                <th class="px-6 py-4">Fecha programada</th>
+                                <th class="px-6 py-4">Frecuencia</th>
+                                <th class="px-6 py-4">Próxima ejecución</th>
                                 <th class="px-6 py-4">Estado</th>
                                 <th class="px-6 py-4 text-right">Acciones</th>
                             </tr>
@@ -72,8 +73,9 @@
                                             'power_off' => ['label' => 'Apagado', 'color' => 'text-danger'],
                                             'change_content' => ['label' => 'Cambio Contenido', 'color' => 'text-info'],
                                             'activate_campaign' => ['label' => 'Activar Campaña', 'color' => 'text-primary'],
+                                            'format_sd' => ['label' => 'Formatear SD', 'color' => 'text-warning'],
                                         ];
-                                        $type = $types[$schedule->type ?? 'power_on'];
+                                        $type = $types[$schedule->type] ?? ['label' => $schedule->type, 'color' => 'text-text'];
                                         @endphp
                                         <span class="text-sm font-medium {{ $type['color'] }}">{{ $type['label'] }}</span>
                                     </td>
@@ -81,10 +83,19 @@
                                         <div class="text-sm text-text">{{ $schedule->device?->name ?? $schedule->group?->name ?? 'Todos' }}</div>
                                     </td>
                                     <td class="px-6 py-4">
-                                        <div class="text-sm text-text">{{ $schedule->scheduled_at ?? '2024-06-15 10:00' }}</div>
+                                        <div class="text-sm font-medium text-text">{{ $schedule->recurrenceLabel() }}</div>
+                                        @if($schedule->recurrence_ends_at)
+                                            <div class="mt-0.5 text-xs text-text-muted">Hasta {{ $schedule->recurrence_ends_at->format('d/m/Y') }}</div>
+                                        @endif
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <div class="text-sm text-text">{{ $schedule->scheduled_at?->format('d/m/Y · H:i') ?? '—' }}</div>
                                     </td>
                                     <td class="px-6 py-4">
                                         <x-status-badge :status="$schedule->status ?? 'pending'" />
+                                        @if($schedule->last_run_status === 'failed')
+                                            <div class="mt-1 text-xs text-danger">La última ejecución falló</div>
+                                        @endif
                                     </td>
                                     <td class="px-6 py-4 text-right">
                                         <div class="flex items-center justify-end gap-1">
@@ -97,7 +108,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="6" class="px-6 py-12 text-center">
+                                    <td colspan="7" class="px-6 py-12 text-center">
                                         <div class="flex flex-col items-center gap-3">
                                             <div class="w-12 h-12 rounded-full bg-surface-dark flex items-center justify-center">
                                                 <svg class="w-6 h-6 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">

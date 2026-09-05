@@ -2,42 +2,41 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Device;
 use App\Models\Media;
 use App\Models\Schedule;
-use App\Services\Z2\Z2DeviceService;
-use App\Services\Z2\Z2PlaylistService;
+use App\Services\ScheduleRecurrenceService;
 use App\Services\Z2\Z2CampaignSyncService;
+use App\Services\Z2\Z2DeviceService;
+use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
+use Throwable;
 
 class ProcessSchedules extends Command
 {
     protected $signature = 'schedules:process';
 
-    protected $description = 'Execute pending schedules';
+    protected $description = 'Execute pending one-time and recurring schedules';
 
     public function __construct(
         private readonly Z2DeviceService $z2DeviceService,
-        private readonly Z2PlaylistService $z2PlaylistService,
+        private readonly ScheduleRecurrenceService $recurrenceService,
     ) {
         parent::__construct();
     }
 
     public function handle(): int
     {
-        $this->info('Processing pending schedules...');
-
-        $now = Carbon::now();
-
-        $pendingSchedules = Schedule::with(['device', 'group', 'group.devices', 'campaign'])
+        $now = CarbonImmutable::now(config('app.timezone'));
+        $pendingSchedules = Schedule::with(['device', 'group.devices', 'campaign'])
             ->where('status', 'pending')
             ->where('scheduled_at', '<=', $now)
+            ->orderBy('scheduled_at')
             ->get();
 
         if ($pendingSchedules->isEmpty()) {
-            $this->info('No pending schedules to process.');
-
             return self::SUCCESS;
         }
 
@@ -46,214 +45,146 @@ class ProcessSchedules extends Command
 
         foreach ($pendingSchedules as $schedule) {
             try {
-                $this->info("Processing schedule: {$schedule->name} (ID: {$schedule->id}, Type: {$schedule->type})");
-
                 $success = match ($schedule->type) {
-                    'power_on' => $this->executePowerOn($schedule),
-                    'power_off' => $this->executePowerOff($schedule),
+                    'power_on' => $this->executeOnTargets(
+                        $schedule,
+                        fn (Device $device): bool => $this->z2DeviceService->powerOn($device->mac_address),
+                    ),
+                    'power_off' => $this->executeOnTargets(
+                        $schedule,
+                        fn (Device $device): bool => $this->z2DeviceService->powerOff($device->mac_address),
+                    ),
+                    'format_sd' => $this->executeOnTargets(
+                        $schedule,
+                        fn (Device $device): bool => $this->z2DeviceService->formatSd($device->mac_address),
+                    ),
                     'change_content' => $this->executeChangeContent($schedule),
                     'activate_campaign' => $this->executeActivateCampaign($schedule),
-                    default => $this->handleUnknownType($schedule),
+                    default => false,
                 };
 
+                $this->finishRun($schedule, $success, $now, $success ? null : 'El dispositivo o la nube rechazó la instrucción.');
                 if ($success) {
-                    $schedule->status = 'executed';
-                    $schedule->executed_at = $now;
-                    $schedule->save();
                     $processed++;
-                    $this->info("  ✓ Schedule {$schedule->id} executed successfully");
                 } else {
-                    $schedule->status = 'failed';
-                    $schedule->executed_at = $now;
-                    $schedule->save();
                     $failed++;
-                    $this->error("  ✗ Schedule {$schedule->id} execution failed (Z2 API returned failure)");
                 }
-            } catch (\Exception $e) {
-                $this->error("Failed to process schedule {$schedule->id}: " . $e->getMessage());
+            } catch (Throwable $exception) {
+                $this->finishRun($schedule, false, $now, $exception->getMessage());
+                $failed++;
+
                 Log::error('Schedule processing failed', [
                     'schedule_id' => $schedule->id,
                     'type' => $schedule->type,
-                    'exception' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
+                    'exception' => $exception->getMessage(),
                 ]);
-
-                $schedule->status = 'failed';
-                $schedule->executed_at = $now;
-                $schedule->save();
-
-                $failed++;
             }
         }
 
-        $this->info("Schedule processing completed. Processed: {$processed}, Failed: {$failed}");
-        Log::info('Schedule processing completed', ['processed' => $processed, 'failed' => $failed]);
+        Log::info('Schedule processing completed', compact('processed', 'failed'));
 
         return self::SUCCESS;
     }
 
-    /**
-     * Execute power on via Z2 API.
-     */
-    private function executePowerOn(Schedule $schedule): bool
+    private function executeOnTargets(Schedule $schedule, callable $command): bool
     {
+        $devices = $this->targetDevices($schedule);
+
+        if ($devices->isEmpty()) {
+            Log::warning('Schedule has no eligible target devices', ['schedule_id' => $schedule->id]);
+
+            return false;
+        }
+
         $success = true;
 
-        if ($schedule->device) {
-            $result = $this->z2DeviceService->powerOn($schedule->device->mac_address);
-            if ($result) {
-                $this->info("  Power ON device: {$schedule->device->name} ({$schedule->device->mac_address})");
-            } else {
-                $this->error("  Failed to power ON device: {$schedule->device->name}");
+        foreach ($devices as $device) {
+            if (! $command($device)) {
                 $success = false;
             }
-        }
-
-        if ($schedule->group && $schedule->group->devices->isNotEmpty()) {
-            $groupSuccess = true;
-            foreach ($schedule->group->devices as $device) {
-                $result = $this->z2DeviceService->powerOn($device->mac_address);
-                if (!$result) {
-                    $this->error("  Failed to power ON device in group: {$device->name}");
-                    $groupSuccess = false;
-                }
-            }
-            $this->info("  Power ON group: {$schedule->group->name} ({$schedule->group->devices->count()} devices)");
-            if (!$groupSuccess) {
-                $success = false;
-            }
-        }
-
-        if (!$schedule->device && !$schedule->group) {
-            $this->warn("  Schedule {$schedule->id} has no device or group assigned");
-            return false;
         }
 
         return $success;
     }
 
-    /**
-     * Execute power off via Z2 API.
-     */
-    private function executePowerOff(Schedule $schedule): bool
-    {
-        $success = true;
-
-        if ($schedule->device) {
-            $result = $this->z2DeviceService->powerOff($schedule->device->mac_address);
-            if ($result) {
-                $this->info("  Power OFF device: {$schedule->device->name} ({$schedule->device->mac_address})");
-            } else {
-                $this->error("  Failed to power OFF device: {$schedule->device->name}");
-                $success = false;
-            }
-        }
-
-        if ($schedule->group && $schedule->group->devices->isNotEmpty()) {
-            $groupSuccess = true;
-            foreach ($schedule->group->devices as $device) {
-                $result = $this->z2DeviceService->powerOff($device->mac_address);
-                if (!$result) {
-                    $this->error("  Failed to power OFF device in group: {$device->name}");
-                    $groupSuccess = false;
-                }
-            }
-            $this->info("  Power OFF group: {$schedule->group->name} ({$schedule->group->devices->count()} devices)");
-            if (!$groupSuccess) {
-                $success = false;
-            }
-        }
-
-        if (!$schedule->device && !$schedule->group) {
-            $this->warn("  Schedule {$schedule->id} has no device or group assigned");
-            return false;
-        }
-
-        return $success;
-    }
-
-    /**
-     * Execute content change via Z2 API.
-     */
     private function executeChangeContent(Schedule $schedule): bool
     {
         $media = $schedule->content_id ? Media::find($schedule->content_id) : null;
+        $devices = $this->targetDevices($schedule);
 
-        if (!$media) {
-            $this->error("  Schedule {$schedule->id}: No content (media) assigned for change_content type");
+        if ($media === null || $devices->isEmpty()) {
             return false;
         }
 
-        $uiCode = $media->file_path;
-        $success = true;
+        $result = $this->z2DeviceService->changeVideoOnDevices(
+            $devices->pluck('mac_address')->all(),
+            $media->file_path,
+        );
 
-        if ($schedule->device) {
-            $result = $this->z2DeviceService->changeVideo($schedule->device->mac_address, $uiCode);
-            if ($result) {
-                $this->info("  Changed content on device: {$schedule->device->name} to {$media->name}");
-            } else {
-                $this->error("  Failed to change content on device: {$schedule->device->name}");
-                $success = false;
-            }
-        }
-
-        if ($schedule->group && $schedule->group->devices->isNotEmpty()) {
-            $result = $this->z2PlaylistService->assignVideoToGroup($schedule->group->id, $uiCode);
-            if ($result) {
-                $this->info("  Changed content on group: {$schedule->group->name} to {$media->name}");
-            } else {
-                $this->error("  Failed to change content on some devices in group: {$schedule->group->name}");
-                $success = false;
-            }
-        }
-
-        if (!$schedule->device && !$schedule->group) {
-            $this->warn("  Schedule {$schedule->id} has no device or group assigned");
-            return false;
-        }
-
-        return $success;
+        return $result['results'] !== []
+            && ! in_array(false, $result['results'], true);
     }
 
-    /**
-     * Execute campaign activation.
-     */
     private function executeActivateCampaign(Schedule $schedule): bool
     {
-        if (!$schedule->campaign) {
-            $this->error("  Schedule {$schedule->id}: No campaign assigned for activate_campaign type");
+        if ($schedule->campaign === null) {
             return false;
         }
 
-        // If Z2CampaignSyncService is available, activate the campaign through Z2
         try {
-            $syncService = app(Z2CampaignSyncService::class);
-            $syncService->activate($schedule->campaign);
-            $this->info("  Activated campaign: {$schedule->campaign->name}");
-        } catch (\Exception $e) {
-            // Fall back to local activation
-            $schedule->campaign->status = 'active';
-            $schedule->campaign->save();
-            Log::warning('Campaign activated locally but Z2 sync failed', [
+            app(Z2CampaignSyncService::class)->activate($schedule->campaign);
+        } catch (Throwable $exception) {
+            $schedule->campaign->update(['status' => 'active']);
+            Log::warning('Campaign activated locally but cloud sync failed', [
                 'campaign_id' => $schedule->campaign->id,
-                'error' => $e->getMessage(),
+                'error' => $exception->getMessage(),
             ]);
-            $this->warn("  Campaign activated locally but Z2 sync failed: {$e->getMessage()}");
         }
 
         return true;
     }
 
-    /**
-     * Handle unknown schedule type.
-     */
-    private function handleUnknownType(Schedule $schedule): bool
+    /** @return Collection<int, Device> */
+    private function targetDevices(Schedule $schedule): Collection
     {
-        $this->warn("Unknown schedule type: {$schedule->type}");
-        Log::warning('Unknown schedule type encountered', [
-            'schedule_id' => $schedule->id,
-            'type' => $schedule->type,
-        ]);
-        return false;
+        if ($schedule->device !== null) {
+            return new Collection([$schedule->device]);
+        }
+
+        if ($schedule->group !== null) {
+            return $schedule->group->devices
+                ->filter(fn (Device $device): bool => filled($device->mac_address))
+                ->values();
+        }
+
+        // Both target fields empty explicitly means "Todos" in create/edit.
+        return Device::query()
+            ->whereNotNull('mac_address')
+            ->where('mac_address', '!=', '')
+            ->get();
+    }
+
+    private function finishRun(
+        Schedule $schedule,
+        bool $success,
+        CarbonImmutable $ranAt,
+        ?string $error,
+    ): void {
+        $next = $schedule->isRecurring()
+            ? $this->recurrenceService->nextOccurrence($schedule, $ranAt)
+            : null;
+
+        $schedule->executed_at = $ranAt;
+        $schedule->last_run_status = $success ? 'success' : 'failed';
+        $schedule->last_error = $success ? null : $error;
+
+        if ($next !== null) {
+            $schedule->scheduled_at = $next;
+            $schedule->status = 'pending';
+        } else {
+            $schedule->status = $success ? 'executed' : 'failed';
+        }
+
+        $schedule->save();
     }
 }

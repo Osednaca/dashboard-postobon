@@ -35,7 +35,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard.index');
 
-    Route::get('/fleet', [UnifiedFleetController::class, 'index'])->name('fleet.index');
+    Route::redirect('/fleet', '/devices')->name('fleet.index');
     Route::post('/fleet/commands', [UnifiedFleetController::class, 'command'])->name('fleet.command');
     Route::post('/fleet/uploads', [UnifiedFleetController::class, 'upload'])->name('fleet.upload');
 

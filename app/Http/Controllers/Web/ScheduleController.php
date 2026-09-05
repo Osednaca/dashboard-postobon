@@ -13,6 +13,7 @@ use App\Models\Schedule;
 use App\Services\ScheduleService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class ScheduleController extends Controller
@@ -38,7 +39,10 @@ class ScheduleController extends Controller
         $this->authorize('viewAny', Schedule::class);
 
         try {
-            $schedules = Schedule::with(['device', 'group', 'campaign'])->paginate(15);
+            $schedules = Schedule::with(['device', 'group', 'campaign'])
+                ->orderByRaw("CASE WHEN status = 'pending' THEN 0 ELSE 1 END")
+                ->orderBy('scheduled_at')
+                ->paginate(15);
 
             return view('schedules.index', compact('schedules'));
         } catch (\Exception $e) {
@@ -79,6 +83,8 @@ class ScheduleController extends Controller
 
             return redirect()->route('schedules.index')
                 ->with('success', 'Programación creada exitosamente.');
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error('Error al crear programación: ' . $e->getMessage());
 
@@ -130,6 +136,8 @@ class ScheduleController extends Controller
 
             return redirect()->route('schedules.index')
                 ->with('success', 'Programación actualizada exitosamente.');
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error('Error al actualizar programación: ' . $e->getMessage());
 

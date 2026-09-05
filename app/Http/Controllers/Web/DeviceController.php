@@ -13,6 +13,7 @@ use App\Models\Campaign;
 use App\Models\Device;
 use App\Models\Media;
 use App\Services\DeviceService;
+use App\Services\Fleet\UnifiedFleetClient;
 use App\Services\Z2\Z2DeviceService;
 use App\Services\Z2\Z2PlaylistService;
 use App\Services\Z2\Z2VideoService;
@@ -31,6 +32,8 @@ class DeviceController extends Controller
 
     protected Z2VideoService $z2VideoService;
 
+    protected UnifiedFleetClient $unifiedFleetClient;
+
     /**
      * DeviceController constructor.
      */
@@ -38,12 +41,14 @@ class DeviceController extends Controller
         DeviceService $deviceService,
         Z2DeviceService $z2DeviceService,
         Z2PlaylistService $z2PlaylistService,
-        Z2VideoService $z2VideoService
+        Z2VideoService $z2VideoService,
+        UnifiedFleetClient $unifiedFleetClient
     ) {
         $this->deviceService = $deviceService;
         $this->z2DeviceService = $z2DeviceService;
         $this->z2PlaylistService = $z2PlaylistService;
         $this->z2VideoService = $z2VideoService;
+        $this->unifiedFleetClient = $unifiedFleetClient;
     }
 
     /**
@@ -54,10 +59,47 @@ class DeviceController extends Controller
         $this->authorize('viewAny', Device::class);
 
         try {
-            $this->z2DeviceService->syncDevices();
-            $devices = Device::paginate(15);
+            try {
+                $this->z2DeviceService->syncDevices();
+            } catch (\Throwable $exception) {
+                Log::warning('No se pudo actualizar la nube Z2; se mostrarán los datos locales.', [
+                    'error' => $exception->getMessage(),
+                ]);
+            }
 
-            return view('devices.index', compact('devices'));
+            $devices = Device::paginate(15);
+            $wl35Devices = collect();
+            $fleetZ2Devices = collect();
+            $fleetMedia = collect();
+            $gatewayError = null;
+            $gatewayConfigured = $this->unifiedFleetClient->isConfigured();
+
+            try {
+                $fleet = $this->unifiedFleetClient->getFleet();
+                $fleetDevices = collect($fleet['devices'] ?? []);
+                $wl35Devices = $fleetDevices
+                    ->where('type', 'wl35')
+                    ->values();
+                $fleetZ2Devices = $fleetDevices
+                    ->where('type', 'z2')
+                    ->keyBy(fn (array $device): string => strtoupper((string) ($device['id'] ?? '')));
+                $fleetMedia = collect($fleet['media'] ?? [])->values();
+            } catch (\Throwable $exception) {
+                $gatewayError = $exception->getMessage();
+                Log::warning('Los WL35 no pudieron agregarse a la pantalla de dispositivos.', [
+                    'gateway_url' => $this->unifiedFleetClient->baseUrl(),
+                    'error' => $exception->getMessage(),
+                ]);
+            }
+
+            return view('devices.index', compact(
+                'devices',
+                'wl35Devices',
+                'fleetZ2Devices',
+                'fleetMedia',
+                'gatewayError',
+                'gatewayConfigured'
+            ));
         } catch (\Exception $e) {
             Log::error('Error al listar dispositivos: '.$e->getMessage());
 

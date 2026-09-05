@@ -51,6 +51,7 @@ class ScheduleFactory extends Factory
             'scheduled_at' => $scheduledAt,
             'executed_at' => $executedAt,
             'status' => $status,
+            'recurrence_type' => 'once',
         ];
     }
 

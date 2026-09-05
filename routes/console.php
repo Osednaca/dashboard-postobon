@@ -24,7 +24,7 @@ Schedule::command('analytics:generate')->dailyAt('00:00');
 Schedule::command('subscriptions:check')->dailyAt('08:00');
 
 // Process scheduled tasks every minute
-Schedule::command('schedules:process')->everyMinute();
+Schedule::command('schedules:process')->everyMinute()->withoutOverlapping();
 
 // Check offline devices every 10 minutes
 Schedule::command('devices:check-offline')->everyTenMinutes();

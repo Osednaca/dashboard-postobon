@@ -15,9 +15,45 @@ class ScheduleService extends BaseService
      *
      * @param ScheduleRepositoryInterface $scheduleRepository
      */
-    public function __construct(ScheduleRepositoryInterface $scheduleRepository)
-    {
+    public function __construct(
+        ScheduleRepositoryInterface $scheduleRepository,
+        private readonly ScheduleRecurrenceService $recurrenceService,
+    ) {
         parent::__construct($scheduleRepository);
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    public function create(array $data): Model
+    {
+        $data = $this->recurrenceService->prepare($data);
+        $data['status'] = $data['status'] ?? 'pending';
+        $data['executed_at'] = null;
+        $data['last_run_status'] = null;
+        $data['last_error'] = null;
+
+        return $this->repository->create($data);
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    public function update(int|string $id, array $data): ?Model
+    {
+        $schedule = $this->repository->find($id);
+
+        if (! ($schedule instanceof Schedule)) {
+            return null;
+        }
+
+        $data = $this->recurrenceService->prepare($data, $schedule);
+        $data['status'] = 'pending';
+        $data['executed_at'] = null;
+        $data['last_run_status'] = null;
+        $data['last_error'] = null;
+
+        return $this->repository->update($id, $data);
     }
 
     /**

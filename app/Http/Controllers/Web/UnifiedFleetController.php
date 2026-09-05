@@ -8,39 +8,11 @@ use App\Http\Requests\FleetUploadRequest;
 use App\Services\Fleet\UnifiedFleetClient;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Log;
-use Illuminate\View\View;
 use Throwable;
 
 class UnifiedFleetController extends Controller
 {
     public function __construct(private readonly UnifiedFleetClient $fleetClient) {}
-
-    public function index(): View
-    {
-        $fleet = [
-            'devices' => [],
-            'media' => [],
-            'sources' => [],
-        ];
-        $gatewayError = null;
-
-        try {
-            $fleet = array_merge($fleet, $this->fleetClient->getFleet());
-        } catch (Throwable $exception) {
-            $gatewayError = $exception->getMessage();
-            Log::warning('No se pudo consultar la flota unificada.', [
-                'error' => $exception->getMessage(),
-            ]);
-        }
-
-        return view('fleet.index', [
-            'devices' => collect($fleet['devices'] ?? [])->values(),
-            'media' => collect($fleet['media'] ?? [])->values(),
-            'sources' => $fleet['sources'] ?? [],
-            'gatewayError' => $gatewayError,
-            'gatewayConfigured' => $this->fleetClient->isConfigured(),
-        ]);
-    }
 
     public function command(FleetCommandRequest $request): RedirectResponse
     {

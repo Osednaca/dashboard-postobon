@@ -7,17 +7,19 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
-## Flota unificada WL35 + Z2
+## Dispositivos unificados WL35 + Z2
 
-El módulo **Flota unificada** usa `dashboard-fan-wl35` como gateway para consultar y controlar ambos protocolos sin abrir una segunda conexión con los ESP32. Configura en producción:
+La pantalla **Dispositivos** (`/devices`) usa `dashboard-fan-wl35` como gateway para agregar los WL35 a los Z2 existentes y controlar ambos protocolos sin abrir una segunda conexión con los ESP32. Configura en producción:
 
 ```dotenv
-UNIFIED_FLEET_API_URL=http://127.0.0.1:4173
+UNIFIED_FLEET_API_URL=http://IP_O_HOST_DEL_GATEWAY:4173
 UNIFIED_FLEET_API_TOKEN=el-mismo-valor-de-ADMIN_TOKEN-del-gateway
 UNIFIED_FLEET_TIMEOUT=30
 UNIFIED_FLEET_UPLOAD_TIMEOUT=900
 UNIFIED_FLEET_CONNECT_TIMEOUT=10
 ```
+
+Si Laravel y Node corren directamente en el mismo VPS, `http://127.0.0.1:4173` es válido. Si Laravel está dentro de Docker, `127.0.0.1` apunta al contenedor y debes usar el nombre del servicio o la IP del host. Si se omite la variable, Laravel deriva el host desde `PRIVATE_CLOUD_URL` y usa el puerto `4173`.
 
 Después de modificar el `.env`, limpia únicamente la configuración cacheada de Laravel con `php artisan config:clear` (o vuelve a generar el caché con `php artisan config:cache`). El gateway debe permanecer ejecutándose por separado y conservar la conexión exclusiva con los WL35 y la nube privada Z2.
 
