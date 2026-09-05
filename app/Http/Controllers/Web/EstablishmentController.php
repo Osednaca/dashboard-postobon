@@ -46,8 +46,16 @@ class EstablishmentController extends Controller
             ->orderBy('name')
             ->paginate(12, ['*'], 'wl35_page')
             ->withQueryString();
+        $wifiPasswordUnreadable = $establishment->hasUnreadableWifiPassword();
+        $wifiPassword = $establishment->wifi_password;
 
-        return view('establishments.show', compact('establishment', 'z2Devices', 'wl35Devices'));
+        return view('establishments.show', compact(
+            'establishment',
+            'z2Devices',
+            'wl35Devices',
+            'wifiPassword',
+            'wifiPasswordUnreadable',
+        ));
     }
 
     public function store(StoreEstablishmentRequest $request): RedirectResponse

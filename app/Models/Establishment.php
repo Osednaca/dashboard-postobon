@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use Illuminate\Contracts\Encryption\DecryptException;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Crypt;
 
 class Establishment extends Model
 {
@@ -30,8 +33,44 @@ class Establishment extends Model
         return [
             'latitude' => 'decimal:8',
             'longitude' => 'decimal:8',
-            'wifi_password' => 'encrypted',
         ];
+    }
+
+    protected function wifiPassword(): Attribute
+    {
+        return Attribute::make(
+            get: function (?string $value): ?string {
+                if (blank($value)) {
+                    return null;
+                }
+
+                try {
+                    return Crypt::decryptString($value);
+                } catch (DecryptException) {
+                    return null;
+                }
+            },
+            set: fn (?string $value): ?string => filled($value)
+                ? Crypt::encryptString($value)
+                : null,
+        );
+    }
+
+    public function hasUnreadableWifiPassword(): bool
+    {
+        $encryptedPassword = $this->getRawOriginal('wifi_password');
+
+        if (blank($encryptedPassword)) {
+            return false;
+        }
+
+        try {
+            Crypt::decryptString($encryptedPassword);
+
+            return false;
+        } catch (DecryptException) {
+            return true;
+        }
     }
 
     public function businessType(): BelongsTo
