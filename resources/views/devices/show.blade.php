@@ -175,8 +175,10 @@
                         @if(!$device->establishmentProfile && ($device->city || $device->country))
                             <p class="text-xs text-text-light mt-0.5">{{ $device->city ?? '' }}@if($device->city && $device->country), @endif{{ $device->country ?? '' }}</p>
                         @endif
-                        @php($mapLatitude = $device->establishmentProfile?->latitude ?? $device->latitude)
-                        @php($mapLongitude = $device->establishmentProfile?->longitude ?? $device->longitude)
+                        @php
+                            $mapLatitude = $device->establishmentProfile?->latitude ?? $device->latitude;
+                            $mapLongitude = $device->establishmentProfile?->longitude ?? $device->longitude;
+                        @endphp
                         @if($mapLatitude !== null && $mapLongitude !== null)
                             <a href="https://www.google.com/maps?q={{ $mapLatitude }},{{ $mapLongitude }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 font-medium transition-colors mt-1">
                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

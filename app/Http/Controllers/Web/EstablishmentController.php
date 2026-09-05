@@ -33,6 +33,23 @@ class EstablishmentController extends Controller
         ]);
     }
 
+    public function show(Establishment $establishment): View
+    {
+        $this->authorize('view', $establishment);
+        $establishment->load('businessType')->loadCount(['devices', 'wl35DeviceProfiles']);
+
+        $z2Devices = $establishment->devices()
+            ->orderBy('name')
+            ->paginate(12, ['*'], 'z2_page')
+            ->withQueryString();
+        $wl35Devices = $establishment->wl35DeviceProfiles()
+            ->orderBy('name')
+            ->paginate(12, ['*'], 'wl35_page')
+            ->withQueryString();
+
+        return view('establishments.show', compact('establishment', 'z2Devices', 'wl35Devices'));
+    }
+
     public function store(StoreEstablishmentRequest $request): RedirectResponse
     {
         $this->authorize('create', Establishment::class);

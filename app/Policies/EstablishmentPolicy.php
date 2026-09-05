@@ -17,6 +17,11 @@ class EstablishmentPolicy
         return in_array($user->role, ['admin', 'operator'], true);
     }
 
+    public function view(User $user, Establishment $establishment): bool
+    {
+        return in_array($user->role, ['admin', 'operator'], true);
+    }
+
     public function update(User $user, Establishment $establishment): bool
     {
         return in_array($user->role, ['admin', 'operator'], true);

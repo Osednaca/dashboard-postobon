@@ -46,7 +46,7 @@ Route::middleware('auth')->group(function () {
 
     Route::resource('locations', LocationController::class);
     Route::resource('business-types', BusinessTypeController::class)->only(['index', 'store', 'update', 'destroy']);
-    Route::resource('establishments', EstablishmentController::class)->except(['show']);
+    Route::resource('establishments', EstablishmentController::class);
 
     Route::get('devices/wl35/{deviceId}', [Wl35DeviceController::class, 'show'])
         ->where('deviceId', '[A-Za-z0-9_.:-]+')
