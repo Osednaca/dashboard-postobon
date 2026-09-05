@@ -24,6 +24,18 @@ Si Laravel y Node corren directamente en el mismo VPS, `http://127.0.0.1:4173` e
 
 Después de modificar el `.env`, limpia únicamente la configuración cacheada de Laravel con `php artisan config:clear` (o vuelve a generar el caché con `php artisan config:cache`). El gateway debe permanecer ejecutándose por separado y conservar la conexión exclusiva con los WL35 y la nube privada Z2.
 
+`/devices` y `/instant-play` consumen la misma flota unificada. En reproducción instantánea,
+los Z2 reciben el nombre del archivo de la biblioteca y los WL35 reciben el índice numérico del
+video que ya existe en su SD. Una selección masiva mixta envía ambos valores en una sola orden y
+el gateway aplica a cada ventilador el valor correspondiente a su protocolo.
+
+Cada WL35 tiene además una página de detalle accesible desde `/devices`. Allí se muestra el estado
+en vivo y se pueden ejecutar energía, Bluetooth, reproducción, volumen, carga de video, borrado
+individual y formateo de SD. El nombre, establecimiento, dirección, ciudad, país, contacto,
+coordenadas, ubicación, grupo y notas se guardan localmente en `wl35_device_profiles`, por lo que
+siguen visibles aunque el gateway o el ventilador estén desconectados. Después de desplegar esta
+funcionalidad es obligatorio ejecutar `php artisan migrate --force`.
+
 ### Operaciones en segundo plano
 
 Las cargas y los formateos iniciados desde `/devices` se entregan a la cola para evitar que Nginx mantenga abierta una petición durante toda la conversión o el borrado. En Z2 el gateway usa el formateo nativo. En WL35 elimina el último índice disponible y espera la lista multimedia actualizada antes de continuar con el siguiente; distintos ventiladores sí pueden avanzar en paralelo. La configuración de producción debe incluir:

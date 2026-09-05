@@ -62,6 +62,35 @@ class UnifiedFleetClient
         );
     }
 
+    public function deleteWl35Video(string $deviceId, int $index): array
+    {
+        $this->ensureConfigured();
+        $baseUrl = $this->resolveReachableBaseUrl();
+
+        return $this->send(
+            fn (): Response => $this->request(false, $baseUrl)->delete(
+                '/api/devices/'.rawurlencode($deviceId).'/video/'.$index
+            ),
+            "eliminar el video {$index} del WL35",
+            $baseUrl
+        );
+    }
+
+    public function setWl35Volume(string $deviceId, int $volume): array
+    {
+        $this->ensureConfigured();
+        $baseUrl = $this->resolveReachableBaseUrl();
+
+        return $this->send(
+            fn (): Response => $this->request(false, $baseUrl)->post(
+                '/api/devices/'.rawurlencode($deviceId).'/volume',
+                ['value' => $volume],
+            ),
+            'actualizar el volumen del WL35',
+            $baseUrl
+        );
+    }
+
     public function uploadAndDistribute(UploadedFile $file, array $targets): array
     {
         $path = $file->getRealPath();

@@ -15,6 +15,7 @@ use App\Http\Controllers\Web\ScheduleController;
 use App\Http\Controllers\Web\SubscriptionController;
 use App\Http\Controllers\Web\UnifiedFleetController;
 use App\Http\Controllers\Web\UserController;
+use App\Http\Controllers\Web\Wl35DeviceController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -42,6 +43,19 @@ Route::middleware('auth')->group(function () {
     Route::get('/fleet/operations/{fleetOperation}', [UnifiedFleetController::class, 'operationStatus'])->name('fleet.operation.status');
 
     Route::resource('locations', LocationController::class);
+
+    Route::get('devices/wl35/{deviceId}', [Wl35DeviceController::class, 'show'])
+        ->where('deviceId', '[A-Za-z0-9_.:-]+')
+        ->name('devices.wl35.show');
+    Route::patch('devices/wl35/{deviceId}', [Wl35DeviceController::class, 'update'])
+        ->where('deviceId', '[A-Za-z0-9_.:-]+')
+        ->name('devices.wl35.update');
+    Route::delete('devices/wl35/{deviceId}/videos', [Wl35DeviceController::class, 'deleteVideo'])
+        ->where('deviceId', '[A-Za-z0-9_.:-]+')
+        ->name('devices.wl35.videos.destroy');
+    Route::post('devices/wl35/{deviceId}/volume', [Wl35DeviceController::class, 'setVolume'])
+        ->where('deviceId', '[A-Za-z0-9_.:-]+')
+        ->name('devices.wl35.volume');
 
     Route::resource('devices', DeviceController::class);
     Route::post('devices/{device}/power-on', [DeviceController::class, 'powerOn'])->name('devices.power-on');

@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Campaign;
 use App\Models\Device;
 use App\Models\Media;
+use App\Models\Wl35DeviceProfile;
+use App\Services\Fleet\UnifiedFleetClient;
 use App\Services\Z2\Z2DeviceService;
 use App\Services\Z2\Z2PlaylistService;
 use App\Services\Z2\Z2VideoService;
@@ -19,15 +21,18 @@ class InstantPlayController extends Controller
     protected Z2DeviceService $z2DeviceService;
     protected Z2PlaylistService $z2PlaylistService;
     protected Z2VideoService $z2VideoService;
+    protected UnifiedFleetClient $unifiedFleetClient;
 
     public function __construct(
         Z2DeviceService $z2DeviceService,
         Z2PlaylistService $z2PlaylistService,
-        Z2VideoService $z2VideoService
+        Z2VideoService $z2VideoService,
+        UnifiedFleetClient $unifiedFleetClient
     ) {
         $this->z2DeviceService = $z2DeviceService;
         $this->z2PlaylistService = $z2PlaylistService;
         $this->z2VideoService = $z2VideoService;
+        $this->unifiedFleetClient = $unifiedFleetClient;
     }
 
     /**
@@ -44,19 +49,95 @@ class InstantPlayController extends Controller
             ->orderBy('name')
             ->get();
 
-        // Fetch currently playing media for each device
-        $devicesWithPlaying = $devices->map(function (Device $device) {
+        $gatewayError = null;
+        $fleetDevices = collect();
+
+        try {
+            $fleetDevices = collect($this->unifiedFleetClient->getFleet()['devices'] ?? []);
+        } catch (\Throwable $exception) {
+            $gatewayError = $exception->getMessage();
+            Log::warning('Los WL35 no pudieron agregarse a reproducción instantánea.', [
+                'gateway_url' => $this->unifiedFleetClient->baseUrl(),
+                'error' => $exception->getMessage(),
+            ]);
+        }
+
+        $fleetZ2Devices = $fleetDevices
+            ->where('type', 'z2')
+            ->keyBy(fn (array $device): string => strtoupper((string) ($device['id'] ?? '')));
+        $wl35Profiles = Wl35DeviceProfile::with(['location', 'group'])->get()->keyBy('device_id');
+
+        // Normalize local Z2 devices into the same shape used by gateway WL35 devices.
+        $devicesWithPlaying = $devices->map(function (Device $device) use ($fleetZ2Devices) {
             $currentPlaying = null;
             if ($device->mac_address) {
                 $currentPlaying = $this->z2PlaylistService->getCurrentPlaying($device->mac_address);
             }
 
+            $mac = strtoupper(str_replace(':', '', (string) $device->mac_address));
+            $live = $fleetZ2Devices->get($mac, []);
+            $online = $live !== []
+                ? (bool) (($live['online'] ?? false) && ($live['connected'] ?? false))
+                : in_array($device->status, ['active', 'online'], true);
+
             return [
-                'device'          => $device,
-                'currentPlaying'  => $currentPlaying['displayImageId'] ?? null,
-                'playingCount'    => $currentPlaying['playingCount'] ?? '0',
+                'key' => 'z2:'.$mac,
+                'type' => 'z2',
+                'name' => $device->name,
+                'identifier' => $device->mac_address,
+                'online' => $online,
+                'status_label' => $online ? 'En línea' : ucfirst((string) $device->status),
+                'group' => $device->group?->name,
+                'location' => $device->location?->name,
+                'current_playing' => $live['current_video'] ?? $currentPlaying['displayImageId'] ?? null,
+                'video_count' => (int) ($live['video_count'] ?? 0),
             ];
         });
+
+        $wl35Devices = $fleetDevices
+            ->where('type', 'wl35')
+            ->map(function (array $device) use ($wl35Profiles): array {
+                $online = (bool) (($device['online'] ?? false) && ($device['connected'] ?? false));
+                $currentVideo = $device['current_video'] ?? null;
+                $profile = $wl35Profiles->get((string) ($device['id'] ?? ''));
+
+                return [
+                    'key' => (string) ($device['key'] ?? 'wl35:'.($device['id'] ?? '')),
+                    'type' => 'wl35',
+                    'name' => (string) ($profile?->name ?: ($device['name'] ?? $device['id'] ?? 'WL35')),
+                    'identifier' => (string) ($device['id'] ?? ''),
+                    'online' => $online,
+                    'status_label' => $online ? 'En línea' : 'Fuera de línea',
+                    'group' => $profile?->group?->name,
+                    'location' => $profile?->location?->name ?? $device['ip'] ?? null,
+                    'current_playing' => $currentVideo !== null ? 'Video '.$currentVideo : null,
+                    'video_count' => (int) ($device['video_count'] ?? 0),
+                ];
+            });
+
+        $liveWl35Ids = $wl35Devices
+            ->map(fn (array $device): string => substr($device['key'], strlen('wl35:')));
+        $savedOfflineWl35 = $wl35Profiles
+            ->reject(fn (Wl35DeviceProfile $profile): bool => $liveWl35Ids->contains($profile->device_id))
+            ->map(fn (Wl35DeviceProfile $profile): array => [
+                'key' => 'wl35:'.$profile->device_id,
+                'type' => 'wl35',
+                'name' => $profile->name,
+                'identifier' => $profile->device_id,
+                'online' => false,
+                'status_label' => 'Fuera de línea',
+                'group' => $profile->group?->name,
+                'location' => $profile->location?->name,
+                'current_playing' => null,
+                'video_count' => 0,
+            ]);
+
+        $wl35Devices = $wl35Devices->concat($savedOfflineWl35);
+
+        $devicesWithPlaying = $devicesWithPlaying
+            ->concat($wl35Devices)
+            ->sortBy(fn (array $device): string => mb_strtolower($device['name']))
+            ->values();
 
         // Get all synced media (file_path es el filename en la nube privada)
         $allMedia = Media::orderBy('name')
@@ -68,7 +149,12 @@ class InstantPlayController extends Controller
             ->orderBy('name')
             ->get();
 
-        return view('instant-play.index', compact('devicesWithPlaying', 'allMedia', 'campaigns'));
+        return view('instant-play.index', compact(
+            'devicesWithPlaying',
+            'allMedia',
+            'campaigns',
+            'gatewayError'
+        ));
     }
 
     /**

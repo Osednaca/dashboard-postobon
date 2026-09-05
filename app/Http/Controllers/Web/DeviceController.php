@@ -12,6 +12,7 @@ use App\Http\Requests\UpdateDeviceRequest;
 use App\Models\Campaign;
 use App\Models\Device;
 use App\Models\Media;
+use App\Models\Wl35DeviceProfile;
 use App\Services\DeviceService;
 use App\Services\Fleet\UnifiedFleetClient;
 use App\Services\Z2\Z2DeviceService;
@@ -71,6 +72,7 @@ class DeviceController extends Controller
             $wl35Devices = collect();
             $fleetZ2Devices = collect();
             $fleetMedia = collect();
+            $wl35Profiles = Wl35DeviceProfile::with(['location', 'group'])->get()->keyBy('device_id');
             $gatewayError = null;
             $gatewayConfigured = $this->unifiedFleetClient->isConfigured();
 
@@ -79,13 +81,66 @@ class DeviceController extends Controller
                 $fleetDevices = collect($fleet['devices'] ?? []);
                 $wl35Devices = $fleetDevices
                     ->where('type', 'wl35')
+                    ->map(function (array $device) use ($wl35Profiles): array {
+                        $profile = $wl35Profiles->get((string) ($device['id'] ?? ''));
+
+                        return array_merge($device, [
+                            'name' => $profile?->name ?: ($device['name'] ?? $device['id'] ?? 'WL35'),
+                            'profile_location' => $profile?->location?->name,
+                            'profile_location_id' => $profile?->location_id,
+                            'profile_group' => $profile?->group?->name,
+                            'profile_group_id' => $profile?->group_id,
+                            'profile_address' => $profile?->address,
+                        ]);
+                    })
                     ->values();
+
+                $liveWl35Ids = $wl35Devices->pluck('id')->map(fn ($id): string => (string) $id);
+                $savedOfflineWl35 = $wl35Profiles
+                    ->reject(fn (Wl35DeviceProfile $profile): bool => $liveWl35Ids->contains($profile->device_id))
+                    ->map(fn (Wl35DeviceProfile $profile): array => [
+                        'key' => 'wl35:'.$profile->device_id,
+                        'type' => 'wl35',
+                        'id' => $profile->device_id,
+                        'name' => $profile->name,
+                        'online' => false,
+                        'connected' => false,
+                        'power' => false,
+                        'bluetooth' => false,
+                        'current_video' => null,
+                        'video_count' => 0,
+                        'last_seen' => null,
+                        'profile_location' => $profile->location?->name,
+                        'profile_location_id' => $profile->location_id,
+                        'profile_group' => $profile->group?->name,
+                        'profile_group_id' => $profile->group_id,
+                        'profile_address' => $profile->address,
+                    ]);
+                $wl35Devices = $wl35Devices->concat($savedOfflineWl35)->values();
                 $fleetZ2Devices = $fleetDevices
                     ->where('type', 'z2')
                     ->keyBy(fn (array $device): string => strtoupper((string) ($device['id'] ?? '')));
                 $fleetMedia = collect($fleet['media'] ?? [])->values();
             } catch (\Throwable $exception) {
                 $gatewayError = $exception->getMessage();
+                $wl35Devices = $wl35Profiles->map(fn (Wl35DeviceProfile $profile): array => [
+                    'key' => 'wl35:'.$profile->device_id,
+                    'type' => 'wl35',
+                    'id' => $profile->device_id,
+                    'name' => $profile->name,
+                    'online' => false,
+                    'connected' => false,
+                    'power' => false,
+                    'bluetooth' => false,
+                    'current_video' => null,
+                    'video_count' => 0,
+                    'last_seen' => null,
+                    'profile_location' => $profile->location?->name,
+                    'profile_location_id' => $profile->location_id,
+                    'profile_group' => $profile->group?->name,
+                    'profile_group_id' => $profile->group_id,
+                    'profile_address' => $profile->address,
+                ])->values();
                 Log::warning('Los WL35 no pudieron agregarse a la pantalla de dispositivos.', [
                     'gateway_url' => $this->unifiedFleetClient->baseUrl(),
                     'error' => $exception->getMessage(),
