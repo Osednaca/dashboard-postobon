@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\BulkDeviceOperationRequest;
+use App\Http\Requests\BulkAssignMediaRequest;
 use App\Http\Requests\ChangeDeviceGroupRequest;
 use App\Http\Requests\ChangeDeviceLocationRequest;
 use App\Http\Requests\StoreDeviceRequest;
@@ -296,13 +297,9 @@ class DeviceController extends Controller
     /**
      * Assign a media item to multiple devices at once.
      */
-    public function bulkAssignMedia(Request $request): RedirectResponse
+    public function bulkAssignMedia(BulkAssignMediaRequest $request): RedirectResponse
     {
-        $data = $request->validate([
-            'device_ids' => ['required', 'array', 'min:1'],
-            'device_ids.*' => ['integer', 'exists:devices,id'],
-            'media_id' => ['required', 'exists:media,id'],
-        ]);
+        $data = $request->validated();
 
         $media = Media::find($data['media_id']);
         if (! $media) {
@@ -310,25 +307,46 @@ class DeviceController extends Controller
         }
 
         $devices = Device::whereIn('id', $data['device_ids'])->get();
-        $successCount = 0;
-        $failCount = 0;
-
         try {
             foreach ($devices as $device) {
                 $this->authorize('update', $device);
+            }
 
+            $macs = $devices
+                ->pluck('mac_address')
+                ->filter(fn ($mac): bool => is_string($mac) && trim($mac) !== '')
+                ->values()
+                ->all();
+
+            // La migración local -> nube puede cambiar el filename. Se hace
+            // una sola vez y ese mismo nombre remoto se usa para toda la
+            // selección, evitando asignaciones cruzadas entre dispositivos.
+            $assignment = $this->z2DeviceService->changeVideoOnDevices($macs, $media->file_path);
+            $results = $assignment['results'];
+            $successCount = 0;
+            $failCount = 0;
+
+            foreach ($devices as $device) {
                 if (! $device->mac_address) {
                     $failCount++;
 
                     continue;
                 }
 
-                if ($this->z2DeviceService->changeVideo($device->mac_address, $media->file_path)) {
+                if ($results[$device->mac_address] ?? false) {
                     $successCount++;
                 } else {
                     $failCount++;
                 }
             }
+
+            Log::info('Asignación masiva de medio Z2 completada', [
+                'media_id' => $media->id,
+                'cloud_filename' => $assignment['filename'],
+                'device_ids' => $devices->pluck('id')->all(),
+                'success_count' => $successCount,
+                'fail_count' => $failCount,
+            ]);
 
             if ($failCount === 0) {
                 return back()->with('success', "Medio «{$media->name}» asignado a {$successCount} dispositivos correctamente.");

@@ -11,9 +11,10 @@
     showDeleteModal: false, 
     showBulkFormatSdModal: false,
     showBulkAssignMediaModal: false,
+    bulkAssigningMedia: false,
     deleteId: null, 
     deleteName: '',
-    selectedIds: [],
+    selectedIds: {{ Js::from(collect(old('device_ids', []))->map(fn ($id) => (string) $id)->unique()->values()) }},
     showBulkMenu: false,
     bulkGroupId: '',
     bulkLocationId: '',
@@ -24,7 +25,7 @@
         document.getElementById('bulk-operation-form').submit();
     },
     toggleAll() {
-        const checkboxes = document.querySelectorAll('input[name=&quot;device_ids[]&quot;]');
+        const checkboxes = document.querySelectorAll('input[data-device-selector]');
         if (this.selectedIds.length === checkboxes.length) {
             this.selectedIds = [];
         } else {
@@ -176,7 +177,7 @@
                                     (!groupFilter || '{{ $device->group_id }}' === groupFilter)
                                 ">
                                 <td class="px-4 py-4">
-                                    <input type="checkbox" name="device_ids[]" value="{{ $device->id }}" x-model="selectedIds" class="rounded border-border text-primary focus:ring-primary/20">
+                                    <input type="checkbox" data-device-selector value="{{ $device->id }}" x-model="selectedIds" class="rounded border-border text-primary focus:ring-primary/20">
                                 </td>
                                 <td class="px-4 py-4">
                                     <div class="flex items-center gap-3">
@@ -341,7 +342,7 @@
                 </div>
             </div>
             <p class="text-sm text-text-light mb-4">Se reproducirá el medio seleccionado en <strong class="text-text" x-text="selectedIds.length"></strong> dispositivos seleccionados.</p>
-            <form action="{{ route('devices.bulk-assign-media') }}" method="POST" class="space-y-4">
+            <form action="{{ route('devices.bulk-assign-media') }}" method="POST" class="space-y-4" @submit="bulkAssigningMedia = true">
                 @csrf
                 <template x-for="id in selectedIds" :key="id">
                     <input type="hidden" name="device_ids[]" :value="id">
@@ -351,13 +352,13 @@
                     <select id="bulk-media-id" name="media_id" required class="w-full px-4 py-2.5 rounded-lg border border-border text-sm text-text focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all bg-white">
                         <option value="">Seleccionar medio</option>
                         @foreach(App\Models\Media::orderBy('name')->get() as $media)
-                            <option value="{{ $media->id }}">{{ $media->name }}</option>
+                            <option value="{{ $media->id }}" @selected((string) old('media_id') === (string) $media->id)>{{ $media->name }}</option>
                         @endforeach
                     </select>
                 </div>
                 <div class="flex justify-end gap-3">
                     <button type="button" @click="showBulkAssignMediaModal = false" class="px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-text hover:bg-surface transition-colors">Cancelar</button>
-                    <button type="submit" class="px-4 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm shadow-primary/20">Asignar Medio</button>
+                    <button type="submit" :disabled="bulkAssigningMedia" class="px-4 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm shadow-primary/20 disabled:cursor-not-allowed disabled:opacity-60" x-text="bulkAssigningMedia ? 'Asignando…' : 'Asignar Medio'">Asignar Medio</button>
                 </div>
             </form>
         </div>

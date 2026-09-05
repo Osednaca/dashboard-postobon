@@ -247,6 +247,47 @@ class Z2DeviceService
     public function changeVideo(string $mac, string $filename): bool
     {
         $cloudFilename = $this->resolveCloudFilename($mac, $filename);
+
+        return $this->playCloudVideo($mac, $cloudFilename);
+    }
+
+    /**
+     * Asigna exactamente el mismo archivo remoto a varios dispositivos.
+     *
+     * El nombre se resuelve una sola vez porque resolveCloudFilename puede
+     * migrar un archivo local, renombrarlo en la nube y borrar el temporal.
+     * Resolverlo dentro del bucle haría que los siguientes dispositivos
+     * conservaran el nombre local obsoleto.
+     *
+     * @param  array<int, string>  $macs
+     * @return array{filename: string, results: array<string, bool>}
+     */
+    public function changeVideoOnDevices(array $macs, string $filename): array
+    {
+        $macs = array_values(array_unique(array_filter(
+            $macs,
+            fn ($mac): bool => is_string($mac) && trim($mac) !== ''
+        )));
+
+        if ($macs === []) {
+            return ['filename' => basename($filename), 'results' => []];
+        }
+
+        $cloudFilename = $this->resolveCloudFilename($macs[0], $filename);
+        $results = [];
+
+        foreach ($macs as $mac) {
+            $results[$mac] = $this->playCloudVideo($mac, $cloudFilename);
+        }
+
+        return ['filename' => $cloudFilename, 'results' => $results];
+    }
+
+    /**
+     * Envía un filename que ya fue resuelto contra la biblioteca remota.
+     */
+    private function playCloudVideo(string $mac, string $cloudFilename): bool
+    {
         $response = $this->client->post('/api/devices/'.$this->normalizeMac($mac).'/play', ['filename' => $cloudFilename]);
 
         if ($response !== null && ($response['result'] ?? -1) === 0) {
