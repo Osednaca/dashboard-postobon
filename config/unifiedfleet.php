@@ -15,5 +15,6 @@ return [
     'token' => env('UNIFIED_FLEET_API_TOKEN', ''),
     'timeout' => (int) env('UNIFIED_FLEET_TIMEOUT', 30),
     'upload_timeout' => (int) env('UNIFIED_FLEET_UPLOAD_TIMEOUT', 900),
+    'operation_timeout' => (int) env('UNIFIED_FLEET_OPERATION_TIMEOUT', 1800),
     'connect_timeout' => (int) env('UNIFIED_FLEET_CONNECT_TIMEOUT', 10),
 ];

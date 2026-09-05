@@ -24,7 +24,7 @@ class FleetCommandRequest extends FormRequest
         );
 
         return [
-            'command' => ['required', Rule::in(['power', 'bluetooth', 'play'])],
+            'command' => ['required', Rule::in(['power', 'bluetooth', 'play', 'format_sd'])],
             'targets' => ['required', 'array', 'min:1'],
             'targets.*' => ['required', 'string', 'distinct', 'max:160', 'regex:/^(wl35|z2):[A-Za-z0-9_.:-]+$/'],
             'value' => [Rule::requiredIf(in_array($command, ['power', 'bluetooth'], true)), 'nullable', 'boolean'],

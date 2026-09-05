@@ -46,13 +46,17 @@ class UnifiedFleetClient
         throw new RuntimeException(implode(' ', array_unique($errors)));
     }
 
-    public function sendCommand(array $payload): array
+    public function sendCommand(array $payload, bool $longRunning = false): array
     {
         $this->ensureConfigured();
         $baseUrl = $this->resolveReachableBaseUrl();
 
         return $this->send(
-            fn (): Response => $this->request(false, $baseUrl)->post('/api/fleet/commands', $payload),
+            fn (): Response => $this->request(
+                $longRunning,
+                $baseUrl,
+                $longRunning ? (int) config('unifiedfleet.operation_timeout', 1800) : null,
+            )->post('/api/fleet/commands', $payload),
             'enviar la orden a la flota',
             $baseUrl
         );
@@ -60,14 +64,37 @@ class UnifiedFleetClient
 
     public function uploadAndDistribute(UploadedFile $file, array $targets): array
     {
+        $path = $file->getRealPath();
+
+        if ($path === false) {
+            throw new RuntimeException('No fue posible leer el archivo temporal recibido.');
+        }
+
+        return $this->uploadPathAndDistribute(
+            $path,
+            $file->getClientOriginalName(),
+            $targets,
+        );
+    }
+
+    /**
+     * Upload a persisted file and distribute it without depending on the
+     * lifecycle of the original HTTP request.
+     *
+     * @param array<int, string> $targets
+     */
+    public function uploadPathAndDistribute(
+        string $path,
+        string $originalName,
+        array $targets,
+        ?callable $progress = null,
+    ): array {
         $this->ensureConfigured();
         $baseUrl = $this->resolveReachableBaseUrl();
+        $size = filesize($path);
 
-        $path = $file->getRealPath();
-        $size = $file->getSize();
-
-        if ($path === false || $size === false) {
-            throw new RuntimeException('No fue posible leer el archivo temporal recibido.');
+        if ($size === false) {
+            throw new RuntimeException('No fue posible leer el video almacenado para enviarlo al gateway.');
         }
 
         $handle = fopen($path, 'rb');
@@ -77,13 +104,16 @@ class UnifiedFleetClient
         }
 
         $stream = Utils::streamFor($handle);
+        if ($progress !== null) {
+            $progress('uploading_gateway', 25);
+        }
 
         try {
             $upload = $this->send(
                 fn (): Response => $this->request(true, $baseUrl)
                     ->withHeaders([
                         'Content-Length' => (string) $size,
-                        'X-File-Name' => rawurlencode($file->getClientOriginalName()),
+                        'X-File-Name' => rawurlencode($originalName),
                     ])
                     ->withBody($stream, 'video/mp4')
                     ->post('/api/fleet/uploads'),
@@ -100,7 +130,11 @@ class UnifiedFleetClient
             throw new RuntimeException('El gateway recibió el archivo pero no devolvió un identificador de carga.');
         }
 
-        return $this->send(
+        if ($progress !== null) {
+            $progress('distributing', 65);
+        }
+
+        $result = $this->send(
             fn (): Response => $this->request(true, $baseUrl)->post(
                 '/api/fleet/uploads/'.rawurlencode($uploadId).'/distribute',
                 ['targets' => array_values($targets)]
@@ -108,14 +142,24 @@ class UnifiedFleetClient
             'distribuir el video a los equipos seleccionados',
             $baseUrl
         );
+
+        if ($progress !== null) {
+            $progress('finalizing', 92);
+        }
+
+        return $result;
     }
 
-    private function request(bool $longRunning = false, ?string $baseUrl = null): PendingRequest
+    private function request(
+        bool $longRunning = false,
+        ?string $baseUrl = null,
+        ?int $timeout = null,
+    ): PendingRequest
     {
         $request = Http::baseUrl($baseUrl ?? $this->baseUrl())
             ->acceptJson()
             ->connectTimeout((int) config('unifiedfleet.connect_timeout', 10))
-            ->timeout((int) config(
+            ->timeout($timeout ?? (int) config(
                 $longRunning ? 'unifiedfleet.upload_timeout' : 'unifiedfleet.timeout',
                 $longRunning ? 900 : 30
             ));

@@ -16,12 +16,31 @@ UNIFIED_FLEET_API_URL=http://IP_O_HOST_DEL_GATEWAY:4173
 UNIFIED_FLEET_API_TOKEN=el-mismo-valor-de-ADMIN_TOKEN-del-gateway
 UNIFIED_FLEET_TIMEOUT=30
 UNIFIED_FLEET_UPLOAD_TIMEOUT=900
+UNIFIED_FLEET_OPERATION_TIMEOUT=1800
 UNIFIED_FLEET_CONNECT_TIMEOUT=10
 ```
 
 Si Laravel y Node corren directamente en el mismo VPS, `http://127.0.0.1:4173` es válido. Si Laravel está dentro de Docker, `127.0.0.1` apunta al contenedor y debes usar el nombre del servicio o la IP del host. Si se omite la variable, Laravel deriva el host desde `PRIVATE_CLOUD_URL` y usa el puerto `4173`.
 
 Después de modificar el `.env`, limpia únicamente la configuración cacheada de Laravel con `php artisan config:clear` (o vuelve a generar el caché con `php artisan config:cache`). El gateway debe permanecer ejecutándose por separado y conservar la conexión exclusiva con los WL35 y la nube privada Z2.
+
+### Operaciones en segundo plano
+
+Las cargas y los formateos iniciados desde `/devices` se entregan a la cola para evitar que Nginx mantenga abierta una petición durante toda la conversión o el borrado. En Z2 el gateway usa el formateo nativo. En WL35 elimina el último índice disponible y espera la lista multimedia actualizada antes de continuar con el siguiente; distintos ventiladores sí pueden avanzar en paralelo. La configuración de producción debe incluir:
+
+```dotenv
+QUEUE_CONNECTION=database
+DB_QUEUE_RETRY_AFTER=2100
+```
+
+Ejecuta las migraciones y mantén un worker persistente. El timeout del worker debe ser menor que `DB_QUEUE_RETRY_AFTER` y mayor que el timeout del job (1900 segundos):
+
+```bash
+php artisan migrate --force
+php artisan queue:work --queue=default --sleep=2 --tries=1 --timeout=2000
+```
+
+El worker debe administrarse con Supervisor o systemd; no debe depender de una terminal SSH abierta. Para aceptar archivos de hasta 250 MB, configura además `upload_max_filesize` y `post_max_size` en PHP, y `client_max_body_size` en Nginx. El `fastcgi_read_timeout` ya no necesita cubrir la conversión porque esa operación ocurre fuera de la petición HTTP.
 
 ## About Laravel
 

@@ -38,6 +38,8 @@ Route::middleware('auth')->group(function () {
     Route::redirect('/fleet', '/devices')->name('fleet.index');
     Route::post('/fleet/commands', [UnifiedFleetController::class, 'command'])->name('fleet.command');
     Route::post('/fleet/uploads', [UnifiedFleetController::class, 'upload'])->name('fleet.upload');
+    Route::get('/fleet/uploads/{fleetUpload}', [UnifiedFleetController::class, 'uploadStatus'])->name('fleet.upload.status');
+    Route::get('/fleet/operations/{fleetOperation}', [UnifiedFleetController::class, 'operationStatus'])->name('fleet.operation.status');
 
     Route::resource('locations', LocationController::class);
 
