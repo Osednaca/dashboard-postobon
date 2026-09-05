@@ -13,6 +13,7 @@ use App\Http\Controllers\Web\MediaController;
 use App\Http\Controllers\Web\NotificationController;
 use App\Http\Controllers\Web\ScheduleController;
 use App\Http\Controllers\Web\SubscriptionController;
+use App\Http\Controllers\Web\UnifiedFleetController;
 use App\Http\Controllers\Web\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -33,6 +34,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard.index');
+
+    Route::get('/fleet', [UnifiedFleetController::class, 'index'])->name('fleet.index');
+    Route::post('/fleet/commands', [UnifiedFleetController::class, 'command'])->name('fleet.command');
+    Route::post('/fleet/uploads', [UnifiedFleetController::class, 'upload'])->name('fleet.upload');
 
     Route::resource('locations', LocationController::class);
 

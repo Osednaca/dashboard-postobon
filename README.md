@@ -7,6 +7,20 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## Flota unificada WL35 + Z2
+
+El módulo **Flota unificada** usa `dashboard-fan-wl35` como gateway para consultar y controlar ambos protocolos sin abrir una segunda conexión con los ESP32. Configura en producción:
+
+```dotenv
+UNIFIED_FLEET_API_URL=http://127.0.0.1:4173
+UNIFIED_FLEET_API_TOKEN=el-mismo-valor-de-ADMIN_TOKEN-del-gateway
+UNIFIED_FLEET_TIMEOUT=30
+UNIFIED_FLEET_UPLOAD_TIMEOUT=900
+UNIFIED_FLEET_CONNECT_TIMEOUT=10
+```
+
+Después de modificar el `.env`, limpia únicamente la configuración cacheada de Laravel con `php artisan config:clear` (o vuelve a generar el caché con `php artisan config:cache`). El gateway debe permanecer ejecutándose por separado y conservar la conexión exclusiva con los WL35 y la nube privada Z2.
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
