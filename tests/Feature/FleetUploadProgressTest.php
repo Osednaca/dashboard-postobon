@@ -66,6 +66,23 @@ class FleetUploadProgressTest extends TestCase
         $this->assertSame('processing', $upload->fresh()->status);
     }
 
+    public function test_completed_job_preserves_each_device_error_for_the_modal(): void
+    {
+        $user = User::factory()->admin()->create();
+        $upload = $this->upload($user);
+        $upload->update([
+            'status' => 'completed', 'phase' => 'completed', 'progress' => 100,
+            'result' => ['total' => 1, 'succeeded' => 0, 'failed' => 1, 'results' => [
+                ['key' => 'wl35:test', 'id' => 'test', 'success' => false, 'error' => 'timeout waiting for WL35 upload ACK'],
+            ]],
+        ]);
+        Http::fake();
+        $this->actingAs($user)->getJson(route('fleet.upload.status', $upload))
+            ->assertOk()->assertJsonPath('result.failed', 1)
+            ->assertJsonPath('result.results.0.error', 'timeout waiting for WL35 upload ACK');
+        Http::assertNothingSent();
+    }
+
     public function test_job_persists_gateway_correlation_before_starting_distribution(): void
     {
         Storage::fake('local');
