@@ -46,8 +46,12 @@ class DistributeFleetVideoJob implements ShouldQueue
                 Storage::disk('local')->path($upload->file_path),
                 $upload->original_name,
                 $upload->targets,
-                function (string $phase, int $progress) use ($upload): void {
-                    $upload->update(compact('phase', 'progress'));
+                function (string $phase, int $progress, array $metadata = []) use ($upload): void {
+                    $upload->update([
+                        'phase' => $phase,
+                        'progress' => $progress,
+                        'result' => array_merge($upload->result ?? [], $metadata),
+                    ]);
                 },
             );
 

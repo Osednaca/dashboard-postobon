@@ -135,6 +135,7 @@
             this.fleetUpload.progress = payload.progress ?? this.fleetUpload.progress;
             this.fleetUpload.error = payload.error || '';
             this.fleetUpload.result = payload.result || null;
+            this.fleetUpload.transfers = payload.transfers || [];
             if (payload.started_at && this.fleetUpload.elapsed === 0) {
                 this.fleetUpload.elapsed = Math.max(0, Math.floor((Date.now() - new Date(payload.started_at).getTime()) / 1000));
             }
@@ -171,10 +172,17 @@
         }
         return {
             receiving: 'Subiendo al servidor', queued: 'Esperando al procesador', uploading_gateway: 'Enviando al gateway',
-            distributing: 'Convirtiendo y distribuyendo', finalizing: 'Confirmando resultados', completed: 'Distribución completada', failed: 'La distribución falló'
+            distributing: 'Preparando la distribución', converting: 'Convirtiendo el video', relaying: 'Transmitiendo al ventilador', finalizing: 'Confirmando resultados', completed: 'Distribución completada', failed: 'La distribución falló'
         }[this.fleetUpload.phase] || 'Preparando la carga';
     },
     fleetUploadDescription() {
+        const transfers = (this.fleetUpload.transfers || []).filter(item => item.phase === 'relaying');
+        if (transfers.length) {
+            const sent = transfers.reduce((sum, item) => sum + item.bytes, 0) / 1000000;
+            const total = transfers.reduce((sum, item) => sum + item.total_bytes, 0) / 1000000;
+            const speed = transfers.reduce((sum, item) => sum + (item.bytes_per_second || 0), 0) / 1000;
+            return `${sent.toFixed(1)} de ${total.toFixed(1)} MB transmitidos · ${speed.toFixed(0)} kB/s. El WL35 permanece pausado durante este envío.`;
+        }
         if (this.fleetUpload.phase === 'queued' && this.fleetUpload.elapsed > 30) {
             return 'El trabajo sigue esperando al procesador. Si no avanza, el administrador debe revisar el worker de Laravel.';
         }
@@ -186,6 +194,7 @@
             queued: 'El archivo ya está seguro en el VPS y espera su turno en la cola.',
             uploading_gateway: 'El VPS está transfiriendo el archivo al gateway unificado.',
             distributing: 'El gateway prepara cada formato y lo transmite a los ventiladores seleccionados.',
+            converting: 'El servidor está preparando el formato WL35. El ventilador continúa reproduciendo durante la conversión.',
             finalizing: 'Los dispositivos están reportando el resultado final.',
             completed: 'El gateway terminó de procesar los equipos seleccionados.',
             failed: 'El archivo dejó de procesarse. Puedes revisar el detalle e intentarlo de nuevo.'
