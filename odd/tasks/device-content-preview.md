@@ -81,18 +81,19 @@ Follow-up forecast T6–T10: approximately 1000–1700 authored lines including 
   - Save the chosen display name and prevent periodic cloud sync from immediately replacing it; initialize new records from the upstream name while treating existing display names as locally administered.
   - Checks: authorized web update, validation/errors, repeated sync preserves local rename and unrelated fields; isolated functional tests.
   - Verified: focused DeviceNameTest 3 tests/31 assertions; full isolated PHPUnit 80 tests/374 assertions (includes pending PWA, excludes unfinished playback tests); Pint check 2 PHP files, syntax and diff check passed. List/detail/preview already prioritize the local name. No schema change or hardware rename. Authored source/tests/docs:130 lines.
-  - Rollback: local name ownership handling and tests, preserving existing device data. Independent unit ready after `bc02bd1`; no dependency on T7.
+  - Rollback: local name ownership handling and tests, preserving existing device data. Commit `84e2016`; slice `bc02bd1` → `84e2016` (139 authored lines including tracking); no dependency on T7.
 - [ ] T9 — Harden device detail and make unexpected failures diagnosable.
   - Route: delegated; controller/Blade error paths plus container logging/bootstrap require mapping across four or more files.
   - Investigate Z2 detail `/devices/1`, reproduce available data-dependent failures locally, fix demonstrated causes, and preserve useful error logging without secrets. Distinguish invalid/missing data and unavailable upstream from unexpected exceptions; do not invent the exact production exception without evidence.
   - Checks: malformed/nullable telemetry and unavailable upstream render cases, unexpected failure reporting, production-style generic error response and stderr configuration, isolated tests. Exact production record verification remains pending unless authorized evidence becomes available.
   - Rollback: bounded detail resilience and logging diagnostics changes/tests/docs. Commit/slice pending after T8.
-- [ ] T10 — Make the authenticated panel installable as a PWA.
+- [x] T10 — Make the authenticated panel installable as a PWA.
   - Route: delegated; manifest/icons/SW, layouts, JS and tests are non-trivial multi-file changes; dedicated read-only PWA mapping completed.
   - Start at `/dashboard`, standalone display and branded192/512 icons; conditional install affordance with browser support; public offline message only. Do not cache authenticated HTML, API/media contents or mutations; keep normal HTTP error responses visible. HTTPS/localhost requirements documented.
   - Checks: manifest/icon/layout PHP checks; service-worker and install lifecycle Node tests; build/Pint; local browser registration/offline behavior if supported, disclose browser installation limitations.
   - Evidence: https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable ; https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers ; https://web.dev/learn/pwa/installation-prompt .
-  - Rollback: PWA-only assets/registration/layout links and tests; no database data migration. Commit/slice pending after T9.
+  - Verified: focused PwaTest 2 tests/18 assertions; full isolated PHPUnit 77 tests/343 assertions; all Node tests17; build59 modules; Pint and diff check pass. Browser on localhost registered and activated the worker, controlled the page, and showed cache containing only /offline.html. Forced navigation connection failure displayed Spanish offline page; retry returned online; a real HTTP500 response stayed unchanged. No console warnings/errors. Browser tab and temporary server closed. Actual OS installation was not performed.
+  - Authored source/tests/docs:323 lines, generated PNG icons excluded. Rollback: PWA-only assets/registration/layout links and tests; no database data migration. Independent unit ready after `84e2016`; no dependency on T7/T9.
 
 ## Verification and progress
 - Read-only discovery completed; documentation and code support preview of a known source file, not live capture.
