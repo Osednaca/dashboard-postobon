@@ -207,7 +207,7 @@ class DevicePreviewTest extends TestCase
         Wl35DeviceProfile::create(['device_id' => 'fan-a', 'name' => 'Ventilador tienda']);
         Http::fake([
             'gateway.test/api/fleet' => Http::response(['devices' => [$this->active('wl35', 'fan-a', 2)]]),
-            'cloud.test/api/devices*' => Http::response(['devices' => [], 'device' => [
+            'cloud.test/api/devices*' => Http::response(['result' => 0, 'devices' => [], 'device' => [
                 'online' => true, 'power' => 1, 'playlist' => [], 'volume' => 50,
             ]]),
             'cloud.test/api/media' => Http::response(['media' => []]),

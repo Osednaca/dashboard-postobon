@@ -23,7 +23,7 @@ class Z2DeviceService
 {
     private PrivateCloudClient $client;
 
-    public function __construct(PrivateCloudClient $client)
+    public function __construct(PrivateCloudClient $client, private readonly DeviceContentRemovalTracker $removals)
     {
         $this->client = $client;
     }
@@ -195,7 +195,14 @@ class Z2DeviceService
     {
         $response = $this->client->post('/api/devices/'.$this->normalizeMac($mac).'/remove-media', ['filename' => $filename]);
 
-        if ($response !== null && ($response['result'] ?? -1) === 0) {
+        if ($response !== null && ($response['result'] ?? -1) === 0
+            && ($response['removed'] ?? null) === $filename
+            && is_array($response['remainingPlaylist'] ?? null)
+            && array_is_list($response['remainingPlaylist'])
+            && count(array_filter($response['remainingPlaylist'], fn ($item) => ! is_string($item) || $item === '')) === 0
+            && ! in_array($filename, $response['remainingPlaylist'], true)) {
+            $this->removals->accepted($mac, $filename);
+
             return true;
         }
 
@@ -355,9 +362,13 @@ class Z2DeviceService
      */
     public function formatSd(string $mac): bool
     {
+        // Capture only existing reported files; later uploads must stay visible.
+        $files = $this->removals->reportedFiles($mac);
         $response = $this->client->post('/api/devices/'.$this->normalizeMac($mac).'/format-sd');
 
         if ($response !== null && ($response['result'] ?? -1) === 0) {
+            $this->removals->accepted($mac, null, $files);
+
             return true;
         }
 
