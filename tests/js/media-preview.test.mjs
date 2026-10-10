@@ -5,8 +5,9 @@ import { createMediaDurationStore, createMediaPreview, formatDuration } from '..
 function player(known = 0) {
     const video = {
         duration: 3, readyState: 2, currentTime: 0,
-        pauses: 0, loads: 0,
-        pause() { this.pauses++; },
+        pauses: 0, loads: 0, plays: 0, paused: true, ended: false,
+        pause() { this.pauses++; this.paused = true; },
+        play() { this.plays++; this.paused = false; return Promise.resolve(); },
         load() { this.loads++; },
         removeAttribute(name) { this.removed = name; },
     };
@@ -84,6 +85,7 @@ test('loads only visible media and destroys observer, resource and queued retrie
         assert.equal(state.source, null);
         observer.callback([{ isIntersecting: true }]);
         assert.equal(state.source, '/media/42/content');
+        assert.notEqual(observer.disconnected, true);
         state.retry();
         state.destroy();
         ticks.shift()();
@@ -92,6 +94,64 @@ test('loads only visible media and destroys observer, resource and queued retrie
         assert.equal(video.removed, 'src');
     } finally {
         globalThis.IntersectionObserver = previous;
+    }
+});
+
+test('media pauses offscreen and in hidden tabs, resumes previous playback and preserves manual pause', () => {
+    const listeners = new Map();
+    let observer;
+    const previousObserver = globalThis.IntersectionObserver;
+    const previousDocument = globalThis.document;
+    const doc = globalThis.document = {
+        hidden: true,
+        addEventListener: (name, callback) => listeners.set(name, callback),
+        removeEventListener: name => listeners.delete(name),
+    };
+    globalThis.IntersectionObserver = class {
+        constructor(callback) { this.callback = callback; observer = this; }
+        observe() {}
+        disconnect() { this.disconnected = true; }
+    };
+    try {
+        const { state, video, ticks } = player();
+        state.init();
+        observer.callback([{ isIntersecting: true }]);
+        assert.equal(state.source, null);
+        doc.hidden = false;
+        listeners.get('visibilitychange')();
+        assert.equal(state.source, '/media/42/content');
+        assert.equal(video.plays, 0);
+        video.play();
+        observer.callback([{ isIntersecting: false }]);
+        assert.equal(video.paused, true);
+        doc.hidden = true;
+        listeners.get('visibilitychange')();
+        observer.callback([{ isIntersecting: true }]);
+        assert.equal(video.plays, 1);
+        doc.hidden = false;
+        listeners.get('visibilitychange')();
+        assert.equal(video.plays, 2);
+        video.pause();
+        observer.callback([{ isIntersecting: false }]);
+        observer.callback([{ isIntersecting: true }]);
+        assert.equal(video.plays, 2);
+        observer.callback([{ isIntersecting: false }]);
+        state.fail();
+        state.retry();
+        ticks.shift()();
+        ticks.shift()();
+        assert.equal(state.source, null);
+        observer.callback([{ isIntersecting: true }]);
+        assert.equal(state.source, '/media/42/content');
+        state.destroy();
+        assert.equal(listeners.size, 0);
+        assert.equal(observer.disconnected, true);
+        const plays = video.plays;
+        observer.callback([{ isIntersecting: true }]);
+        assert.equal(video.plays, plays);
+    } finally {
+        globalThis.IntersectionObserver = previousObserver;
+        globalThis.document = previousDocument;
     }
 });
 

@@ -25,6 +25,22 @@ Current authorized follow-up: remove dashboard previews, add campaign previews, 
 
 Follow-up forecast T6–T10: approximately 1000–1700 authored lines including regression tests and docs, generated icons excluded. Existing feature-branch-chain decision retained. Each task has one coherent work-unit boundary; the 400-line target is advisory, never a code compression requirement.
 ## Tasks and acceptance
+- [x] T11 — Make shared previews square and reduce unnecessary playback work.
+  - Authorized follow-up: square 1:1 previews across device/campaign/media UI, including WL35; improve loading without modifying the source sent to hardware. Dashboard preview remains removed per earlier user instruction.
+  - Route: delegated; shared Blade players, JavaScript lifecycle and regression tests require multiple non-trivial files. Mapping found aspect-video for library/campaign and a max-height conflicting with square device sizing; device players load/play outside viewport. No ffmpeg dependency exists in deployment.
+  - Implement bounded square object-contain players, defer offscreen sources and pause when offscreen/hidden while preserving same-source playback and manual pause. Use existing media lazy-loading; improve only demonstrated lifecycle gaps. Compression was an optional suggestion; no original transcoding or new infrastructure required.
+  - Checks: PHP render, JS visibility/source/retry/lifecycle behavior, build and local browser dimensions/playback. Rollback: shared preview components/modules and corresponding tests/docs.
+  - Verified: focused PHP12 tests/89 assertions, all JS27 tests, Pint2 PHP files and build61 modules passed. Browser: desktop448x448; mobile library335x335, device331x331, image375x375. Device src remained unset offscreen, loaded and played on entry, paused on exit without reset; library manual pause survived exit/reentry. No console errors. Original files unchanged; no claimed byte-size reduction. Temporary preview server/tab closed.
+  - Authored source/tests/docs:284 lines. RDD disabled/unmanaged; independent work-unit boundary follows eb97fe8. Parent reviewed visibility lifecycle, source switching and shared layout.
+- [ ] T12 — Add WL35 library selection and display known filenames.
+  - Route: delegated; controller/detail UI/mapping behavior and tests span four or more files. Reuse existing upload/play semantics and tracking; retain file upload from computer.
+  - Display mapped media names/filenames rather than generic numbering wherever a reliable mapping exists, including future direct file uploads after a confirmed index. Explicitly state when a historical file name is unavailable, retaining index as secondary control identity. Never guess a filename from playlist ordering.
+  - Checks: isolated WL35 detail and library dispatch, known/unknown/stale mapping cases, existing file upload regression, full functional checks. No live fan commands. Rollback: WL35 library selector/name resolution and matching tests/docs.
+- [ ] T13 — Restore WL35 location map and contain dashboard map layering.
+  - Route: delegated; mapping across controller/profile/location/detail/dashboard found no WL35 map markup and Leaflet panes escaping the dashboard container stacking context.
+  - Reuse existing establishment map pattern; select a complete valid coordinate pair from establishment, then legacy profile/location, accepting zero. Show useful missing-location state. Isolate dashboard map below mobile menu without changing unrelated map inventory.
+  - Checks: coordinate priority/validation/fallback, missing coordinates and offline detail, dashboard container rendering, local mobile browser menu hit-testing. Rollback: map component/integration, dashboard map class and tests/docs.
+
 - [x] T1 — Resolve reported content and serve its available video through authorized read endpoints.
   - Route: delegated; preparation + 2+ non-trivial source/test files.
   - Exact Z2 filename mapping and device-specific WL35 index mapping; batch dashboard resolution; no desired-content fallback.
@@ -114,3 +130,5 @@ Follow-up forecast T6–T10: approximately 1000–1700 authored lines including 
 
 - T6-T10 implementation and local verification complete. Name overwrite by periodic Z2 sync is demonstrated; actual hardware truncation and historical production500 causes remain unconfirmed. Production browser verified record58702 preview/duration and device1 now opens. No production mutation or deployment was performed. PWA OS installation and Docker image execution remain untested. Engram mirror pending/unavailable.
 - Running authored count through ef3c5bd:4091 (3356 through dbb4900 +735 T7), generated icons/assets excluded. This tracking-only closure adds4 changed lines, total4095. Next step: push completed work units to the already-authorized GitHub origin using Git Credential Manager and verify its hash. Deployment and real hardware playback remain operational next steps outside this browser read-only authorization; no PR created.
+
+- Follow-up T11–T13 authorized and tracked before source writes. Forecast 650–1000 additional authored lines; existing feature-branch-chain strategy retained, no PR requested. TDD OFF by explicit user choice; runner php artisan test plus node --test tests/js/*.test.mjs, Pint and npm run build. RDD status rechecked: OFF globally. Engram tools unavailable, full mirror still pending. Previous eb97fe8 push and matching remote hash were observed. Preserve unrelated dirty docs/DESPLIEGUE_LATENCIA.md and private-cloud. No additional production or hardware access authorized.

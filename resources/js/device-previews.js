@@ -1,3 +1,5 @@
+import { initiallyVisible, observePreviewVisibility } from './preview-visibility.js';
+
 export const previewLabels = {
     ready: 'Video actual',
     offline: 'Fuera de línea',
@@ -16,34 +18,61 @@ export function applyVideoSource(video, url) {
     if (next) video.setAttribute('src', next);
     else video.removeAttribute('src');
     video.load();
-    if (next) video.play()?.catch(() => {});
     return true;
 }
 
 export function createPreviewPlayer() {
+    let stopObserving;
     return {
         source: null,
         error: false,
+        inViewport: initiallyVisible(),
+        resumePlayback: false,
+        destroyed: false,
         init() {
             this.$nextTick(() => {
+                if (this.destroyed) return;
+                stopObserving = observePreviewVisibility(this.$refs.video.parentElement, visible => {
+                    this.inViewport = visible;
+                    this.syncPlayback();
+                });
                 this.update(this.device);
                 this.$watch('device', device => this.update(device));
-                this.$watch('visible', visible => {
-                    if (!visible) this.$refs.video.pause();
-                    else if (this.source && !this.error) this.$refs.video.play()?.catch(() => {});
-                });
+                this.$watch('visible', () => this.syncPlayback());
             });
         },
         update(device) {
+            if (this.destroyed) return;
             const next = device.status === 'ready' ? device.url : null;
-            if (next !== this.source) this.error = false;
+            if (next !== this.source) {
+                this.error = false;
+                this.resumePlayback = false;
+                // Release old content immediately, but defer the new request until visible.
+                if (!this.inViewport || !this.visible) applyVideoSource(this.$refs.video, null);
+            }
             this.source = next;
-            applyVideoSource(this.$refs.video, next);
-            if (!this.visible) this.$refs.video.pause();
+            if (!next) applyVideoSource(this.$refs.video, null);
+            this.syncPlayback();
+        },
+        syncPlayback() {
+            if (this.destroyed) return;
+            const video = this.$refs.video;
+            if (!this.inViewport || !this.visible) {
+                this.resumePlayback ||= !video.paused && !video.ended;
+                video.pause();
+                return;
+            }
+            if (!this.source || this.error) return;
+            const changed = applyVideoSource(video, this.source);
+            if (changed || this.resumePlayback) {
+                this.resumePlayback = false;
+                video.play()?.catch(() => {});
+            }
         },
         failed() {
             if (this.source) {
                 this.error = true;
+                this.resumePlayback = false;
                 this.$refs.video.pause();
             }
         },
@@ -53,6 +82,8 @@ export function createPreviewPlayer() {
             this.update(this.device);
         },
         destroy() {
+            this.destroyed = true;
+            stopObserving?.();
             applyVideoSource(this.$refs.video, null);
         },
     };

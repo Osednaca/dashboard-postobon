@@ -219,7 +219,7 @@ class DevicePreviewTest extends TestCase
         foreach ([route('devices.show', $device), route('devices.wl35.show', 'fan-a')] as $url) {
             $this->get($url)->assertOk()->assertSee('Vista previa del contenido')
                 ->assertSee('devicePreviews(')->assertSee(Js::from(route('devices.previews'))->toHtml(), false)
-                ->assertSee('autoplay muted loop playsinline controls', false);
+                ->assertSee('muted loop playsinline controls', false)->assertDontSee('autoplay', false);
         }
     }
 }
