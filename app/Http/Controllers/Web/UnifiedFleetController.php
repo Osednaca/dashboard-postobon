@@ -9,6 +9,7 @@ use App\Jobs\DistributeFleetVideoJob;
 use App\Jobs\FormatFleetStorageJob;
 use App\Models\FleetOperation;
 use App\Models\FleetUpload;
+use App\Models\Media;
 use App\Services\Fleet\UnifiedFleetClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -60,7 +61,8 @@ class UnifiedFleetController extends Controller
         $file = $request->file('video');
         $targets = $request->validated('targets');
         $uploadId = (string) Str::uuid();
-        $originalName = Str::limit($file->getClientOriginalName(), 250, '');
+        $media = $request->filled('media_id') ? Media::findOrFail($request->validated('media_id')) : null;
+        $originalName = Str::limit($file?->getClientOriginalName() ?? $media->original_name ?? $media->name.'.mp4', 250, '');
         $storedPath = null;
         $upload = null;
 
@@ -69,7 +71,8 @@ class UnifiedFleetController extends Controller
                 throw new \RuntimeException('La distribución en segundo plano requiere QUEUE_CONNECTION=database o redis.');
             }
 
-            $storedPath = $file->storeAs('fleet-uploads', $uploadId.'.mp4', 'local');
+            $storedPath = $file !== null ? $file->storeAs('fleet-uploads', $uploadId.'.mp4', 'local')
+                : 'fleet-uploads/'.$uploadId.'.mp4';
 
             if (! is_string($storedPath)) {
                 throw new \RuntimeException('No fue posible guardar temporalmente el video recibido.');
@@ -78,9 +81,11 @@ class UnifiedFleetController extends Controller
             $upload = FleetUpload::create([
                 'id' => $uploadId,
                 'user_id' => $request->user()->id,
+                'source_media_id' => $media?->id,
                 'original_name' => $originalName,
                 'file_path' => $storedPath,
                 'targets' => array_values($targets),
+                'play_after_upload' => false,
                 'status' => 'queued',
                 'phase' => 'queued',
                 'progress' => 15,
@@ -114,11 +119,11 @@ class UnifiedFleetController extends Controller
             if ($request->expectsJson()) {
                 return response()->json([
                     'success' => false,
-                    'message' => $exception->getMessage(),
+                    'message' => 'No fue posible iniciar la carga. Inténtalo nuevamente o avisa al administrador.',
                 ], 500);
             }
 
-            return back()->withInput()->with('error', $exception->getMessage());
+            return back()->withInput()->with('error', 'No fue posible iniciar la carga. Inténtalo nuevamente o avisa al administrador.');
         }
     }
 

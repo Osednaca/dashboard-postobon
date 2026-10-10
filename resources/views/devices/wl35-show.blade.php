@@ -120,7 +120,7 @@
                     <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Energía</dt><dd class="mt-1 text-sm font-semibold {{ $powered ? 'text-success' : 'text-text-light' }}">{{ $powered ? 'Encendido' : 'Apagado' }}</dd></div>
                     <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Bluetooth</dt><dd class="mt-1 text-sm font-semibold {{ $bluetooth ? 'text-primary' : 'text-text-light' }}">{{ $bluetooth ? 'Activo' : 'Inactivo' }}</dd></div>
                     <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Sesión con el fan</dt><dd class="mt-1 text-sm font-semibold {{ $sessionReady ? 'text-success' : 'text-warning' }}">{{ $sessionReady ? 'Lista' : 'No disponible' }}</dd></div>
-                    <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Video actual</dt><dd class="mt-1 text-sm font-semibold text-text">{{ $currentVideo !== null ? 'Video '.$currentVideo : '—' }}</dd></div>
+                    <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Video actual</dt><dd class="mt-1 break-words text-sm font-semibold text-text">{{ $currentVideo !== null ? ($videoNames->get((int) $currentVideo) ?? 'Nombre de archivo no identificado').' · índice '.$currentVideo : '—' }}</dd></div>
                     <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Videos en SD</dt><dd class="mt-1 text-sm font-semibold tabular-nums text-text">{{ $videoCount }}</dd></div>
                     <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Transferencia</dt><dd class="mt-1 text-sm font-semibold {{ $uploading ? 'text-warning' : 'text-text' }}">{{ $uploading ? 'En curso' : 'Disponible' }}</dd></div>
                 </dl>
@@ -158,14 +158,25 @@
                     </form>
                 </div>
 
-                <form action="{{ route('fleet.upload') }}" method="POST" enctype="multipart/form-data" class="mt-5 rounded-xl border border-dashed border-border p-4">
+                <form action="{{ route('fleet.upload') }}" method="POST" enctype="multipart/form-data" x-data="{ source: @js(old('media_id') ? 'library' : 'file') }" class="mt-5 rounded-xl border border-dashed border-border p-4">
                     @csrf
                     <input type="hidden" name="targets[]" value="{{ $fleetKey }}">
                     <label for="wl35_video_upload" class="block text-sm font-semibold text-text">Subir un video a este WL35</label>
-                    <p class="mt-1 text-xs text-text-muted">El MP4 se guardará en el VPS y la conversión continuará en segundo plano.</p>
+                    <p class="mt-1 text-xs text-text-muted">La carga y conversión continúan en segundo plano. Esta acción no inicia la reproducción.</p>
+                    <fieldset class="mt-4 flex flex-wrap gap-4 text-sm text-text">
+                        <legend class="mb-2 text-xs font-medium text-text-muted">Origen del video</legend>
+                        <label class="flex items-center gap-2"><input type="radio" x-model="source" value="file" class="text-primary">Desde este equipo</label>
+                        <label class="flex items-center gap-2"><input type="radio" x-model="source" value="library" class="text-primary">Desde la biblioteca</label>
+                    </fieldset>
                     <div class="mt-4 flex flex-col gap-3 sm:flex-row">
-                        <input id="wl35_video_upload" type="file" name="video" accept="video/mp4,.mp4" required @disabled(!$online || !$sessionReady || $uploading)
+                        <input x-show="source === 'file'" id="wl35_video_upload" type="file" name="video" accept="video/mp4,.mp4" :required="source === 'file'" :disabled="source !== 'file' || @js(!$online || !$sessionReady || $uploading)"
                             class="min-w-0 flex-1 rounded-lg border border-border bg-surface text-sm text-text file:mr-3 file:border-0 file:bg-secondary file:px-3 file:py-2.5 file:font-semibold file:text-white disabled:opacity-40">
+                        <select x-show="source === 'library'" x-cloak name="media_id" :required="source === 'library'" :disabled="source !== 'library' || @js(!$online || !$sessionReady || $uploading)" aria-label="Video de la biblioteca" class="min-w-0 flex-1 rounded-lg border border-border bg-white px-3 py-2.5 text-sm text-text">
+                            <option value="">Seleccionar video MP4</option>
+                            @foreach($libraryMedia as $mediaItem)
+                                <option value="{{ $mediaItem->id }}" @selected((string) old('media_id') === (string) $mediaItem->id)>{{ $mediaItem->original_name ?: $mediaItem->name }}</option>
+                            @endforeach
+                        </select>
                         <button @disabled(!$online || !$sessionReady || $uploading) class="rounded-lg bg-secondary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-secondary/90 disabled:cursor-not-allowed disabled:opacity-40">Subir y distribuir</button>
                     </div>
                 </form>
@@ -193,7 +204,7 @@
                                         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                                     </div>
                                     <div>
-                                        <p class="text-sm font-semibold text-text">Video {{ $index }}</p>
+                                        <p class="break-words text-sm font-semibold text-text">{{ $videoNames->get($index) ?? 'Nombre de archivo no identificado' }}</p>
                                         <p class="text-xs text-text-muted">Índice {{ $index }}{{ (int) $currentVideo === $index ? ' · en reproducción' : '' }}</p>
                                     </div>
                                 </div>
@@ -225,6 +236,7 @@
                     </div>
                 @endif
             </section>
+            <x-device-location-map :profile="$profile" :device-name="$displayName" />
         </div>
 
         <aside>

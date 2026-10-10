@@ -7,6 +7,7 @@ use App\Models\Wl35DeviceMedia;
 use App\Services\Fleet\MediaPreviewSource;
 use App\Services\Fleet\MediaSourceMaterializer;
 use App\Services\Fleet\UnifiedFleetClient;
+use App\Services\Fleet\Wl35MediaMapping;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -114,7 +115,7 @@ class PlayFleetMediaJob implements ShouldQueue
                         true,
                     );
                     $distributionResults = $distribution['results'] ?? [];
-                    $this->rememberWl35Indexes($distributionResults, $media->id);
+                    app(Wl35MediaMapping::class)->remember($distributionResults, $distributionTargets, $media->id, $upload->original_name);
                     $results = array_merge($results, $distributionResults);
                 } catch (Throwable $exception) {
                     Log::error('Falló la rama de carga para reproducción instantánea.', [
@@ -216,39 +217,6 @@ class PlayFleetMediaJob implements ShouldQueue
         }
 
         return [$results, $remaining->keys()->values()->all()];
-    }
-
-    /** @param array<int, array<string, mixed>> $results */
-    private function rememberWl35Indexes(array $results, int $mediaId): void
-    {
-        collect($results)
-            ->filter(fn ($result): bool => is_array($result)
-                && (($result['success'] ?? false) === true || ($result['uploaded'] ?? false) === true)
-                && ($result['type'] ?? null) === 'wl35'
-                && filter_var($result['video_index'] ?? null, FILTER_VALIDATE_INT) !== false
-                && (int) $result['video_index'] > 0)
-            ->each(function (array $result) use ($mediaId): void {
-                $deviceId = (string) ($result['id'] ?? '');
-                $videoIndex = (int) $result['video_index'];
-
-                try {
-                    Wl35DeviceMedia::where('device_id', $deviceId)
-                        ->where('video_index', $videoIndex)
-                        ->where('media_id', '!=', $mediaId)
-                        ->delete();
-                    Wl35DeviceMedia::updateOrCreate(
-                        ['device_id' => $deviceId, 'media_id' => $mediaId],
-                        ['video_index' => $videoIndex],
-                    );
-                } catch (Throwable $exception) {
-                    Log::error('El video se cargó, pero no fue posible guardar su índice WL35.', [
-                        'device_id' => $deviceId,
-                        'media_id' => $mediaId,
-                        'video_index' => $videoIndex,
-                        'error' => $exception->getMessage(),
-                    ]);
-                }
-            });
     }
 
     /** @return array<int, array<string, mixed>> */

@@ -31,9 +31,9 @@
                     </div>
                     <span class="h-2 w-2 shrink-0 rounded-full" :class="device.status === 'ready' && !error ? 'bg-success' : 'bg-text-muted'" aria-hidden="true"></span>
                 </div>
-                <div class="relative aspect-square w-full bg-black {{ $deviceKey ? 'max-h-[28rem]' : '' }}">
+                <div class="relative mx-auto aspect-square w-full max-w-[28rem] bg-black">
                     <video x-ref="video" x-show="device.status === 'ready' && !error" x-on:error="failed()"
-                        autoplay muted loop playsinline controls preload="metadata" :aria-label="'Vista previa de ' + device.name"
+                        x-on:play="syncPlayback()" muted loop playsinline controls preload="metadata" :aria-label="'Vista previa de ' + device.name"
                         class="h-full w-full object-contain"></video>
                     <div x-show="device.status !== 'ready' || error" class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-50 p-6 text-center">
                         <svg class="h-9 w-9 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
