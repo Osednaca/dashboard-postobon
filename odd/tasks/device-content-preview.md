@@ -70,17 +70,18 @@ Follow-up forecast T6–T10: approximately 1000–1700 authored lines including 
   - Dashboard contains no preview players or preview polling; device detail and media library remain; campaign detail previews its configured content using existing authenticated media component, without claiming that planned content is playing on hardware.
   - Checks: focused page render tests, existing preview JS tests, production build and local browser fixtures if feasible.
   - Verified: focused campaign render checks 2 tests/21 assertions; full isolated PHPUnit 75 tests/325 assertions; Node preview suites 11 tests; build 58 modules; Pint 2 PHP files and diff check passed. Parent inspected exact Blade changes and assertions. Browser reuse: shared player behavior was validated in T5; no new browser fixture for campaign tab.
-  - Authored source/tests/docs: 108 lines. Rollback: dashboard/campaign placement and corresponding regression tests/docs only. Commit/slice ready after `7e743db`.
+  - Authored source/tests/docs: 108 lines. Rollback: dashboard/campaign placement and corresponding regression tests/docs only. Commit `bc02bd1`; slice `7e743db` → `bc02bd1` (144 lines including tracking).
 - [ ] T7 — Preserve complete media playback from device assignment/actions.
   - Route: delegated; compare web controllers, jobs, gateway/client and local provider source; multiple non-trivial changes expected.
   - Establish a code-supported difference from working `/instant-play`; align source/duration transfer behavior and error handling without guessing that a 10-second observation proves server truncation.
   - Checks: isolated functional HTTP payload/flow regression for a 28-second video and rejected dispatch, existing fleet upload/progress cases. No live device commands.
   - Rollback: bounded device playback dispatch flow and tests. Commit/slice pending after T6.
-- [ ] T8 — Keep user-edited device names across synchronization.
+- [x] T8 — Keep user-edited device names across synchronization.
   - Route: delegated; service/controller/storage behavior and tests require multiple non-trivial files.
-  - Save the chosen display name and prevent periodic cloud sync from immediately replacing it; retain sensible upstream naming for devices without user overrides.
+  - Save the chosen display name and prevent periodic cloud sync from immediately replacing it; initialize new records from the upstream name while treating existing display names as locally administered.
   - Checks: authorized web update, validation/errors, repeated sync preserves local rename and unrelated fields; isolated functional tests.
-  - Rollback: local name ownership handling and tests, preserving existing device data. Commit/slice pending after T7.
+  - Verified: focused DeviceNameTest 3 tests/31 assertions; full isolated PHPUnit 80 tests/374 assertions (includes pending PWA, excludes unfinished playback tests); Pint check 2 PHP files, syntax and diff check passed. List/detail/preview already prioritize the local name. No schema change or hardware rename. Authored source/tests/docs:130 lines.
+  - Rollback: local name ownership handling and tests, preserving existing device data. Independent unit ready after `bc02bd1`; no dependency on T7.
 - [ ] T9 — Harden device detail and make unexpected failures diagnosable.
   - Route: delegated; controller/Blade error paths plus container logging/bootstrap require mapping across four or more files.
   - Investigate Z2 detail `/devices/1`, reproduce available data-dependent failures locally, fix demonstrated causes, and preserve useful error logging without secrets. Distinguish invalid/missing data and unavailable upstream from unexpected exceptions; do not invent the exact production exception without evidence.

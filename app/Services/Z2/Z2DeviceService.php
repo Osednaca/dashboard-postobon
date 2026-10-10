@@ -61,7 +61,7 @@ class Z2DeviceService
 
             $devicesToUpsert[] = [
                 'mac_address' => $mac,
-                'name' => $data['name'] && $data['name'] !== $mac ? $data['name'] : 'Device '.$mac,
+                'name' => ! empty($data['name']) && $data['name'] !== $mac ? $data['name'] : 'Device '.$mac,
                 'firmware' => (string) ($data['version'] ?? ''),
                 'hardware' => (string) ($data['hardVersion'] ?? ''),
                 'rpm' => isset($data['speed']) ? (float) $data['speed'] : null,
@@ -82,10 +82,11 @@ class Z2DeviceService
         }
 
         if (! empty($devicesToUpsert)) {
+            // El nombre de la nube inicializa equipos nuevos; los existentes se administran en el panel.
             Device::upsert(
                 $devicesToUpsert,
                 ['mac_address'],
-                ['name', 'firmware', 'hardware', 'rpm', 'status', 'last_heartbeat_at', 'power_status', 'bluetooth_status']
+                ['firmware', 'hardware', 'rpm', 'status', 'last_heartbeat_at', 'power_status', 'bluetooth_status']
             );
         }
 
