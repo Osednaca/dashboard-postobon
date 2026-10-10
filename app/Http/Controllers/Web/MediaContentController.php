@@ -16,8 +16,8 @@ class MediaContentController extends Controller
     {
         $this->authorize('view', $media);
         $source = $sources->resolve($media);
-        abort_if($source === null, 404, 'Archivo de video no disponible.');
-        $headers = ['Content-Type' => $media->mime_type, 'Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff'];
+        abort_if($source === null, 404, 'Archivo no disponible.');
+        $headers = ['Content-Type' => $source['mime_type'], 'Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff'];
         if ($source['kind'] === 'local') {
             return response()->file($source['path'], $headers);
         }

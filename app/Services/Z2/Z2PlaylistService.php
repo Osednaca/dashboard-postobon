@@ -9,9 +9,9 @@ use Illuminate\Support\Facades\Log;
 /**
  * Adaptador de playlists/contenido sobre la nube privada (fan-private-cloud).
  *
- * En la nube privada no existe "playlist" persistente como en Z2; el video en
- * reproducción es la telemetría displayImageId y asignar contenido equivale a
- * enviar el comando "play" con el filename.
+ * La nube conserva la playlist de telemetría y puede modificarla antes de que
+ * el hardware procese una solicitud. El video actual procede de displayImageId;
+ * asignar contenido envía el comando "play" con el filename.
  */
 class Z2PlaylistService
 {
@@ -19,28 +19,25 @@ class Z2PlaylistService
 
     private Z2DeviceService $deviceService;
 
-    public function __construct(PrivateCloudClient $client, Z2DeviceService $deviceService)
+    public function __construct(PrivateCloudClient $client, Z2DeviceService $deviceService, private readonly DeviceContentRemovalTracker $removals)
     {
         $this->client = $client;
         $this->deviceService = $deviceService;
     }
 
     /**
-     * Playlist del dispositivo desde la telemetría en vivo.
+     * Playlist consultada, separando solicitudes de eliminación aún pendientes.
      *
      * @return array<int, string>
      */
     public function getDevicePlaylist(string $mac): array
     {
-        $response = $this->client->get('/api/devices/'.$this->normalizeMac($mac));
+        return $this->getDevicePlaylistState($mac)['playlist'];
+    }
 
-        if ($response === null || ! isset($response['device'])) {
-            return [];
-        }
-
-        $playlist = $response['device']['playlist'] ?? [];
-
-        return is_array($playlist) ? array_values(array_filter($playlist, fn ($f) => $f !== '')) : [];
+    public function getDevicePlaylistState(string $mac): array
+    {
+        return $this->removals->state($mac);
     }
 
     /**

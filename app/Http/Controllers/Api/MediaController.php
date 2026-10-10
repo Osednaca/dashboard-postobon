@@ -17,19 +17,10 @@ use Illuminate\Http\Request;
 
 class MediaController extends Controller
 {
-    /**
-     * @var MediaService
-     */
     protected MediaService $mediaService;
 
-    /**
-     * @var CampaignService
-     */
     protected CampaignService $campaignService;
 
-    /**
-     * @var Z2VideoService
-     */
     protected Z2VideoService $z2VideoService;
 
     /**
@@ -90,6 +81,7 @@ class MediaController extends Controller
     {
         try {
             $this->authorize('view', $media);
+
             return response()->json($media);
         } catch (\Exception $e) {
             return response()->json([
@@ -124,7 +116,6 @@ class MediaController extends Controller
     {
         try {
             $this->authorize('delete', $media);
-            $this->z2VideoService->deleteVideo($media->file_path);
             $this->mediaService->delete($media->id);
 
             return response()->json([
@@ -151,6 +142,7 @@ class MediaController extends Controller
         try {
             $ids = $request->input('ids', []);
             $deletedCount = 0;
+            $failedIds = [];
 
             foreach ($ids as $id) {
                 $media = Media::find($id);
@@ -160,15 +152,22 @@ class MediaController extends Controller
 
                 $this->authorize('delete', $media);
 
-                $this->z2VideoService->deleteVideo($media->file_path);
-                $this->mediaService->delete($media->id);
-                $deletedCount++;
+                try {
+                    if ($this->mediaService->delete($media->id)) {
+                        $deletedCount++;
+                    } else {
+                        $failedIds[] = (int) $id;
+                    }
+                } catch (\RuntimeException) {
+                    $failedIds[] = (int) $id;
+                }
             }
 
             return response()->json([
-                'message' => "Se eliminaron {$deletedCount} archivos multimedia correctamente.",
+                'message' => $failedIds ? 'Algunos medios no pudieron eliminarse y se conservaron.' : "Se eliminaron {$deletedCount} archivos multimedia correctamente.",
                 'deleted_count' => $deletedCount,
-            ]);
+                'failed_ids' => $failedIds,
+            ], $failedIds ? 207 : 200);
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Error al eliminar los medios en lote.',

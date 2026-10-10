@@ -18,14 +18,8 @@ use Illuminate\View\View;
 
 class MediaController extends Controller
 {
-    /**
-     * @var MediaService
-     */
     protected MediaService $mediaService;
 
-    /**
-     * @var Z2VideoService
-     */
     protected Z2VideoService $z2VideoService;
 
     /**
@@ -50,7 +44,7 @@ class MediaController extends Controller
 
             return view('media.index', compact('media'));
         } catch (\Exception $e) {
-            Log::error('Error al listar medios: ' . $e->getMessage());
+            Log::error('Error al listar medios: '.$e->getMessage());
 
             return redirect()->route('dashboard.index')
                 ->with('error', 'Ocurrió un error al cargar los medios.');
@@ -78,14 +72,14 @@ class MediaController extends Controller
             $file = $request->file('file');
             $name = $request->input('name') ?: $file->getClientOriginalName();
             $localPath = $file->store('media', 'public');
-            $storagePath = storage_path('app/public/' . $localPath);
+            $storagePath = storage_path('app/public/'.$localPath);
 
             // Upload directly to Z2 FanCloud server
             $z2Media = null;
             try {
                 $z2Media = $this->z2VideoService->uploadVideo($storagePath, $name, (int) $request->input('duration', 0));
             } catch (\Exception $z2Error) {
-                Log::error('Z2 cloud upload error: ' . $z2Error->getMessage());
+                Log::error('Z2 cloud upload error: '.$z2Error->getMessage());
             }
 
             if ($z2Media) {
@@ -113,7 +107,7 @@ class MediaController extends Controller
             return redirect()->route('media.index')
                 ->with('success', 'Medio creado exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al crear medio: ' . $e->getMessage());
+            Log::error('Error al crear medio: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al crear el medio. Por favor intente nuevamente.');
         }
@@ -129,7 +123,7 @@ class MediaController extends Controller
         try {
             return view('media.show', compact('media'));
         } catch (\Exception $e) {
-            Log::error('Error al mostrar medio: ' . $e->getMessage());
+            Log::error('Error al mostrar medio: '.$e->getMessage());
 
             return redirect()->route('media.index')
                 ->with('error', 'Ocurrió un error al cargar el medio.');
@@ -159,7 +153,7 @@ class MediaController extends Controller
             return redirect()->route('media.index')
                 ->with('success', 'Medio actualizado exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al actualizar medio: ' . $e->getMessage());
+            Log::error('Error al actualizar medio: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al actualizar el medio. Por favor intente nuevamente.');
         }
@@ -173,15 +167,14 @@ class MediaController extends Controller
         $this->authorize('delete', $media);
 
         try {
-            $this->z2VideoService->deleteVideo($media->file_path);
             $this->mediaService->delete($media->id);
 
             return redirect()->route('media.index')
                 ->with('success', 'Medio eliminado exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al eliminar medio: ' . $e->getMessage());
+            Log::error('Error al eliminar medio: '.$e->getMessage());
 
-            return back()->with('error', 'Ocurrió un error al eliminar el medio. Por favor intente nuevamente.');
+            return back()->with('error', 'No se pudo eliminar el medio. '.$e->getMessage());
         }
     }
 
@@ -198,6 +191,7 @@ class MediaController extends Controller
         try {
             $ids = $request->input('ids', []);
             $deletedCount = 0;
+            $failedCount = 0;
 
             foreach ($ids as $id) {
                 $media = Media::find($id);
@@ -207,15 +201,27 @@ class MediaController extends Controller
 
                 $this->authorize('delete', $media);
 
-                $this->z2VideoService->deleteVideo($media->file_path);
-                $this->mediaService->delete($media->id);
-                $deletedCount++;
+                try {
+                    if ($this->mediaService->delete($media->id)) {
+                        $deletedCount++;
+                    } else {
+                        $failedCount++;
+                    }
+                } catch (\RuntimeException $exception) {
+                    $failedCount++;
+                    Log::warning('Medio conservado tras fallo de borrado.', ['media_id' => $id, 'error' => $exception->getMessage()]);
+                }
+            }
+
+            if ($failedCount > 0) {
+                return redirect()->route('media.index')
+                    ->with('error', "Se eliminaron {$deletedCount} archivos; no se pudieron eliminar {$failedCount}. Los medios fallidos se conservaron.");
             }
 
             return redirect()->route('media.index')
                 ->with('success', "Se eliminaron {$deletedCount} archivos multimedia exitosamente.");
         } catch (\Exception $e) {
-            Log::error('Error al eliminar medios en lote: ' . $e->getMessage());
+            Log::error('Error al eliminar medios en lote: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al eliminar los medios seleccionados.');
         }
@@ -241,7 +247,7 @@ class MediaController extends Controller
 
             return back()->with('error', 'Ocurrió un error al subir el archivo a la nube.');
         } catch (\Exception $e) {
-            Log::error('Error al subir archivo: ' . $e->getMessage());
+            Log::error('Error al subir archivo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al subir el archivo. Por favor intente nuevamente.');
         }
@@ -259,7 +265,7 @@ class MediaController extends Controller
 
             return view('media.preview', compact('media', 'url'));
         } catch (\Exception $e) {
-            Log::error('Error al previsualizar medio: ' . $e->getMessage());
+            Log::error('Error al previsualizar medio: '.$e->getMessage());
 
             return redirect()->route('media.index')
                 ->with('error', 'Ocurrió un error al previsualizar el medio.');
@@ -278,7 +284,7 @@ class MediaController extends Controller
 
             return back()->with('success', 'Medio asignado a la campaña exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al asignar medio a campaña: ' . $e->getMessage());
+            Log::error('Error al asignar medio a campaña: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al asignar el medio a la campaña.');
         }

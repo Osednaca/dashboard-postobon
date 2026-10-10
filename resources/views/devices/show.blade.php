@@ -305,6 +305,18 @@
                     </svg>
                     Videos del Dispositivo
                 </h2>
+                @foreach($pendingRemovals as $removal)
+                    <div class="mb-3 rounded-lg border border-border bg-surface p-3 text-sm" role="status">
+                        <p class="font-medium text-text">{{ $removal['filename'] ?? 'Formateo de tarjeta SD' }}</p>
+                        <p class="mt-1 text-text-light">
+                            @if($removal['status'] === 'expired')
+                                No se confirmó el cambio en diez minutos. La lista vuelve a mostrar lo reportado por el dispositivo; revisa su conexión antes de reintentar.
+                            @else
+                                {{ $removal['filename'] === null ? 'Formateo solicitado' : 'Eliminación solicitada' }}. Pendiente de actualización del dispositivo.
+                            @endif
+                        </p>
+                    </div>
+                @endforeach
                 @if($devicePlaylist && count($devicePlaylist) > 0)
                     <div class="space-y-2">
                         @foreach($devicePlaylist as $playlistItem)
@@ -348,7 +360,15 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/>
                             </svg>
                         </div>
-                        <p class="text-sm text-text-light">No hay videos asignados a este dispositivo</p>
+                        <p class="text-sm text-text-light">
+                            @if(!$playlistAvailable)
+                                No se pudo consultar la lista de videos del dispositivo.
+                            @elseif(collect($pendingRemovals)->contains('status', 'pending'))
+                                Hay cambios pendientes de confirmación.
+                            @else
+                                El dispositivo no reporta videos.
+                            @endif
+                        </p>
                     </div>
                 @endif
             </div>
