@@ -50,7 +50,7 @@ class DeviceDiagnosticsTest extends TestCase
 
         $this->assertNull(app(Z2DeviceService::class)->getDeviceDetail($device->mac_address));
         $this->actingAs(User::factory()->admin()->create())
-            ->get(route('devices.show', $device))->assertOk()->assertViewHas('deviceDetail', null)
+            ->get(route('devices.show', $device))->assertOk()
             ->assertViewHas('playlistAvailable', false)->assertSee($device->name);
         $this->assertFalse($this->diagnostics->hasErrorRecords());
     }
@@ -64,7 +64,7 @@ class DeviceDiagnosticsTest extends TestCase
             ->assertOk()->assertViewHas('deviceVolume', null)->assertSee('Nunca');
     }
 
-    public function test_detail_loads_only_ten_latest_heartbeats(): void
+    public function test_detail_does_not_load_hidden_heartbeat_history_or_delete_records(): void
     {
         Http::fake(['cloud.test/*' => Http::response(['result' => 0, 'device' => ['playlist' => []]])]);
         $device = Device::factory()->create();
@@ -74,8 +74,7 @@ class DeviceDiagnosticsTest extends TestCase
 
         $this->actingAs(User::factory()->admin()->create())->get(route('devices.show', $device))
             ->assertOk()->assertViewHas('device', function (Device $device): bool {
-                return $device->relationLoaded('heartbeats') && $device->heartbeats->count() === 10
-                    && $device->heartbeats->pluck('rpm')->all() === range(1, 10);
+                return ! $device->relationLoaded('heartbeats');
             });
         $this->assertSame(25, $device->heartbeats()->count());
     }
@@ -83,7 +82,8 @@ class DeviceDiagnosticsTest extends TestCase
     public function test_unexpected_device_error_reaches_diagnostics_with_safe_reference(): void
     {
         $device = Device::factory()->create();
-        $this->mock(Z2DeviceService::class)->shouldReceive('getDeviceDetail')
+        Http::fake(['cloud.test/*' => Http::response(['result' => 0, 'device' => ['playlist' => []]])]);
+        $this->mock(Z2DeviceService::class)->shouldReceive('getVolume')
             ->once()->andThrow(new \TypeError('secret-token-in-error-message'));
 
         $response = $this->actingAs(User::factory()->admin()->create())
