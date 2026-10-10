@@ -128,7 +128,7 @@
                 <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-danger"></span> Offline</span>
             </div>
         </div>
-        <div id="device-map" class="rounded-lg border border-border"></div>
+        <div id="device-map" class="relative isolate z-0 rounded-lg border border-border"></div>
     </div>
 
     {{-- Status Cards Row --}}

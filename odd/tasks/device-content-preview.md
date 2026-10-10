@@ -31,15 +31,17 @@ Follow-up forecast T6–T10: approximately 1000–1700 authored lines including 
   - Implement bounded square object-contain players, defer offscreen sources and pause when offscreen/hidden while preserving same-source playback and manual pause. Use existing media lazy-loading; improve only demonstrated lifecycle gaps. Compression was an optional suggestion; no original transcoding or new infrastructure required.
   - Checks: PHP render, JS visibility/source/retry/lifecycle behavior, build and local browser dimensions/playback. Rollback: shared preview components/modules and corresponding tests/docs.
   - Verified: focused PHP12 tests/89 assertions, all JS27 tests, Pint2 PHP files and build61 modules passed. Browser: desktop448x448; mobile library335x335, device331x331, image375x375. Device src remained unset offscreen, loaded and played on entry, paused on exit without reset; library manual pause survived exit/reentry. No console errors. Original files unchanged; no claimed byte-size reduction. Temporary preview server/tab closed.
-  - Authored source/tests/docs:284 lines. RDD disabled/unmanaged; independent work-unit boundary follows eb97fe8. Parent reviewed visibility lifecycle, source switching and shared layout.
+  - Authored source/tests/docs:284 lines. Commit611b761; slice eb97fe8 → 611b761 (302 authored lines including tracking). RDD disabled/unmanaged. Parent reviewed visibility lifecycle, source switching and shared layout.
 - [ ] T12 — Add WL35 library selection and display known filenames.
   - Route: delegated; controller/detail UI/mapping behavior and tests span four or more files. Reuse existing upload/play semantics and tracking; retain file upload from computer.
   - Display mapped media names/filenames rather than generic numbering wherever a reliable mapping exists, including future direct file uploads after a confirmed index. Explicitly state when a historical file name is unavailable, retaining index as secondary control identity. Never guess a filename from playlist ordering.
   - Checks: isolated WL35 detail and library dispatch, known/unknown/stale mapping cases, existing file upload regression, full functional checks. No live fan commands. Rollback: WL35 library selector/name resolution and matching tests/docs.
-- [ ] T13 — Restore WL35 location map and contain dashboard map layering.
+- [x] T13 — Restore WL35 location map and contain dashboard map layering.
   - Route: delegated; mapping across controller/profile/location/detail/dashboard found no WL35 map markup and Leaflet panes escaping the dashboard container stacking context.
   - Reuse existing establishment map pattern; select a complete valid coordinate pair from establishment, then legacy profile/location, accepting zero. Show useful missing-location state. Isolate dashboard map below mobile menu without changing unrelated map inventory.
   - Checks: coordinate priority/validation/fallback, missing coordinates and offline detail, dashboard container rendering, local mobile browser menu hit-testing. Rollback: map component/integration, dashboard map class and tests/docs.
+  - Verified: DeviceLocationMapTest11 tests/43 assertions, Pint and diff check passed; integrated build61 modules. Local browser390x844 confirmed sidebar/backdrop receive hit-tests above map panes/controls (simulated z400/z1000), isolation computed as isolate/z0, and WL35 iframe visible356x288 with configured coordinates. Provider maps simulated locally; actual Google tiles were not fetched. Initial fixture Chart stub omission and build/manifest race fixed before verification. Temporary server/tab closed, viewport reset.
+  - Authored source/tests/docs:156 lines. Independent map work unit follows611b761; RDD disabled/unmanaged. No schema/controller changes or remote fan commands.
 
 - [x] T1 — Resolve reported content and serve its available video through authorized read endpoints.
   - Route: delegated; preparation + 2+ non-trivial source/test files.

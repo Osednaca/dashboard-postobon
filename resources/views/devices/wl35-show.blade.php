@@ -225,6 +225,7 @@
                     </div>
                 @endif
             </section>
+            <x-device-location-map :profile="$profile" :device-name="$displayName" />
         </div>
 
         <aside>
