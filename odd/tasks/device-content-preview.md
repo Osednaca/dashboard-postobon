@@ -32,15 +32,15 @@ Preserve pre-existing modifications in `docs/DESPLIEGUE_LATENCIA.md` and the `pr
   - Checks: focused page rendering tests, frontend behavior checks, full PHPUnit suite, Pint on changed PHP, production build; browser verification if local environment supports it without remote operations.
   - Verification: `node --test tests/js/device-previews.test.mjs` passed (5 tests); full isolated `php artisan test` passed (20 tests, 108 assertions); Pint and `git diff --check` passed; `npm run build` passed (57 modules). Initial render fixture failures were fixed before the final green run.
   - Browser: local standalone Blade fixtures with built assets and simulated data showed dashboard cards, device filtering, missing-file/error retry, offline and missing-mapping states; refresh preserved the same source/error state, with no console warnings/errors. Corrected detail width after visual inspection and rebuilt; confirmed centering in browser. Fixtures and temporary server are ignored test artifacts; server and browser tab closed.
-  - Commit: ready to create. RDD: disabled/unmanaged. Slice 2 boundary: `82fff2c` → T2 commit.
+  - Commit: `13c4323840d531007f234b5f1e6f67f35b517379`. RDD: disabled/unmanaged. Slice 2 boundary: `82fff2c` → `13c4323`.
   - Authored implementation/tests/docs: 331 lines before tracking updates. Rollback scope: shared preview component/JS/CSS, its three view integrations and matching render/JS checks.
 
 ## Verification and progress
 - Read-only discovery completed; documentation and code support preview of a known source file, not live capture.
 - Baseline `npm run build`: PASS, 56 modules transformed.
 - Baseline `php artisan test`: INTERRUPTED after Example and FleetUploadProgress tests passed. Pre-existing MediaDeleteTest lacked HTTP fakes and could attempt configured private-cloud DELETE calls. Session stopped with Ctrl+C (exit 1); no remote verification attempted. Add HTTP isolation to that existing test before running the full suite again.
-- Running authored line count from work-unit commits: 505 (462 implementation/tests/docs + 43 feature tracking lines) at `82fff2c`.
+- Running authored line count: 851 across both implementation commits (505 + 346, including tracking); this final tracking-only update adds 6 changed lines, totaling 857. Generated assets excluded. Local slice boundaries are recorded above; no PRs were created.
 - Runtime/hardware: local HTTP fakes and browser fixtures verified; live hardware playback and remote deployment not exercised. Earlier baseline was interrupted and its unsafe existing test was isolated before the passing full suite. Engram remains unavailable/pending.
 - Rollback boundary: new preview service/controller/routes/component and their integrations/tests/docs; preserve all prior unrelated changes.
 - T1 additional evidence: ambiguous original filenames are rejected; both telemetry providers unavailable preserves saved devices with unavailable state. Local WL35 deletion/format paths already maintain mappings, but external reordering cannot be detected with index/count telemetry; documented this limitation.
-- Next step: commit T2 and record final commit/count evidence. Implementation and local checks complete; deployment and hardware validation remain outside this local change.
+- Next step: user can review/deploy branch `codex/device-content-preview` and validate it with real devices. Authorized local implementation and checks are complete; hardware validation, deployment and Engram synchronization remain unperformed for the reasons recorded above.
