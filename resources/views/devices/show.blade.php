@@ -381,26 +381,12 @@
                     </svg>
                     Asignar Video Directamente
                 </h2>
-                <form action="{{ route('devices.assign-media', $device) }}" method="POST" class="space-y-4">
-                    @csrf
-                    <div>
-                        <label for="media_id" class="block text-sm font-medium text-text mb-1.5">Seleccionar Video</label>
-                        <select name="media_id" id="media_id" required class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors">
-                            <option value="">-- Seleccione un video --</option>
-                            @foreach($allMediaForDevice as $mediaItem)
-                                <option value="{{ $mediaItem->id }}">{{ $mediaItem->name }} ({{ $mediaItem->duration ? gmdate('i:s', $mediaItem->duration) : '00:00' }})</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="flex justify-end">
-                        <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/95 transition-colors shadow-sm">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                            </svg>
-                            Asignar Video
-                        </button>
-                    </div>
-                </form>
+                @if($device->mac_address)
+                    <x-library-playback :media="$allMediaForDevice->filter(fn ($item) => str_starts_with($item->mime_type, 'video/'))"
+                        :device-key="'z2:'.strtoupper(str_replace(':', '', $device->mac_address))" />
+                @else
+                    <p class="text-sm text-text-light">El dispositivo necesita una dirección MAC para reproducir videos.</p>
+                @endif
             </div>
         </div>
 

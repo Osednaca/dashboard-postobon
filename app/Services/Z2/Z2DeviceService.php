@@ -6,10 +6,10 @@ use App\Models\Device;
 use App\Models\DeviceHeartbeat;
 use App\Models\Group;
 use App\Models\Media;
+use App\Services\Fleet\MediaPreviewSource;
 use App\Services\PrivateCloud\PrivateCloudClient;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Adaptador de dispositivos sobre la nube privada (fan-private-cloud).
@@ -23,7 +23,7 @@ class Z2DeviceService
 {
     private PrivateCloudClient $client;
 
-    public function __construct(PrivateCloudClient $client, private readonly DeviceContentRemovalTracker $removals)
+    public function __construct(PrivateCloudClient $client, private readonly DeviceContentRemovalTracker $removals, private readonly MediaPreviewSource $sources)
     {
         $this->client = $client;
     }
@@ -308,51 +308,42 @@ class Z2DeviceService
     }
 
     /**
-     * Resolve legacy local media to a filename known by the private cloud.
-     *
-     * Older records can contain paths such as media/hash.mp4 because the
-     * upload controller falls back to local storage when the cloud upload
-     * fails. Migrate that file on first assignment and update the record so
-     * subsequent assignments use the cloud filename directly.
+     * Resolve the selected source without falling back to a different cloud file.
+     * Local uploads retain their library source for previews and later playback.
      */
     public function resolveCloudFilename(string $mac, string $filename): string
     {
-        if (! str_contains($filename, '/') && ! str_contains($filename, '\\')) {
-            return $filename;
+        $media = Media::where('file_path', $filename)->first()
+            ?? new Media(['file_path' => $filename, 'mime_type' => 'video/mp4']);
+        $source = str_starts_with($media->mime_type, 'video/') ? $this->sources->resolve($media) : null;
+        if ($source === null) {
+            throw new \RuntimeException('No se pudo encontrar el archivo de video seleccionado.');
+        }
+        if ($source['kind'] === 'private_cloud') {
+            return rawurldecode(basename($source['path']));
         }
 
-        $disk = Storage::disk('public');
-        if (! $disk->exists($filename)) {
-            return basename($filename);
-        }
-
-        $media = Media::where('file_path', $filename)->first();
-        $uploadName = $media?->original_name ?: basename($filename);
+        $uploadName = $media->original_name ?: basename($filename);
         $response = $this->client->postFile(
             '/api/devices/'.$this->normalizeMac($mac).'/upload',
-            $disk->path($filename),
+            $source['path'],
             $uploadName,
             ['assign' => 'false'],
         );
 
-        $cloudFilename = (string) ($response['filename'] ?? '');
-        if ($response !== null && ($response['result'] ?? -1) === 0 && $cloudFilename !== '') {
-            Media::where('file_path', $filename)->update(['file_path' => $cloudFilename]);
-            $disk->delete($filename);
-            Log::info('[PrivateCloud] Legacy local media migrated to cloud', [
-                'from' => $filename,
-                'to' => $cloudFilename,
-            ]);
-
+        $cloudFilename = $response['filename'] ?? null;
+        if ($response !== null && ($response['result'] ?? -1) === 0 && is_string($cloudFilename)
+            && $cloudFilename !== '' && ! in_array($cloudFilename, ['.', '..'], true)
+            && ! preg_match('/[\\\\\/:\x00-\x1f]/', $cloudFilename)) {
             return $cloudFilename;
         }
 
-        Log::error('[PrivateCloud] Legacy local media migration failed', [
+        Log::error('[PrivateCloud] Local media upload failed', [
             'filename' => $filename,
             'response' => $response,
         ]);
 
-        return basename($filename);
+        throw new \RuntimeException('No se pudo cargar el video seleccionado. No se envió una orden de reproducción.');
     }
 
     /**
