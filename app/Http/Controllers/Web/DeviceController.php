@@ -211,15 +211,13 @@ class DeviceController extends Controller
     {
         $this->authorize('view', $device);
 
-        $device->load(['establishmentProfile.businessType', 'location', 'group', 'heartbeats' => fn ($query) => $query->latest('received_at')->limit(10)]);
-        $deviceDetail = null;
+        $device->load(['establishmentProfile.businessType', 'location', 'group']);
         $devicePlaylist = [];
         $pendingRemovals = [];
         $playlistAvailable = false;
         $deviceVolume = null;
 
         if ($device->mac_address) {
-            $deviceDetail = $this->z2DeviceService->getDeviceDetail($device->mac_address);
             $playlistState = $this->z2PlaylistService->getDevicePlaylistState($device->mac_address);
             $devicePlaylist = $playlistState['playlist'];
             $pendingRemovals = $playlistState['removals'];
@@ -242,7 +240,7 @@ class DeviceController extends Controller
             ->unique('file_path')
             ->values();
 
-        return view('devices.show', compact('device', 'deviceDetail', 'devicePlaylist', 'pendingRemovals', 'playlistAvailable', 'allMediaForDevice', 'deviceVolume', 'deviceBluetooth'));
+        return view('devices.show', compact('device', 'devicePlaylist', 'pendingRemovals', 'playlistAvailable', 'allMediaForDevice', 'deviceVolume', 'deviceBluetooth'));
     }
 
     /**
