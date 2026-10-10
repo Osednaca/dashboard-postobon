@@ -62,6 +62,19 @@ class UnifiedFleetClient
         );
     }
 
+    public function getUploadProgress(string $uploadId, ?string $baseUrl = null): array
+    {
+        $this->ensureConfigured();
+        $baseUrl = in_array($baseUrl, $this->candidateBaseUrls(), true) ? $baseUrl : $this->baseUrl();
+
+        return $this->send(
+            fn (): Response => $this->request(false, $baseUrl, 2)
+                ->get('/api/fleet/uploads/'.rawurlencode($uploadId)),
+            'consultar el progreso de distribución',
+            $baseUrl,
+        );
+    }
+
     public function deleteWl35Video(string $deviceId, int $index): array
     {
         $this->ensureConfigured();
@@ -110,7 +123,7 @@ class UnifiedFleetClient
      * Upload a persisted file and distribute it without depending on the
      * lifecycle of the original HTTP request.
      *
-     * @param array<int, string> $targets
+     * @param  array<int, string>  $targets
      */
     public function uploadPathAndDistribute(
         string $path,
@@ -161,7 +174,7 @@ class UnifiedFleetClient
         }
 
         if ($progress !== null) {
-            $progress('distributing', 65);
+            $progress('distributing', 35, ['gateway_upload_id' => $uploadId, 'gateway_base_url' => $baseUrl]);
         }
 
         $result = $this->send(
@@ -187,11 +200,10 @@ class UnifiedFleetClient
         bool $longRunning = false,
         ?string $baseUrl = null,
         ?int $timeout = null,
-    ): PendingRequest
-    {
+    ): PendingRequest {
         $request = Http::baseUrl($baseUrl ?? $this->baseUrl())
             ->acceptJson()
-            ->connectTimeout((int) config('unifiedfleet.connect_timeout', 10))
+            ->connectTimeout(min($timeout ?? 10, (int) config('unifiedfleet.connect_timeout', 10)))
             ->timeout($timeout ?? (int) config(
                 $longRunning ? 'unifiedfleet.upload_timeout' : 'unifiedfleet.timeout',
                 $longRunning ? 900 : 30
@@ -260,7 +272,7 @@ class UnifiedFleetClient
         foreach ($this->candidateBaseUrls() as $baseUrl) {
             try {
                 $this->send(
-                    fn (): Response => $this->request(false, $baseUrl)->get('/api/fleet'),
+                    fn (): Response => $this->request(false, $baseUrl)->get('/api/health'),
                     'comprobar el gateway unificado',
                     $baseUrl
                 );

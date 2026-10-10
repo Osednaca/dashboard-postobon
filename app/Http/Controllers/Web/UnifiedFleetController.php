@@ -126,12 +126,25 @@ class UnifiedFleetController extends Controller
     {
         abort_unless((int) $fleetUpload->user_id === (int) $request->user()->id, 403);
 
+        $live = [];
+        $gatewayId = $fleetUpload->result['gateway_upload_id'] ?? null;
+        if ($fleetUpload->status === 'processing' && is_string($gatewayId)) {
+            try {
+                $live = $this->fleetClient->getUploadProgress(
+                    $gatewayId, $fleetUpload->result['gateway_base_url'] ?? null,
+                );
+            } catch (Throwable) {
+                // A missed progress poll must not fail or duplicate the job.
+            }
+        }
+
         return response()->json([
             'id' => $fleetUpload->id,
             'filename' => $fleetUpload->original_name,
             'status' => $fleetUpload->status,
-            'phase' => $fleetUpload->phase,
-            'progress' => $fleetUpload->progress,
+            'phase' => $live['phase'] ?? $fleetUpload->phase,
+            'progress' => $live['progress'] ?? $fleetUpload->progress,
+            'transfers' => $live['transfers'] ?? [],
             'error' => $fleetUpload->error,
             'result' => $fleetUpload->status === 'completed' ? $fleetUpload->result : null,
             'started_at' => $fleetUpload->started_at?->toIso8601String(),

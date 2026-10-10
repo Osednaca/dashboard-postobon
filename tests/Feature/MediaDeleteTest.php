@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Media;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -17,6 +18,10 @@ class MediaDeleteTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        config(['privatecloud.base_url' => 'http://private-cloud.test', 'privatecloud.token' => 'test-token']);
+        Http::preventStrayRequests();
+        Http::fake(['private-cloud.test/*' => Http::response(['result' => 0])]);
 
         $this->user = User::factory()->create([
             'role' => 'admin',

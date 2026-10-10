@@ -135,6 +135,7 @@
             this.fleetUpload.progress = payload.progress ?? this.fleetUpload.progress;
             this.fleetUpload.error = payload.error || '';
             this.fleetUpload.result = payload.result || null;
+            this.fleetUpload.transfers = payload.transfers || [];
             if (payload.started_at && this.fleetUpload.elapsed === 0) {
                 this.fleetUpload.elapsed = Math.max(0, Math.floor((Date.now() - new Date(payload.started_at).getTime()) / 1000));
             }
@@ -165,16 +166,35 @@
         this.fleetUpload.error = message;
         this.stopFleetUploadPolling();
     },
+    fleetUploadHasFailures() {
+        return this.fleetUpload.status === 'failed' || (this.fleetUpload.status === 'completed' && (this.fleetUpload.result?.failed ?? 0) > 0);
+    },
+    fleetUploadFailures() {
+        return (this.fleetUpload.result?.results || []).filter(item => item.success === false);
+    },
+    fleetUploadFailureMessage(item) {
+        if (item.error === 'timeout waiting for WL35 upload ACK') {
+            return 'El WL35 no confirmó el inicio de carga. No se enviaron bytes de video. Es necesario comprobar la sesión y el almacenamiento del ventilador.';
+        }
+        return item.error || 'El equipo no confirmó la distribución.';
+    },
     fleetUploadTitle() {
         if (this.fleetUpload.status === 'completed' && (this.fleetUpload.result?.failed ?? 0) > 0) {
             return 'Distribución finalizada con errores';
         }
         return {
             receiving: 'Subiendo al servidor', queued: 'Esperando al procesador', uploading_gateway: 'Enviando al gateway',
-            distributing: 'Convirtiendo y distribuyendo', finalizing: 'Confirmando resultados', completed: 'Distribución completada', failed: 'La distribución falló'
+            distributing: 'Preparando la distribución', converting: 'Convirtiendo el video', awaiting_device: 'Esperando al WL35', relaying: 'Transmitiendo al ventilador', finalizing: 'Confirmando resultados', completed: 'Distribución completada', failed: 'La distribución falló'
         }[this.fleetUpload.phase] || 'Preparando la carga';
     },
     fleetUploadDescription() {
+        const transfers = (this.fleetUpload.transfers || []).filter(item => item.phase === 'relaying');
+        if (transfers.length) {
+            const sent = transfers.reduce((sum, item) => sum + item.bytes, 0) / 1000000;
+            const total = transfers.reduce((sum, item) => sum + item.total_bytes, 0) / 1000000;
+            const speed = transfers.reduce((sum, item) => sum + (item.bytes_per_second || 0), 0) / 1000;
+            return `${sent.toFixed(1)} de ${total.toFixed(1)} MB transmitidos · ${speed.toFixed(0)} kB/s. El WL35 permanece pausado durante este envío.`;
+        }
         if (this.fleetUpload.phase === 'queued' && this.fleetUpload.elapsed > 30) {
             return 'El trabajo sigue esperando al procesador. Si no avanza, el administrador debe revisar el worker de Laravel.';
         }
@@ -186,6 +206,8 @@
             queued: 'El archivo ya está seguro en el VPS y espera su turno en la cola.',
             uploading_gateway: 'El VPS está transfiriendo el archivo al gateway unificado.',
             distributing: 'El gateway prepara cada formato y lo transmite a los ventiladores seleccionados.',
+            converting: 'El servidor está preparando el formato WL35. El ventilador continúa reproduciendo durante la conversión.',
+            awaiting_device: 'El video está preparado. Falta que el WL35 confirme que acepta iniciar la carga.',
             finalizing: 'Los dispositivos están reportando el resultado final.',
             completed: 'El gateway terminó de procesar los equipos seleccionados.',
             failed: 'El archivo dejó de procesarse. Puedes revisar el detalle e intentarlo de nuevo.'
@@ -618,13 +640,13 @@
                 <circle class="opacity-25" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3"></circle>
                 <path class="opacity-90" fill="currentColor" d="M21 12a9 9 0 00-9-9v3a6 6 0 016 6h3z"></path>
             </svg>
-            <svg x-show="fleetUpload.status === 'completed'" class="h-5 w-5 shrink-0 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-            <svg x-show="fleetUpload.status === 'failed'" class="h-5 w-5 shrink-0 text-red-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            <svg x-show="fleetUpload.status === 'completed' && !fleetUploadHasFailures()" class="h-5 w-5 shrink-0 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            <svg x-show="fleetUploadHasFailures()" class="h-5 w-5 shrink-0 text-red-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             <span class="min-w-0 flex-1">
                 <span class="block truncate text-sm font-semibold" x-text="fleetUploadTitle()"></span>
                 <span class="mt-0.5 block text-xs text-slate-300">Abrir detalles · <span class="font-mono tabular-nums" x-text="fleetUploadElapsed()"></span></span>
             </span>
-            <span class="text-xs font-semibold tabular-nums text-sky-300" x-text="fleetUpload.progress + '%'" x-show="fleetUpload.status !== 'failed'"></span>
+            <span class="text-xs font-semibold tabular-nums text-sky-300" x-text="fleetUpload.progress + '%'" x-show="!fleetUploadHasFailures()"></span>
         </button>
     </div>
 
@@ -660,10 +682,10 @@
                     <div x-show="fleetUpload.status !== 'idle'" x-cloak class="space-y-5" aria-live="polite" aria-atomic="true">
                         <div class="flex items-center gap-4">
                             <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-                                 :class="fleetUpload.status === 'failed' ? 'bg-danger/10 text-danger' : (fleetUpload.status === 'completed' ? 'bg-success/10 text-success' : 'bg-secondary/10 text-secondary')">
+                                 :class="fleetUploadHasFailures() ? 'bg-danger/10 text-danger' : (fleetUpload.status === 'completed' ? 'bg-success/10 text-success' : 'bg-secondary/10 text-secondary')">
                                 <svg x-show="!['completed', 'failed'].includes(fleetUpload.status)" class="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="opacity-20" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3"></circle><path fill="currentColor" d="M21 12a9 9 0 00-9-9v3a6 6 0 016 6h3z"></path></svg>
-                                <svg x-show="fleetUpload.status === 'completed'" class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                                <svg x-show="fleetUpload.status === 'failed'" class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                <svg x-show="fleetUpload.status === 'completed' && !fleetUploadHasFailures()" class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                <svg x-show="fleetUploadHasFailures()" class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                             </div>
                             <div class="min-w-0 flex-1">
                                 <div class="flex items-center justify-between gap-3">
@@ -674,7 +696,7 @@
                             </div>
                         </div>
 
-                        <div x-show="fleetUpload.status !== 'failed'">
+                        <div x-show="!fleetUploadHasFailures()">
                             <div class="mb-2 flex items-center justify-between text-xs"><span class="font-medium text-text-light" x-text="fleetUploadDescription()"></span><span class="ml-3 font-semibold tabular-nums text-secondary" x-text="fleetUpload.progress + '%'" aria-hidden="true"></span></div>
                             <div class="h-2 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-label="Progreso de distribución" :aria-valuenow="fleetUpload.progress" aria-valuemin="0" aria-valuemax="100">
                                 <div class="h-full rounded-full bg-secondary transition-[width] duration-500" :class="!['completed', 'failed'].includes(fleetUpload.status) ? 'animate-pulse' : ''" :style="`width: ${fleetUpload.progress}%`"></div>
@@ -688,6 +710,15 @@
                             <div><div class="text-lg font-bold tabular-nums text-text" x-text="fleetUpload.result?.total ?? 0"></div><div class="text-[11px] text-text-muted">Seleccionados</div></div>
                             <div><div class="text-lg font-bold tabular-nums text-success" x-text="fleetUpload.result?.succeeded ?? 0"></div><div class="text-[11px] text-text-muted">Completados</div></div>
                             <div><div class="text-lg font-bold tabular-nums text-danger" x-text="fleetUpload.result?.failed ?? 0"></div><div class="text-[11px] text-text-muted">Fallidos</div></div>
+                        </div>
+                        <div x-show="fleetUploadFailures().length" class="space-y-2" role="alert">
+                            <template x-for="(failure, index) in fleetUploadFailures()" :key="failure.key || index">
+                                <div class="rounded-lg bg-danger/10 px-3 py-2.5 text-xs leading-5 text-danger">
+                                    <p class="font-semibold" x-text="failure.name || failure.id || failure.key || 'Ventilador'"></p>
+                                    <p x-text="fleetUploadFailureMessage(failure)"></p>
+                                    <p class="mt-1 break-words font-mono text-[11px]" x-show="failure.error" x-text="failure.error"></p>
+                                </div>
+                            </template>
                         </div>
                     </div>
 
