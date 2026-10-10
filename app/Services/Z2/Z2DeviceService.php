@@ -125,7 +125,7 @@ class Z2DeviceService
     {
         $response = $this->client->get('/api/devices/'.$this->normalizeMac($mac));
 
-        if ($response === null || ! isset($response['device'])) {
+        if (($response['result'] ?? null) !== 0 || ! is_array($response['device'] ?? null)) {
             return null;
         }
 
