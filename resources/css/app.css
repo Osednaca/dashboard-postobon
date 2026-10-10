@@ -5,7 +5,7 @@
 @source '../**/*.blade.php';
 @source '../**/*.js';
 
-.device-previews [x-cloak] {
+.device-previews [x-cloak], .media-preview [x-cloak] {
     display: none !important;
 }
 

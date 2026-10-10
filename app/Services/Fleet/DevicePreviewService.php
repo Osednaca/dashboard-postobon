@@ -93,7 +93,8 @@ class DevicePreviewService
                             && (int) $current > 0 && (int) $current <= (int) ($device['video_count'] ?? 0)) {
                             $source = $mappings->get($device['id'].':'.(int) $current)?->media;
                         }
-                        $status = $source === null ? 'missing_mapping' : ($this->sources->resolve($source) ? 'ready' : 'missing_file');
+                        $status = $source === null ? 'missing_mapping' : (str_starts_with($source->mime_type, 'video/')
+                            && $this->sources->resolve($source) ? 'ready' : 'missing_file');
                     }
                 }
             }
