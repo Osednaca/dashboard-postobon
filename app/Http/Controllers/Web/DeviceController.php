@@ -207,49 +207,42 @@ class DeviceController extends Controller
     /**
      * Display the specified device.
      */
-    public function show(Device $device): View|RedirectResponse
+    public function show(Device $device): View
     {
         $this->authorize('view', $device);
 
-        try {
-            $device->load(['establishmentProfile.businessType', 'location', 'group']);
-            $deviceDetail = null;
-            $devicePlaylist = [];
-            $pendingRemovals = [];
-            $playlistAvailable = false;
-            $deviceVolume = null;
+        $device->load(['establishmentProfile.businessType', 'location', 'group', 'heartbeats' => fn ($query) => $query->latest('received_at')->limit(10)]);
+        $deviceDetail = null;
+        $devicePlaylist = [];
+        $pendingRemovals = [];
+        $playlistAvailable = false;
+        $deviceVolume = null;
 
-            if ($device->mac_address) {
-                $deviceDetail = $this->z2DeviceService->getDeviceDetail($device->mac_address);
-                $playlistState = $this->z2PlaylistService->getDevicePlaylistState($device->mac_address);
-                $devicePlaylist = $playlistState['playlist'];
-                $pendingRemovals = $playlistState['removals'];
-                $playlistAvailable = $playlistState['available'];
-                $deviceVolume = $this->z2DeviceService->getVolume($device->mac_address);
+        if ($device->mac_address) {
+            $deviceDetail = $this->z2DeviceService->getDeviceDetail($device->mac_address);
+            $playlistState = $this->z2PlaylistService->getDevicePlaylistState($device->mac_address);
+            $devicePlaylist = $playlistState['playlist'];
+            $pendingRemovals = $playlistState['removals'];
+            $playlistAvailable = $playlistState['available'];
+            $deviceVolume = $this->z2DeviceService->getVolume($device->mac_address);
 
-                // Read live Bluetooth status from Z2 so the dashboard reflects
-                // changes made from the mobile app, then sync the local column.
-                $deviceBluetooth = $this->z2DeviceService->getBluetoothStatus($device->mac_address);
-                if ($deviceBluetooth !== null && $deviceBluetooth !== $device->bluetooth_status) {
-                    $device->update(['bluetooth_status' => $deviceBluetooth]);
-                }
+            // Read live Bluetooth status from Z2 so the dashboard reflects
+            // changes made from the mobile app, then sync the local column.
+            $deviceBluetooth = $this->z2DeviceService->getBluetoothStatus($device->mac_address);
+            if ($deviceBluetooth !== null && $deviceBluetooth !== $device->bluetooth_status) {
+                $device->update(['bluetooth_status' => $deviceBluetooth]);
             }
-
-            $deviceBluetooth ??= $device->bluetooth_status ?? 'off';
-
-            // Deduplicated media list for the select dropdown
-            $allMediaForDevice = Media::orderBy('name')
-                ->get()
-                ->unique('file_path')
-                ->values();
-
-            return view('devices.show', compact('device', 'deviceDetail', 'devicePlaylist', 'pendingRemovals', 'playlistAvailable', 'allMediaForDevice', 'deviceVolume', 'deviceBluetooth'));
-        } catch (\Exception $e) {
-            Log::error('Error al mostrar dispositivo: '.$e->getMessage());
-
-            return redirect()->route('devices.index')
-                ->with('error', 'Ocurrió un error al cargar el dispositivo.');
         }
+
+        $deviceBluetooth ??= $device->bluetooth_status ?? 'off';
+
+        // Deduplicated media list for the select dropdown
+        $allMediaForDevice = Media::orderBy('name')
+            ->get()
+            ->unique('file_path')
+            ->values();
+
+        return view('devices.show', compact('device', 'deviceDetail', 'devicePlaylist', 'pendingRemovals', 'playlistAvailable', 'allMediaForDevice', 'deviceVolume', 'deviceBluetooth'));
     }
 
     /**

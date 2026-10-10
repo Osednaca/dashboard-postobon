@@ -201,7 +201,7 @@ class DevicePreviewTest extends TestCase
         $this->get(route('media.content', $media))->assertStatus(502);
     }
 
-    public function test_dashboard_and_both_details_render_the_shared_preview_interface(): void
+    public function test_only_device_details_render_the_live_preview_interface(): void
     {
         $device = Device::factory()->create(['mac_address' => 'AA:BB:CC:DD:EE:FF']);
         Wl35DeviceProfile::create(['device_id' => 'fan-a', 'name' => 'Ventilador tienda']);
@@ -213,7 +213,10 @@ class DevicePreviewTest extends TestCase
             'cloud.test/api/media' => Http::response(['media' => []]),
         ]);
         $this->actingAs(User::factory()->admin()->create());
-        foreach ([route('dashboard.index'), route('devices.show', $device), route('devices.wl35.show', 'fan-a')] as $url) {
+        $this->get(route('dashboard.index'))->assertOk()->assertDontSee('Vista previa del contenido')
+            ->assertDontSee('devicePreviews(')->assertDontSee('mediaPreview(')
+            ->assertDontSee(Js::from(route('devices.previews'))->toHtml(), false);
+        foreach ([route('devices.show', $device), route('devices.wl35.show', 'fan-a')] as $url) {
             $this->get($url)->assertOk()->assertSee('Vista previa del contenido')
                 ->assertSee('devicePreviews(')->assertSee(Js::from(route('devices.previews'))->toHtml(), false)
                 ->assertSee('autoplay muted loop playsinline controls', false);

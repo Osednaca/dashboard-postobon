@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <x-pwa-head />
 
     <title>@if(isset($title) && trim($title) !== ''){{ $title }}@else @yield('title', 'Panel') @endif | {{ config('app.name', '3D Fan Dashboard') }}</title>
 
@@ -65,6 +66,11 @@
                     </a>
                 @endforeach
             </nav>
+            <div class="px-3 pb-4">
+                <button type="button" data-pwa-install hidden class="w-full rounded-lg border border-border px-3 py-2 text-sm font-medium text-primary hover:bg-surface-dark">
+                    Instalar aplicación
+                </button>
+            </div>
         </aside>
 
         {{-- Overlay for mobile sidebar --}}

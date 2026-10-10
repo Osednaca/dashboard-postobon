@@ -16,7 +16,9 @@ La consulta de estado usa lecturas de la flota y la nube privada. Si ambas falla
 
 Verificación local: `php artisan test tests/Feature/DevicePreviewTest.php`. Las pruebas usan HTTP simulado y almacenamiento temporal.
 
-El dashboard y ambos detalles usan el mismo componente. Cada página consulta el estado una vez cada diez segundos; actualiza la fuente solo si cambia el archivo. Al quedar sin estado confirmado, elimina la fuente anterior. El reproductor arranca sin audio, repite el video y permite controlarlo; un error de archivo muestra una opción de reintento. La pestaña oculta pausa reproducción y consultas, y al volver solicita un estado nuevo. Las copias no están sincronizadas fotograma a fotograma con el ventilador.
+Los detalles Z2 y WL35 usan el mismo componente. Cada detalle consulta el estado una vez cada diez segundos; actualiza la fuente solo si cambia el archivo. Al quedar sin estado confirmado, elimina la fuente anterior. El reproductor arranca sin audio, repite el video y permite controlarlo; un error de archivo muestra una opción de reintento. La pestaña oculta pausa reproducción y consultas, y al volver solicita un estado nuevo. Las copias no están sincronizadas fotograma a fotograma con el ventilador. El dashboard no muestra previews ni activa sus consultas periódicas.
+
+En el detalle de campaña, la pestaña Videos muestra el contenido configurado con el mismo preview y duración de la biblioteca, mediante URLs autenticadas del panel. Incluye controles y carga las fuentes al hacerse visibles. Esa vista no afirma que el contenido esté reproduciéndose en un dispositivo; para consultar el contenido reportado se usa el detalle del equipo.
 
 Verificación de reproducción y polling: `node --test tests/js/device-previews.test.mjs`. Build del navegador: `npm run build`.
 

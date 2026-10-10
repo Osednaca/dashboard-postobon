@@ -4,6 +4,7 @@
 
 @section('content')
 @php
+    $libraryVideos = \App\Models\Media::where('mime_type', 'like', 'video/%')->orderBy('name')->get();
     $initialLocalIds = collect(old('device_ids', []))->map(fn ($id) => (string) $id)->unique()->values();
     $localFleetKeys = $devices->getCollection()->mapWithKeys(function ($device) {
         $mac = strtoupper(str_replace(':', '', (string) $device->mac_address));
@@ -566,7 +567,34 @@
 
     <div x-show="showBulkAssignMediaModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"><div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showBulkAssignMediaModal=false"></div><div class="relative w-full max-w-md rounded-xl border border-border bg-white p-6 shadow-xl"><h3 class="text-lg font-semibold text-text">Asignar medio a Z2</h3><p class="mt-2 text-sm text-text-light">El mismo archivo se asignará a <strong x-text="selectedIds.length"></strong> dispositivos Z2.</p><form action="{{ route('devices.bulk-assign-media') }}" method="POST" class="mt-5 space-y-4" @submit="bulkAssigningMedia=true">@csrf<template x-for="id in selectedIds" :key="'media-'+id"><input type="hidden" name="device_ids[]" :value="id"></template><select name="media_id" required class="w-full rounded-lg border border-border bg-white px-4 py-2.5 text-sm"><option value="">Seleccionar medio</option>@foreach(App\Models\Media::orderBy('name')->get() as $media)<option value="{{ $media->id }}" @selected((string) old('media_id') === (string) $media->id)>{{ $media->name }}</option>@endforeach</select><div class="flex justify-end gap-3"><button type="button" @click="showBulkAssignMediaModal=false" class="rounded-lg border border-border px-4 py-2.5 text-sm">Cancelar</button><button :disabled="bulkAssigningMedia" class="rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50" x-text="bulkAssigningMedia ? 'Asignando…' : 'Asignar medio'"></button></div></form></div></div>
 
-    <div x-show="showFleetPlayModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"><div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showFleetPlayModal=false"></div><div class="relative w-full max-w-lg rounded-xl border border-border bg-white p-6 shadow-xl"><h3 class="text-lg font-semibold text-text">Reproducir en la selección</h3><p class="mt-2 text-sm text-text-light">Indica ambos valores si seleccionaste una combinación de WL35 y Z2.</p><form action="{{ route('fleet.command') }}" method="POST" class="mt-5 space-y-4" @submit="fleetSubmitting=true">@csrf<input type="hidden" name="command" value="play"><template x-for="key in selectedFleetKeys" :key="'play-'+key"><input type="hidden" name="targets[]" :value="key"></template><div class="grid gap-4 sm:grid-cols-2"><label><span class="mb-1.5 block text-xs font-semibold text-text-light">Índice WL35</span><input type="number" name="wl35_video_index" min="1" max="255" value="{{ old('wl35_video_index', 1) }}" class="w-full rounded-lg border border-border px-3 py-2.5 text-sm"></label><label><span class="mb-1.5 block text-xs font-semibold text-text-light">Archivo Z2</span><select name="z2_filename" class="w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"><option value="">Seleccionar archivo</option>@foreach($fleetMedia as $asset)<option value="{{ $asset['filename'] ?? '' }}">{{ $asset['filename'] ?? 'Archivo' }}</option>@endforeach</select></label></div><div class="flex justify-end gap-3"><button type="button" @click="showFleetPlayModal=false" class="rounded-lg border border-border px-4 py-2.5 text-sm">Cancelar</button><button :disabled="fleetSubmitting" class="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">Reproducir</button></div></form></div></div>
+    <div x-show="showFleetPlayModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showFleetPlayModal=false"></div>
+        <div class="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-white p-6 shadow-xl">
+            <h3 class="mb-5 text-lg font-semibold text-text">Reproducir en la selección</h3>
+            <x-library-playback :media="$libraryVideos" />
+            <details class="mt-5 border-t border-border pt-4">
+                <summary class="cursor-pointer text-sm font-semibold text-text-light">Reproducir contenido ya almacenado</summary>
+                <p class="mt-2 text-xs text-text-light">Usa el índice WL35 o el archivo Z2 disponible en el dispositivo.</p>
+                <form action="{{ route('fleet.command') }}" method="POST" class="mt-4 space-y-4" @submit="fleetSubmitting=true">
+                    @csrf
+                    <input type="hidden" name="command" value="play">
+                    <template x-for="key in selectedFleetKeys" :key="'play-'+key"><input type="hidden" name="targets[]" :value="key"></template>
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <label><span class="mb-1.5 block text-xs font-semibold text-text-light">Índice WL35</span><input type="number" name="wl35_video_index" min="1" max="255" value="{{ old('wl35_video_index', 1) }}" class="w-full rounded-lg border border-border px-3 py-2.5 text-sm"></label>
+                        <label>
+                            <span class="mb-1.5 block text-xs font-semibold text-text-light">Archivo Z2</span>
+                            <select name="z2_filename" class="w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm">
+                                <option value="">Seleccionar archivo</option>
+                                @foreach($fleetMedia as $asset)<option value="{{ $asset['filename'] ?? '' }}">{{ $asset['filename'] ?? 'Archivo' }}</option>@endforeach
+                            </select>
+                        </label>
+                    </div>
+                    <button :disabled="fleetSubmitting" class="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">Reproducir almacenado</button>
+                </form>
+            </details>
+            <div class="mt-5 flex justify-end"><button type="button" @click="showFleetPlayModal=false" class="rounded-lg border border-border px-4 py-2.5 text-sm">Cerrar</button></div>
+        </div>
+    </div>
 
     <div x-show="fleetFormat.status !== 'idle' && !showFleetFormatModal" x-cloak
          class="fixed bottom-5 left-5 z-40 w-[min(24rem,calc(100vw-2.5rem))] rounded-xl bg-slate-900 p-4 text-white shadow-[0_14px_35px_rgba(15,23,42,0.28)]">

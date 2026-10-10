@@ -37,10 +37,6 @@
         $pendingCampaigns = $campaignStatuses['scheduled'] ?? 0;
     @endphp
 
-    <div class="mb-6">
-        <x-device-previews />
-    </div>
-
     {{-- KPI Row --}}
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div class="bg-white rounded-xl border border-border p-5 shadow-sm">

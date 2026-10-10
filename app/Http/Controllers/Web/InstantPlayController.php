@@ -24,8 +24,11 @@ use Illuminate\View\View;
 class InstantPlayController extends Controller
 {
     protected Z2DeviceService $z2DeviceService;
+
     protected Z2PlaylistService $z2PlaylistService;
+
     protected Z2VideoService $z2VideoService;
+
     protected UnifiedFleetClient $unifiedFleetClient;
 
     public function __construct(
@@ -226,11 +229,11 @@ class InstantPlayController extends Controller
             if ($request->expectsJson()) {
                 return response()->json([
                     'success' => false,
-                    'message' => $exception->getMessage(),
+                    'message' => 'No fue posible iniciar la reproducción. Inténtalo nuevamente o avisa al administrador.',
                 ], 500);
             }
 
-            return back()->withInput()->with('error', $exception->getMessage());
+            return back()->withInput()->with('error', 'No fue posible iniciar la reproducción. Inténtalo nuevamente o avisa al administrador.');
         }
     }
 
@@ -241,7 +244,7 @@ class InstantPlayController extends Controller
     {
         $request->validate([
             'device_id' => ['required', 'exists:devices,id'],
-            'media_id'  => ['required', 'exists:media,id'],
+            'media_id' => ['required', 'exists:media,id'],
         ]);
 
         $device = Device::findOrFail($request->input('device_id'));
@@ -250,7 +253,7 @@ class InstantPlayController extends Controller
         $media = Media::findOrFail($request->input('media_id'));
 
         try {
-            if (!$device->mac_address) {
+            if (! $device->mac_address) {
                 return back()->with('error', 'El dispositivo no tiene una dirección MAC asignada.');
             }
 
@@ -261,12 +264,12 @@ class InstantPlayController extends Controller
 
             if ($success) {
                 Log::info('[InstantPlay] Video enviado al dispositivo', [
-                    'device_id'   => $device->id,
+                    'device_id' => $device->id,
                     'device_name' => $device->name,
-                    'mac'         => $device->mac_address,
-                    'media_id'    => $media->id,
-                    'media_name'  => $media->name,
-                    'uiCode'      => $uiCode,
+                    'mac' => $device->mac_address,
+                    'media_id' => $media->id,
+                    'media_name' => $media->name,
+                    'uiCode' => $uiCode,
                 ]);
 
                 return back()->with('success', "Video \"{$media->name}\" enviado a \"{$device->name}\" exitosamente.");
@@ -274,7 +277,8 @@ class InstantPlayController extends Controller
 
             return back()->with('error', "No se pudo enviar el video al dispositivo \"{$device->name}\".");
         } catch (\Exception $e) {
-            Log::error('[InstantPlay] Error: ' . $e->getMessage());
+            Log::error('[InstantPlay] Error: '.$e->getMessage());
+
             return back()->with('error', 'Ocurrió un error al enviar el video al dispositivo.');
         }
     }
@@ -285,7 +289,7 @@ class InstantPlayController extends Controller
     public function playCampaign(Request $request): RedirectResponse
     {
         $request->validate([
-            'device_id'   => ['required', 'exists:devices,id'],
+            'device_id' => ['required', 'exists:devices,id'],
             'campaign_id' => ['required', 'exists:campaigns,id'],
         ]);
 
@@ -295,13 +299,13 @@ class InstantPlayController extends Controller
         $campaign = Campaign::with('media')->findOrFail($request->input('campaign_id'));
 
         try {
-            if (!$device->mac_address) {
+            if (! $device->mac_address) {
                 return back()->with('error', 'El dispositivo no tiene una dirección MAC asignada.');
             }
 
             // Get the first media from the campaign
             $media = $campaign->media()->first();
-            if (!$media) {
+            if (! $media) {
                 return back()->with('error', "La campaña \"{$campaign->name}\" no tiene medios asociados.");
             }
 
@@ -316,13 +320,13 @@ class InstantPlayController extends Controller
 
             if ($success) {
                 Log::info('[InstantPlay] Campaña enviada al dispositivo', [
-                    'device_id'     => $device->id,
-                    'device_name'   => $device->name,
-                    'mac'           => $device->mac_address,
-                    'campaign_id'   => $campaign->id,
+                    'device_id' => $device->id,
+                    'device_name' => $device->name,
+                    'mac' => $device->mac_address,
+                    'campaign_id' => $campaign->id,
                     'campaign_name' => $campaign->name,
-                    'media_name'    => $media->name,
-                    'uiCode'        => $uiCode,
+                    'media_name' => $media->name,
+                    'uiCode' => $uiCode,
                 ]);
 
                 return back()->with('success', "Campaña \"{$campaign->name}\" enviada a \"{$device->name}\" exitosamente.");
@@ -330,7 +334,8 @@ class InstantPlayController extends Controller
 
             return back()->with('error', "No se pudo enviar la campaña al dispositivo \"{$device->name}\".");
         } catch (\Exception $e) {
-            Log::error('[InstantPlay] Campaign error: ' . $e->getMessage());
+            Log::error('[InstantPlay] Campaign error: '.$e->getMessage());
+
             return back()->with('error', 'Ocurrió un error al enviar la campaña al dispositivo.');
         }
     }
@@ -341,9 +346,9 @@ class InstantPlayController extends Controller
     public function playBulk(Request $request): RedirectResponse
     {
         $request->validate([
-            'device_ids'   => ['required', 'array', 'min:1'],
+            'device_ids' => ['required', 'array', 'min:1'],
             'device_ids.*' => ['exists:devices,id'],
-            'media_id'     => ['required', 'exists:media,id'],
+            'media_id' => ['required', 'exists:media,id'],
         ]);
 
         $media = Media::findOrFail($request->input('media_id'));
@@ -351,12 +356,13 @@ class InstantPlayController extends Controller
         $uiCode = $media->file_path;
 
         $successCount = 0;
-        $failCount    = 0;
+        $failCount = 0;
 
         foreach ($deviceIds as $deviceId) {
             $device = Device::find($deviceId);
-            if (!$device || !$device->mac_address) {
+            if (! $device || ! $device->mac_address) {
                 $failCount++;
+
                 continue;
             }
 
@@ -367,9 +373,9 @@ class InstantPlayController extends Controller
                     $successCount++;
                     Log::info('[InstantPlay] Bulk play success', [
                         'device_id' => $device->id,
-                        'mac'       => $device->mac_address,
-                        'media'     => $media->name,
-                        'uiCode'    => $uiCode,
+                        'mac' => $device->mac_address,
+                        'media' => $media->name,
+                        'uiCode' => $uiCode,
                     ]);
                 } else {
                     $failCount++;
@@ -378,7 +384,7 @@ class InstantPlayController extends Controller
                 $failCount++;
                 Log::error('[InstantPlay] Bulk play error', [
                     'device_id' => $deviceId,
-                    'error'     => $e->getMessage(),
+                    'error' => $e->getMessage(),
                 ]);
             }
         }
