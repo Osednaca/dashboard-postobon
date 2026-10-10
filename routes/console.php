@@ -1,21 +1,29 @@
 <?php
 
+use App\Jobs\DeviceStatusJob;
+use App\Jobs\HeartbeatJob;
+use App\Jobs\SyncDevicesJob;
+use App\Jobs\SyncGroupsJob;
+use App\Jobs\SyncVideosJob;
+use App\Models\FleetOperation;
+use App\Models\FleetUpload;
+use App\Services\Fleet\CompressedMediaPreview;
 use Illuminate\Support\Facades\Schedule;
 
 // Device status sync every minute
-Schedule::job(new \App\Jobs\DeviceStatusJob())->everyMinute();
+Schedule::job(new DeviceStatusJob)->everyMinute();
 
 // Group sync every 5 minutes
-Schedule::job(new \App\Jobs\SyncGroupsJob())->everyFiveMinutes();
+Schedule::job(new SyncGroupsJob)->everyFiveMinutes();
 
 // Video sync every 15 minutes
-Schedule::job(new \App\Jobs\SyncVideosJob())->everyFifteenMinutes();
+Schedule::job(new SyncVideosJob)->everyFifteenMinutes();
 
 // Full device sync every 10 minutes
-Schedule::job(new \App\Jobs\SyncDevicesJob())->everyTenMinutes();
+Schedule::job(new SyncDevicesJob)->everyTenMinutes();
 
 // Heartbeat every 5 minutes to keep session alive
-Schedule::job(new \App\Jobs\HeartbeatJob())->everyFiveMinutes();
+Schedule::job(new HeartbeatJob)->everyFiveMinutes();
 
 // Analytics generation daily
 Schedule::command('analytics:generate')->dailyAt('00:00');
@@ -30,12 +38,15 @@ Schedule::command('schedules:process')->everyMinute()->withoutOverlapping();
 Schedule::command('devices:check-offline')->everyTenMinutes();
 
 // Keep only recent upload progress/results; temporary MP4 files are deleted by the job.
-Schedule::call(fn () => \App\Models\FleetUpload::where('created_at', '<', now()->subDays(7))->delete())
+Schedule::call(fn () => FleetUpload::where('created_at', '<', now()->subDays(7))->delete())
     ->name('fleet-upload-history:prune')
     ->dailyAt('03:30')
     ->withoutOverlapping();
 
-Schedule::call(fn () => \App\Models\FleetOperation::where('created_at', '<', now()->subDays(7))->delete())
+Schedule::call(fn () => FleetOperation::where('created_at', '<', now()->subDays(7))->delete())
     ->name('fleet-operation-history:prune')
     ->dailyAt('03:35')
     ->withoutOverlapping();
+
+Schedule::call(fn () => app(CompressedMediaPreview::class)->prune())
+    ->name('media-preview:prune')->dailyAt('03:40')->withoutOverlapping();
