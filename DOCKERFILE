@@ -49,7 +49,7 @@ RUN npm run build
 FROM php:8.4-fpm-alpine AS final
 
 # Dependencias del sistema y extensiones PHP comunes para Laravel
-RUN apk add --no-cache \
+RUN apk add --no-cache ffmpeg \
     nginx \
     supervisor \
     bash \

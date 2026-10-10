@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
 use App\Models\Media;
+use App\Services\Fleet\CompressedMediaPreview;
 use App\Services\Fleet\MediaPreviewSource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -12,9 +13,18 @@ use Throwable;
 
 class MediaContentController extends Controller
 {
-    public function __invoke(Request $request, Media $media, MediaPreviewSource $sources): Response
+    public function __invoke(Request $request, Media $media, MediaPreviewSource $sources, CompressedMediaPreview $previews): Response
     {
         $this->authorize('view', $media);
+        if ($request->has('preview')) {
+            $variant = $request->query('preview');
+            abort_unless(is_string($variant), 404, 'Vista previa no disponible.');
+            $path = $previews->file($media, $variant);
+            abort_if($path === null, 404, 'Vista previa no disponible.');
+
+            return response()->file($path, ['Content-Type' => 'video/mp4',
+                'Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']);
+        }
         $source = $sources->resolve($media);
         abort_if($source === null, 404, 'Archivo no disponible.');
         $headers = ['Content-Type' => $source['mime_type'], 'Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff'];
