@@ -4,7 +4,10 @@ namespace App\Services\Z2;
 
 use App\Models\Media;
 use App\Services\PrivateCloud\PrivateCloudClient;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Adaptador de videos sobre la nube privada (fan-private-cloud).
@@ -25,57 +28,104 @@ class Z2VideoService
     /**
      * Sincroniza la biblioteca de videos de la nube privada a la base local.
      *
-     * @return \Illuminate\Database\Eloquent\Collection<int, Media>
+     * @return Collection<int, Media>
      */
     public function syncVideos()
     {
         $response = $this->client->get('/api/media');
 
-        if ($response === null) {
-            Log::error('[PrivateCloud] Video sync aborted: API unavailable');
+        if (! $this->validInventory($response)) {
+            Log::warning('[PrivateCloud] Video sync aborted: unavailable or incomplete inventory');
 
             return collect();
         }
 
-        $videosToUpsert = [];
-        $filenames = [];
+        $filenames = array_column($response['media'], 'filename');
+        DB::transaction(function () use ($response, $filenames): void {
+            $known = Media::withTrashed()->get();
+            $byPath = $known->keyBy('file_path');
+            $identified = $known->mapWithKeys(fn (Media $media) => [$media->id => $this->cloudFilename($media->file_path)]);
+            $byFilename = $known->groupBy(fn (Media $media) => $identified->get($media->id) ?? '');
+            $present = array_fill_keys($filenames, true);
+            foreach ($response['media'] as $item) {
+                $filename = $item['filename'];
+                $local = $byPath->get($filename);
+                if ($local && $identified->get($local->id) === null) {
+                    continue;
+                }
+                $matches = $byFilename->get($filename, collect());
+                $media = $matches->firstWhere('file_path', $filename) ?? $matches->first();
+                if ($media) {
+                    // Background inventory reconciliation never resurrects a tombstone.
+                    if (! $media->trashed()) {
+                        $media->update(['file_path' => $filename, 'size' => $item['size']]);
+                    }
+                    $matches->where('id', '!=', $media->id)->filter(fn (Media $duplicate) => ! $duplicate->trashed())
+                        ->each(fn (Media $duplicate) => $duplicate->delete());
 
-        foreach (($response['media'] ?? []) as $item) {
-            $filename = (string) ($item['filename'] ?? '');
-            if ($filename === '') {
-                continue;
+                    continue;
+                }
+                Media::create([
+                    'file_path' => $filename, 'name' => pathinfo($filename, PATHINFO_FILENAME),
+                    'original_name' => $filename, 'mime_type' => 'video/mp4', 'size' => $item['size'],
+                ]);
             }
-
-            $filenames[] = $filename;
-            $videosToUpsert[] = [
-                'file_path' => $filename,
-                'name' => pathinfo($filename, PATHINFO_FILENAME),
-                'original_name' => $filename,
-                'mime_type' => 'video/mp4',
-                'size' => (int) ($item['size'] ?? 0),
-                'duration' => 0,
-            ];
-        }
-
-        if (! empty($videosToUpsert)) {
-            Media::upsert(
-                $videosToUpsert,
-                ['file_path'],
-                ['name', 'original_name', 'mime_type', 'size', 'duration']
-            );
-        }
-
-        // Eliminar videos que ya no están en la nube privada (solo los que
-        // tienen file_path "de nube", es decir, sin ruta local).
-        Media::whereNotIn('file_path', $filenames)
-            ->where('file_path', 'NOT LIKE', '%/%')
-            ->delete();
-
+            foreach ($known as $media) {
+                $filename = $identified->get($media->id);
+                if (! $media->trashed() && $filename !== null && ! isset($present[$filename])) {
+                    $media->delete();
+                }
+            }
+        });
         $synced = Media::whereIn('file_path', $filenames)->get();
 
         Log::info('[PrivateCloud] Synced '.count($synced).' videos');
 
         return $synced;
+    }
+
+    private function validInventory(?array $response): bool
+    {
+        if (($response['result'] ?? null) !== 0 || ! isset($response['media'])
+            || ! is_array($response['media']) || ! array_is_list($response['media'])) {
+            return false;
+        }
+        $seen = [];
+        foreach ($response['media'] as $item) {
+            if (! is_array($item) || ! isset($item['filename'], $item['size'])
+                || ! is_string($item['filename']) || ! $this->safeFilename($item['filename'])
+                || ! is_int($item['size']) || $item['size'] < 0 || isset($seen[$item['filename']])) {
+                return false;
+            }
+            $seen[$item['filename']] = true;
+        }
+
+        return true;
+    }
+
+    /** Identify only this private library; independent local/external paths are preserved. */
+    public function cloudFilename(string $path): ?string
+    {
+        if ($this->safeFilename($path)) {
+            return Storage::disk('public')->exists($path) ? null : $path;
+        }
+        $base = rtrim((string) config('privatecloud.base_url'), '/');
+        $prefix = $base.'/fileDownload/Videos/';
+        if ($base !== '' && str_starts_with($path, $prefix)) {
+            $suffix = substr($path, strlen($prefix));
+            $filename = rawurldecode($suffix);
+            if (! str_contains($suffix, '?') && ! str_contains($suffix, '#') && $this->safeFilename($filename)) {
+                return $filename;
+            }
+        }
+
+        return null;
+    }
+
+    private function safeFilename(string $filename): bool
+    {
+        return $filename !== '' && ! in_array($filename, ['.', '..'], true)
+            && ! preg_match('/[\\\\\/:\x00-\x1f]/', $filename);
     }
 
     /**
@@ -98,17 +148,23 @@ class Z2VideoService
         }
 
         $filename = (string) ($response['filename'] ?? '');
+        if (! $this->safeFilename($filename)) {
+            return null;
+        }
 
-        $media = Media::updateOrCreate(
+        $media = Media::withTrashed()->updateOrCreate(
             ['file_path' => $filename],
             [
                 'name' => pathinfo($filename, PATHINFO_FILENAME),
                 'original_name' => $filename,
                 'mime_type' => 'video/mp4',
                 'size' => (int) ($response['size'] ?? 0),
-                'duration' => (int) $duration,
+                'duration' => $duration > 0 ? $duration : null,
             ]
         );
+        if ($media->trashed()) {
+            $media->restore();
+        }
 
         Log::info('[PrivateCloud] Video uploaded', ['filename' => $filename]);
 

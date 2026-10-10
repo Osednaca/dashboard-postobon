@@ -87,6 +87,7 @@
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- Device Details -->
         <div class="lg:col-span-2 space-y-6">
+            <x-device-previews :device-key="'z2:'.strtoupper(str_replace(':', '', $device->mac_address ?? ''))" title="Contenido actual" />
             <div class="bg-white rounded-xl border border-border shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-6">
                 <h2 class="text-lg font-semibold text-text mb-4 flex items-center gap-2">
                     <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -304,6 +305,18 @@
                     </svg>
                     Videos del Dispositivo
                 </h2>
+                @foreach($pendingRemovals as $removal)
+                    <div class="mb-3 rounded-lg border border-border bg-surface p-3 text-sm" role="status">
+                        <p class="font-medium text-text">{{ $removal['filename'] ?? 'Formateo de tarjeta SD' }}</p>
+                        <p class="mt-1 text-text-light">
+                            @if($removal['status'] === 'expired')
+                                No se confirmó el cambio en diez minutos. La lista vuelve a mostrar lo reportado por el dispositivo; revisa su conexión antes de reintentar.
+                            @else
+                                {{ $removal['filename'] === null ? 'Formateo solicitado' : 'Eliminación solicitada' }}. Pendiente de actualización del dispositivo.
+                            @endif
+                        </p>
+                    </div>
+                @endforeach
                 @if($devicePlaylist && count($devicePlaylist) > 0)
                     <div class="space-y-2">
                         @foreach($devicePlaylist as $playlistItem)
@@ -347,7 +360,15 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/>
                             </svg>
                         </div>
-                        <p class="text-sm text-text-light">No hay videos asignados a este dispositivo</p>
+                        <p class="text-sm text-text-light">
+                            @if(!$playlistAvailable)
+                                No se pudo consultar la lista de videos del dispositivo.
+                            @elseif(collect($pendingRemovals)->contains('status', 'pending'))
+                                Hay cambios pendientes de confirmación.
+                            @else
+                                El dispositivo no reporta videos.
+                            @endif
+                        </p>
                     </div>
                 @endif
             </div>
@@ -360,26 +381,12 @@
                     </svg>
                     Asignar Video Directamente
                 </h2>
-                <form action="{{ route('devices.assign-media', $device) }}" method="POST" class="space-y-4">
-                    @csrf
-                    <div>
-                        <label for="media_id" class="block text-sm font-medium text-text mb-1.5">Seleccionar Video</label>
-                        <select name="media_id" id="media_id" required class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors">
-                            <option value="">-- Seleccione un video --</option>
-                            @foreach($allMediaForDevice as $mediaItem)
-                                <option value="{{ $mediaItem->id }}">{{ $mediaItem->name }} ({{ $mediaItem->duration ? gmdate('i:s', $mediaItem->duration) : '00:00' }})</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="flex justify-end">
-                        <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/95 transition-colors shadow-sm">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                            </svg>
-                            Asignar Video
-                        </button>
-                    </div>
-                </form>
+                @if($device->mac_address)
+                    <x-library-playback :media="$allMediaForDevice->filter(fn ($item) => str_starts_with($item->mime_type, 'video/'))"
+                        :device-key="'z2:'.strtoupper(str_replace(':', '', $device->mac_address))" />
+                @else
+                    <p class="text-sm text-text-light">El dispositivo necesita una dirección MAC para reproducir videos.</p>
+                @endif
             </div>
         </div>
 

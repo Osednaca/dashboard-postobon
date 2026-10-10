@@ -61,6 +61,7 @@ class PrivateCloudClient
      */
     public function postFile(string $path, string $filePath, string $filename, array $extra = []): ?array
     {
+        $handle = null;
         try {
             $request = Http::baseUrl($this->baseUrl)
                 ->timeout($this->timeout)
@@ -75,9 +76,13 @@ class PrivateCloudClient
             foreach ($extra as $key => $value) {
                 $multipart[] = ['name' => $key, 'contents' => (string) $value];
             }
+            $handle = fopen($filePath, 'rb');
+            if ($handle === false) {
+                throw new \RuntimeException('No fue posible abrir el archivo seleccionado.');
+            }
             $multipart[] = [
                 'name' => 'file',
-                'contents' => fopen($filePath, 'r'),
+                'contents' => $handle,
                 'filename' => $filename,
             ];
 
@@ -88,6 +93,10 @@ class PrivateCloudClient
             Log::error('[PrivateCloud] Multipart request failed', ['path' => $path, 'error' => $e->getMessage()]);
 
             return null;
+        } finally {
+            if (is_resource($handle)) {
+                fclose($handle);
+            }
         }
     }
 

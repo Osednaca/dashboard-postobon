@@ -52,6 +52,14 @@ return [
 
     'channels' => [
 
+        // Independent of LOG_CHANNEL / LOG_STACK: keep unexpected failures visible in containers.
+        'diagnostics' => [
+            'driver' => 'monolog',
+            'handler' => StreamHandler::class,
+            'level' => 'error',
+            'with' => ['stream' => 'php://stderr'],
+        ],
+
         'stack' => [
             'driver' => 'stack',
             'channels' => explode(',', (string) env('LOG_STACK', 'single')),

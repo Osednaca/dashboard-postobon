@@ -441,7 +441,7 @@
             ])->values()) }},
 
             init() {
-                const uploadId = window.localStorage.getItem('instant-play-upload-id');
+                const uploadId = new URLSearchParams(window.location.search).get('upload_id') || window.localStorage.getItem('instant-play-upload-id');
                 if (!uploadId) return;
 
                 this.playback.id = uploadId;

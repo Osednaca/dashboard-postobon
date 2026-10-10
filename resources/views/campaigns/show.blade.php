@@ -174,34 +174,13 @@
 
                 {{-- Videos --}}
                 <div x-show="tab === 'videos'" x-transition class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <p class="col-span-full text-sm text-text-light">Vista previa del contenido configurado para esta campaña. La reproducción actual se consulta en el detalle de cada dispositivo.</p>
                     @forelse($campaign->media as $mediaItem)
-                        @php
-                            $mediaUrl = function($item) {
-                                return $item->url;
-                            };
-                            $thumbUrl = function($item) {
-                                if ($item->thumbnail) {
-                                    if (str_starts_with($item->thumbnail, 'http')) {
-                                        return $item->thumbnail;
-                                    }
-                                    return asset('storage/' . $item->thumbnail);
-                                }
-                                return null;
-                            };
-                        @endphp
                         <div class="rounded-lg border border-border overflow-hidden hover:border-primary/50 transition-colors">
-                            <div class="aspect-video bg-surface-dark flex items-center justify-center relative">
-                                @if($thumbUrl($mediaItem))
-                                    <img src="{{ $thumbUrl($mediaItem) }}" alt="{{ $mediaItem->name }}" class="w-full h-full object-cover">
-                                @else
-                                    <svg class="w-8 h-8 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
-                                    </svg>
-                                @endif
-                            </div>
+                            <x-media-preview :media="$mediaItem" detail />
                             <div class="p-3">
                                 <div class="text-sm font-medium text-text">{{ $mediaItem->name }}</div>
-                                <div class="text-xs text-text-muted mt-0.5">{{ $mediaItem->duration ? gmdate('i:s', $mediaItem->duration) : '00:00' }} · Orden #{{ $mediaItem->pivot->order ?? '-' }}</div>
+                                <div class="text-xs text-text-muted mt-0.5"><x-media-duration :media="$mediaItem" /> · Orden #{{ $mediaItem->pivot->order ?? '-' }}</div>
                             </div>
                         </div>
                     @empty

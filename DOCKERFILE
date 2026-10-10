@@ -92,6 +92,7 @@ COPY --from=frontend /app/public/build ./public/build
 # Configuración de Nginx, PHP (límite de subida: 100MB) y Supervisor
 COPY docker/nginx.conf /etc/nginx/http.d/default.conf
 COPY docker/php.ini /usr/local/etc/php/conf.d/laravel.ini
+COPY docker/zz-diagnostics.conf /usr/local/etc/php-fpm.d/zz-diagnostics.conf
 COPY docker/supervisord.conf /etc/supervisor/supervisord.conf
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 

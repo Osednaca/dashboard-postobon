@@ -3,7 +3,7 @@
 @section('title', $media->name)
 
 @section('content')
-<div class="max-w-4xl mx-auto">
+<div class="max-w-4xl mx-auto" x-data="{}">
     <!-- Page Header -->
     <div class="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -36,12 +36,6 @@
         </div>
     </div>
 
-    @php
-        $mediaUrl = function($item) {
-            return $item->url;
-        };
-    @endphp
-
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- Video Preview -->
         <div class="lg:col-span-2">
@@ -53,24 +47,7 @@
                     </svg>
                     Vista Previa
                 </h2>
-                <div class="aspect-video bg-black rounded-lg overflow-hidden">
-                    @if($media->mime_type && str_starts_with($media->mime_type, 'video/'))
-                        <video controls class="w-full h-full">
-                            <source src="{{ $mediaUrl($media) }}" type="{{ $media->mime_type }}">
-                            Tu navegador no soporta la reproducción de video.
-                        </video>
-                    @elseif($media->mime_type && str_starts_with($media->mime_type, 'image/'))
-                        <img src="{{ $mediaUrl($media) }}" alt="{{ $media->name }}" class="w-full h-full object-contain">
-                    @else
-                        <div class="w-full h-full flex flex-col items-center justify-center text-white">
-                            <svg class="w-12 h-12 mb-3 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
-                            <p class="text-sm opacity-80">Vista previa no disponible</p>
-                        </div>
-                    @endif
-                </div>
+                <x-media-preview :media="$media" detail class="rounded-lg" />
             </div>
         </div>
 
@@ -94,7 +71,7 @@
                     </div>
                     <div class="p-4 rounded-lg bg-surface">
                         <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Duración</p>
-                        <p class="text-sm text-text">{{ $media->duration ? gmdate('i:s', $media->duration) : '-' }}</p>
+                        <p class="text-sm text-text"><x-media-duration :media="$media" /></p>
                     </div>
                     <div class="p-4 rounded-lg bg-surface">
                         <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Tipo MIME</p>

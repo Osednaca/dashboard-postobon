@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class InstantPlayMediaRequest extends FormRequest
 {
@@ -14,7 +15,8 @@ class InstantPlayMediaRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'media_id' => ['required', 'integer', 'exists:media,id'],
+            'media_id' => ['required', 'integer', Rule::exists('media', 'id')->where(fn ($query) => $query
+                ->whereNull('deleted_at')->where('mime_type', 'like', 'video/%'))],
             'targets' => ['required', 'array', 'min:1', 'max:10000'],
             'targets.*' => [
                 'required',

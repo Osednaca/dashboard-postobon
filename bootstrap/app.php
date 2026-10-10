@@ -1,9 +1,12 @@
 <?php
 
+use App\Http\Middleware\CheckRole;
+use App\Support\ExceptionDiagnostics;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
+use Symfony\Component\HttpFoundation\Response;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -18,12 +21,22 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->alias([
-            'role' => \App\Http\Middleware\CheckRole::class,
+            'role' => CheckRole::class,
         ]);
     })
     ->withMiddleware(function (Middleware $middleware) {
-    $middleware->trustProxies(at: '*');
-})
+        $middleware->trustProxies(at: '*');
+    })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->report(function (Throwable $exception): void {
+            app(ExceptionDiagnostics::class)->report($exception);
+        });
+        $exceptions->respond(function (Response $response) {
+            $reference = request()->attributes->get('exception_reference');
+            if ($response->getStatusCode() === 500 && is_string($reference)) {
+                $response->headers->set('X-Error-Reference', $reference);
+            }
+
+            return $response;
+        });
     })->create();

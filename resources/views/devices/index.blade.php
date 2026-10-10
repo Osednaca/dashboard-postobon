@@ -4,6 +4,7 @@
 
 @section('content')
 @php
+    $libraryVideos = \App\Models\Media::where('mime_type', 'like', 'video/%')->orderBy('name')->get();
     $initialLocalIds = collect(old('device_ids', []))->map(fn ($id) => (string) $id)->unique()->values();
     $localFleetKeys = $devices->getCollection()->mapWithKeys(function ($device) {
         $mac = strtoupper(str_replace(':', '', (string) $device->mac_address));
@@ -135,6 +136,7 @@
             this.fleetUpload.progress = payload.progress ?? this.fleetUpload.progress;
             this.fleetUpload.error = payload.error || '';
             this.fleetUpload.result = payload.result || null;
+            this.fleetUpload.transfers = payload.transfers || [];
             if (payload.started_at && this.fleetUpload.elapsed === 0) {
                 this.fleetUpload.elapsed = Math.max(0, Math.floor((Date.now() - new Date(payload.started_at).getTime()) / 1000));
             }
@@ -165,16 +167,35 @@
         this.fleetUpload.error = message;
         this.stopFleetUploadPolling();
     },
+    fleetUploadHasFailures() {
+        return this.fleetUpload.status === 'failed' || (this.fleetUpload.status === 'completed' && (this.fleetUpload.result?.failed ?? 0) > 0);
+    },
+    fleetUploadFailures() {
+        return (this.fleetUpload.result?.results || []).filter(item => item.success === false);
+    },
+    fleetUploadFailureMessage(item) {
+        if (item.error === 'timeout waiting for WL35 upload ACK') {
+            return 'El WL35 no confirmó el inicio de carga. No se enviaron bytes de video. Es necesario comprobar la sesión y el almacenamiento del ventilador.';
+        }
+        return item.error || 'El equipo no confirmó la distribución.';
+    },
     fleetUploadTitle() {
         if (this.fleetUpload.status === 'completed' && (this.fleetUpload.result?.failed ?? 0) > 0) {
             return 'Distribución finalizada con errores';
         }
         return {
             receiving: 'Subiendo al servidor', queued: 'Esperando al procesador', uploading_gateway: 'Enviando al gateway',
-            distributing: 'Convirtiendo y distribuyendo', finalizing: 'Confirmando resultados', completed: 'Distribución completada', failed: 'La distribución falló'
+            distributing: 'Preparando la distribución', converting: 'Convirtiendo el video', awaiting_device: 'Esperando al WL35', relaying: 'Transmitiendo al ventilador', finalizing: 'Confirmando resultados', completed: 'Distribución completada', failed: 'La distribución falló'
         }[this.fleetUpload.phase] || 'Preparando la carga';
     },
     fleetUploadDescription() {
+        const transfers = (this.fleetUpload.transfers || []).filter(item => item.phase === 'relaying');
+        if (transfers.length) {
+            const sent = transfers.reduce((sum, item) => sum + item.bytes, 0) / 1000000;
+            const total = transfers.reduce((sum, item) => sum + item.total_bytes, 0) / 1000000;
+            const speed = transfers.reduce((sum, item) => sum + (item.bytes_per_second || 0), 0) / 1000;
+            return `${sent.toFixed(1)} de ${total.toFixed(1)} MB transmitidos · ${speed.toFixed(0)} kB/s. El WL35 permanece pausado durante este envío.`;
+        }
         if (this.fleetUpload.phase === 'queued' && this.fleetUpload.elapsed > 30) {
             return 'El trabajo sigue esperando al procesador. Si no avanza, el administrador debe revisar el worker de Laravel.';
         }
@@ -186,6 +207,8 @@
             queued: 'El archivo ya está seguro en el VPS y espera su turno en la cola.',
             uploading_gateway: 'El VPS está transfiriendo el archivo al gateway unificado.',
             distributing: 'El gateway prepara cada formato y lo transmite a los ventiladores seleccionados.',
+            converting: 'El servidor está preparando el formato WL35. El ventilador continúa reproduciendo durante la conversión.',
+            awaiting_device: 'El video está preparado. Falta que el WL35 confirme que acepta iniciar la carga.',
             finalizing: 'Los dispositivos están reportando el resultado final.',
             completed: 'El gateway terminó de procesar los equipos seleccionados.',
             failed: 'El archivo dejó de procesarse. Puedes revisar el detalle e intentarlo de nuevo.'
@@ -544,7 +567,34 @@
 
     <div x-show="showBulkAssignMediaModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"><div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showBulkAssignMediaModal=false"></div><div class="relative w-full max-w-md rounded-xl border border-border bg-white p-6 shadow-xl"><h3 class="text-lg font-semibold text-text">Asignar medio a Z2</h3><p class="mt-2 text-sm text-text-light">El mismo archivo se asignará a <strong x-text="selectedIds.length"></strong> dispositivos Z2.</p><form action="{{ route('devices.bulk-assign-media') }}" method="POST" class="mt-5 space-y-4" @submit="bulkAssigningMedia=true">@csrf<template x-for="id in selectedIds" :key="'media-'+id"><input type="hidden" name="device_ids[]" :value="id"></template><select name="media_id" required class="w-full rounded-lg border border-border bg-white px-4 py-2.5 text-sm"><option value="">Seleccionar medio</option>@foreach(App\Models\Media::orderBy('name')->get() as $media)<option value="{{ $media->id }}" @selected((string) old('media_id') === (string) $media->id)>{{ $media->name }}</option>@endforeach</select><div class="flex justify-end gap-3"><button type="button" @click="showBulkAssignMediaModal=false" class="rounded-lg border border-border px-4 py-2.5 text-sm">Cancelar</button><button :disabled="bulkAssigningMedia" class="rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50" x-text="bulkAssigningMedia ? 'Asignando…' : 'Asignar medio'"></button></div></form></div></div>
 
-    <div x-show="showFleetPlayModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"><div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showFleetPlayModal=false"></div><div class="relative w-full max-w-lg rounded-xl border border-border bg-white p-6 shadow-xl"><h3 class="text-lg font-semibold text-text">Reproducir en la selección</h3><p class="mt-2 text-sm text-text-light">Indica ambos valores si seleccionaste una combinación de WL35 y Z2.</p><form action="{{ route('fleet.command') }}" method="POST" class="mt-5 space-y-4" @submit="fleetSubmitting=true">@csrf<input type="hidden" name="command" value="play"><template x-for="key in selectedFleetKeys" :key="'play-'+key"><input type="hidden" name="targets[]" :value="key"></template><div class="grid gap-4 sm:grid-cols-2"><label><span class="mb-1.5 block text-xs font-semibold text-text-light">Índice WL35</span><input type="number" name="wl35_video_index" min="1" max="255" value="{{ old('wl35_video_index', 1) }}" class="w-full rounded-lg border border-border px-3 py-2.5 text-sm"></label><label><span class="mb-1.5 block text-xs font-semibold text-text-light">Archivo Z2</span><select name="z2_filename" class="w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"><option value="">Seleccionar archivo</option>@foreach($fleetMedia as $asset)<option value="{{ $asset['filename'] ?? '' }}">{{ $asset['filename'] ?? 'Archivo' }}</option>@endforeach</select></label></div><div class="flex justify-end gap-3"><button type="button" @click="showFleetPlayModal=false" class="rounded-lg border border-border px-4 py-2.5 text-sm">Cancelar</button><button :disabled="fleetSubmitting" class="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">Reproducir</button></div></form></div></div>
+    <div x-show="showFleetPlayModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showFleetPlayModal=false"></div>
+        <div class="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-white p-6 shadow-xl">
+            <h3 class="mb-5 text-lg font-semibold text-text">Reproducir en la selección</h3>
+            <x-library-playback :media="$libraryVideos" />
+            <details class="mt-5 border-t border-border pt-4">
+                <summary class="cursor-pointer text-sm font-semibold text-text-light">Reproducir contenido ya almacenado</summary>
+                <p class="mt-2 text-xs text-text-light">Usa el índice WL35 o el archivo Z2 disponible en el dispositivo.</p>
+                <form action="{{ route('fleet.command') }}" method="POST" class="mt-4 space-y-4" @submit="fleetSubmitting=true">
+                    @csrf
+                    <input type="hidden" name="command" value="play">
+                    <template x-for="key in selectedFleetKeys" :key="'play-'+key"><input type="hidden" name="targets[]" :value="key"></template>
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <label><span class="mb-1.5 block text-xs font-semibold text-text-light">Índice WL35</span><input type="number" name="wl35_video_index" min="1" max="255" value="{{ old('wl35_video_index', 1) }}" class="w-full rounded-lg border border-border px-3 py-2.5 text-sm"></label>
+                        <label>
+                            <span class="mb-1.5 block text-xs font-semibold text-text-light">Archivo Z2</span>
+                            <select name="z2_filename" class="w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm">
+                                <option value="">Seleccionar archivo</option>
+                                @foreach($fleetMedia as $asset)<option value="{{ $asset['filename'] ?? '' }}">{{ $asset['filename'] ?? 'Archivo' }}</option>@endforeach
+                            </select>
+                        </label>
+                    </div>
+                    <button :disabled="fleetSubmitting" class="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">Reproducir almacenado</button>
+                </form>
+            </details>
+            <div class="mt-5 flex justify-end"><button type="button" @click="showFleetPlayModal=false" class="rounded-lg border border-border px-4 py-2.5 text-sm">Cerrar</button></div>
+        </div>
+    </div>
 
     <div x-show="fleetFormat.status !== 'idle' && !showFleetFormatModal" x-cloak
          class="fixed bottom-5 left-5 z-40 w-[min(24rem,calc(100vw-2.5rem))] rounded-xl bg-slate-900 p-4 text-white shadow-[0_14px_35px_rgba(15,23,42,0.28)]">
@@ -618,13 +668,13 @@
                 <circle class="opacity-25" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3"></circle>
                 <path class="opacity-90" fill="currentColor" d="M21 12a9 9 0 00-9-9v3a6 6 0 016 6h3z"></path>
             </svg>
-            <svg x-show="fleetUpload.status === 'completed'" class="h-5 w-5 shrink-0 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-            <svg x-show="fleetUpload.status === 'failed'" class="h-5 w-5 shrink-0 text-red-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            <svg x-show="fleetUpload.status === 'completed' && !fleetUploadHasFailures()" class="h-5 w-5 shrink-0 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            <svg x-show="fleetUploadHasFailures()" class="h-5 w-5 shrink-0 text-red-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             <span class="min-w-0 flex-1">
                 <span class="block truncate text-sm font-semibold" x-text="fleetUploadTitle()"></span>
                 <span class="mt-0.5 block text-xs text-slate-300">Abrir detalles · <span class="font-mono tabular-nums" x-text="fleetUploadElapsed()"></span></span>
             </span>
-            <span class="text-xs font-semibold tabular-nums text-sky-300" x-text="fleetUpload.progress + '%'" x-show="fleetUpload.status !== 'failed'"></span>
+            <span class="text-xs font-semibold tabular-nums text-sky-300" x-text="fleetUpload.progress + '%'" x-show="!fleetUploadHasFailures()"></span>
         </button>
     </div>
 
@@ -660,10 +710,10 @@
                     <div x-show="fleetUpload.status !== 'idle'" x-cloak class="space-y-5" aria-live="polite" aria-atomic="true">
                         <div class="flex items-center gap-4">
                             <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-                                 :class="fleetUpload.status === 'failed' ? 'bg-danger/10 text-danger' : (fleetUpload.status === 'completed' ? 'bg-success/10 text-success' : 'bg-secondary/10 text-secondary')">
+                                 :class="fleetUploadHasFailures() ? 'bg-danger/10 text-danger' : (fleetUpload.status === 'completed' ? 'bg-success/10 text-success' : 'bg-secondary/10 text-secondary')">
                                 <svg x-show="!['completed', 'failed'].includes(fleetUpload.status)" class="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="opacity-20" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3"></circle><path fill="currentColor" d="M21 12a9 9 0 00-9-9v3a6 6 0 016 6h3z"></path></svg>
-                                <svg x-show="fleetUpload.status === 'completed'" class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                                <svg x-show="fleetUpload.status === 'failed'" class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                <svg x-show="fleetUpload.status === 'completed' && !fleetUploadHasFailures()" class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                <svg x-show="fleetUploadHasFailures()" class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                             </div>
                             <div class="min-w-0 flex-1">
                                 <div class="flex items-center justify-between gap-3">
@@ -674,7 +724,7 @@
                             </div>
                         </div>
 
-                        <div x-show="fleetUpload.status !== 'failed'">
+                        <div x-show="!fleetUploadHasFailures()">
                             <div class="mb-2 flex items-center justify-between text-xs"><span class="font-medium text-text-light" x-text="fleetUploadDescription()"></span><span class="ml-3 font-semibold tabular-nums text-secondary" x-text="fleetUpload.progress + '%'" aria-hidden="true"></span></div>
                             <div class="h-2 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-label="Progreso de distribución" :aria-valuenow="fleetUpload.progress" aria-valuemin="0" aria-valuemax="100">
                                 <div class="h-full rounded-full bg-secondary transition-[width] duration-500" :class="!['completed', 'failed'].includes(fleetUpload.status) ? 'animate-pulse' : ''" :style="`width: ${fleetUpload.progress}%`"></div>
@@ -688,6 +738,15 @@
                             <div><div class="text-lg font-bold tabular-nums text-text" x-text="fleetUpload.result?.total ?? 0"></div><div class="text-[11px] text-text-muted">Seleccionados</div></div>
                             <div><div class="text-lg font-bold tabular-nums text-success" x-text="fleetUpload.result?.succeeded ?? 0"></div><div class="text-[11px] text-text-muted">Completados</div></div>
                             <div><div class="text-lg font-bold tabular-nums text-danger" x-text="fleetUpload.result?.failed ?? 0"></div><div class="text-[11px] text-text-muted">Fallidos</div></div>
+                        </div>
+                        <div x-show="fleetUploadFailures().length" class="space-y-2" role="alert">
+                            <template x-for="(failure, index) in fleetUploadFailures()" :key="failure.key || index">
+                                <div class="rounded-lg bg-danger/10 px-3 py-2.5 text-xs leading-5 text-danger">
+                                    <p class="font-semibold" x-text="failure.name || failure.id || failure.key || 'Ventilador'"></p>
+                                    <p x-text="fleetUploadFailureMessage(failure)"></p>
+                                    <p class="mt-1 break-words font-mono text-[11px]" x-show="failure.error" x-text="failure.error"></p>
+                                </div>
+                            </template>
                         </div>
                     </div>
 

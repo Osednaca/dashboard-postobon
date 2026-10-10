@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\FleetUpload;
 use App\Models\Wl35DeviceMedia;
+use App\Services\Fleet\MediaPreviewSource;
 use App\Services\Fleet\MediaSourceMaterializer;
 use App\Services\Fleet\UnifiedFleetClient;
 use Illuminate\Bus\Queueable;
@@ -30,6 +31,7 @@ class PlayFleetMediaJob implements ShouldQueue
     public function handle(
         UnifiedFleetClient $fleetClient,
         MediaSourceMaterializer $materializer,
+        MediaPreviewSource $sources,
     ): void {
         $upload = FleetUpload::with('sourceMedia')->findOrFail($this->fleetUploadId);
 
@@ -60,10 +62,11 @@ class PlayFleetMediaJob implements ShouldQueue
                 $targets,
                 fn (string $target): bool => str_starts_with($target, 'wl35:'),
             ));
-            $isCloudLibraryFile = ! str_contains($media->file_path, '/')
-                && ! str_contains($media->file_path, '\\')
-                && ! str_starts_with($media->file_path, 'http://')
-                && ! str_starts_with($media->file_path, 'https://');
+            $source = str_starts_with($media->mime_type, 'video/') ? $sources->resolve($media) : null;
+            if ($source === null) {
+                throw new \RuntimeException('No se pudo encontrar el archivo de video seleccionado.');
+            }
+            $isCloudLibraryFile = $source['kind'] === 'private_cloud';
             $results = [];
             $wl35UploadTargets = $wl35Targets;
 
@@ -80,7 +83,7 @@ class PlayFleetMediaJob implements ShouldQueue
                 $upload->update(['phase' => 'sending_z2', 'progress' => 22]);
                 $results = array_merge(
                     $results,
-                    $this->runZ2Playback($fleetClient, $z2Targets, $media->file_path),
+                    $this->runZ2Playback($fleetClient, $z2Targets, rawurldecode(basename($source['path']))),
                 );
             }
 
@@ -180,6 +183,7 @@ class PlayFleetMediaJob implements ShouldQueue
 
                 if ($mapping->video_index > $reportedCount) {
                     $mapping->delete();
+
                     continue;
                 }
 

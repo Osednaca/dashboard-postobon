@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\BulkDeviceOperationRequest;
 use App\Http\Requests\BulkAssignMediaRequest;
+use App\Http\Requests\BulkDeviceOperationRequest;
 use App\Http\Requests\ChangeDeviceGroupRequest;
 use App\Http\Requests\ChangeDeviceLocationRequest;
 use App\Http\Requests\StoreDeviceRequest;
@@ -207,44 +207,42 @@ class DeviceController extends Controller
     /**
      * Display the specified device.
      */
-    public function show(Device $device): View|RedirectResponse
+    public function show(Device $device): View
     {
         $this->authorize('view', $device);
 
-        try {
-            $device->load(['establishmentProfile.businessType', 'location', 'group']);
-            $deviceDetail = null;
-            $devicePlaylist = [];
-            $deviceVolume = null;
+        $device->load(['establishmentProfile.businessType', 'location', 'group', 'heartbeats' => fn ($query) => $query->latest('received_at')->limit(10)]);
+        $deviceDetail = null;
+        $devicePlaylist = [];
+        $pendingRemovals = [];
+        $playlistAvailable = false;
+        $deviceVolume = null;
 
-            if ($device->mac_address) {
-                $deviceDetail = $this->z2DeviceService->getDeviceDetail($device->mac_address);
-                $devicePlaylist = $this->z2PlaylistService->getDevicePlaylist($device->mac_address);
-                $deviceVolume = $this->z2DeviceService->getVolume($device->mac_address);
+        if ($device->mac_address) {
+            $deviceDetail = $this->z2DeviceService->getDeviceDetail($device->mac_address);
+            $playlistState = $this->z2PlaylistService->getDevicePlaylistState($device->mac_address);
+            $devicePlaylist = $playlistState['playlist'];
+            $pendingRemovals = $playlistState['removals'];
+            $playlistAvailable = $playlistState['available'];
+            $deviceVolume = $this->z2DeviceService->getVolume($device->mac_address);
 
-                // Read live Bluetooth status from Z2 so the dashboard reflects
-                // changes made from the mobile app, then sync the local column.
-                $deviceBluetooth = $this->z2DeviceService->getBluetoothStatus($device->mac_address);
-                if ($deviceBluetooth !== null && $deviceBluetooth !== $device->bluetooth_status) {
-                    $device->update(['bluetooth_status' => $deviceBluetooth]);
-                }
+            // Read live Bluetooth status from Z2 so the dashboard reflects
+            // changes made from the mobile app, then sync the local column.
+            $deviceBluetooth = $this->z2DeviceService->getBluetoothStatus($device->mac_address);
+            if ($deviceBluetooth !== null && $deviceBluetooth !== $device->bluetooth_status) {
+                $device->update(['bluetooth_status' => $deviceBluetooth]);
             }
-
-            $deviceBluetooth ??= $device->bluetooth_status ?? 'off';
-
-            // Deduplicated media list for the select dropdown
-            $allMediaForDevice = Media::orderBy('name')
-                ->get()
-                ->unique('file_path')
-                ->values();
-
-            return view('devices.show', compact('device', 'deviceDetail', 'devicePlaylist', 'allMediaForDevice', 'deviceVolume', 'deviceBluetooth'));
-        } catch (\Exception $e) {
-            Log::error('Error al mostrar dispositivo: '.$e->getMessage());
-
-            return redirect()->route('devices.index')
-                ->with('error', 'Ocurrió un error al cargar el dispositivo.');
         }
+
+        $deviceBluetooth ??= $device->bluetooth_status ?? 'off';
+
+        // Deduplicated media list for the select dropdown
+        $allMediaForDevice = Media::orderBy('name')
+            ->get()
+            ->unique('file_path')
+            ->values();
+
+        return view('devices.show', compact('device', 'deviceDetail', 'devicePlaylist', 'pendingRemovals', 'playlistAvailable', 'allMediaForDevice', 'deviceVolume', 'deviceBluetooth'));
     }
 
     /**
@@ -260,7 +258,7 @@ class DeviceController extends Controller
             }
 
             if ($this->z2DeviceService->formatSd($device->mac_address)) {
-                return back()->with('success', 'Tarjeta SD del dispositivo formateada exitosamente.');
+                return back()->with('warning', 'Solicitud de formateo aceptada. El borrado físico aún no está verificado.');
             }
 
             return back()->with('error', 'No se pudo formatear la tarjeta SD en la nube Z2.');
@@ -331,11 +329,11 @@ class DeviceController extends Controller
             }
 
             if ($failCount === 0) {
-                return back()->with('success', "Tarjeta SD formateada exitosamente en los {$successCount} dispositivos seleccionados.");
+                return back()->with('warning', "Solicitud de formateo aceptada en {$successCount} dispositivos. El borrado físico aún no está verificado.");
             }
 
             if ($successCount > 0) {
-                return back()->with('warning', "Se formateó la tarjeta SD en {$successCount} dispositivos, pero falló en {$failCount}.");
+                return back()->with('warning', "Solicitud de formateo aceptada en {$successCount} dispositivos; falló en {$failCount}. El borrado físico aún no está verificado.");
             }
 
             return back()->with('error', 'No se pudo formatear la tarjeta SD en los dispositivos seleccionados.');
@@ -857,7 +855,12 @@ class DeviceController extends Controller
         $this->authorize('update', $device);
 
         $request->validate([
-            'ui_code' => ['required', 'string'],
+            'ui_code' => ['required', 'string', 'max:255', function ($attribute, $value, $fail): void {
+                if (basename($value) !== $value || str_contains($value, '\\')
+                    || in_array($value, ['.', '..'], true) || preg_match('/[\x00-\x1f]/', $value)) {
+                    $fail('El nombre del video no es válido.');
+                }
+            }],
         ]);
 
         try {
@@ -868,13 +871,13 @@ class DeviceController extends Controller
             $filename = $request->input('ui_code');
 
             if ($this->z2DeviceService->removeVideoFromDevice($device->mac_address, $filename)) {
-                Log::info('Video quitado del dispositivo', [
+                Log::info('Solicitud de eliminación de video aceptada', [
                     'device_id' => $device->id,
                     'mac' => $device->mac_address,
                     'filename' => $filename,
                 ]);
 
-                return back()->with('success', 'Video quitado del dispositivo exitosamente. El cambio se refleja en el próximo heartbeat.');
+                return back()->with('warning', 'Solicitud de eliminación aceptada. El borrado físico aún no está verificado.');
             }
 
             return back()->with('error', 'No se pudo quitar el video del dispositivo.');

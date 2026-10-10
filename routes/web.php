@@ -7,10 +7,12 @@ use App\Http\Controllers\Web\BusinessTypeController;
 use App\Http\Controllers\Web\CampaignController;
 use App\Http\Controllers\Web\DashboardController;
 use App\Http\Controllers\Web\DeviceController;
+use App\Http\Controllers\Web\DevicePreviewController;
 use App\Http\Controllers\Web\EstablishmentController;
 use App\Http\Controllers\Web\GroupController;
 use App\Http\Controllers\Web\InstantPlayController;
 use App\Http\Controllers\Web\LocationController;
+use App\Http\Controllers\Web\MediaContentController;
 use App\Http\Controllers\Web\MediaController;
 use App\Http\Controllers\Web\NotificationController;
 use App\Http\Controllers\Web\ScheduleController;
@@ -37,6 +39,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard.index');
+    Route::get('/device-previews', DevicePreviewController::class)->name('devices.previews');
+    Route::get('/media/{media}/content', MediaContentController::class)->name('media.content');
 
     Route::redirect('/fleet', '/devices')->name('fleet.index');
     Route::post('/fleet/commands', [UnifiedFleetController::class, 'command'])->name('fleet.command');

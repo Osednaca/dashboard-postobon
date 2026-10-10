@@ -92,26 +92,11 @@
         </div>
     </div>
 
-    @php
-        $mediaUrl = function($item) {
-            return $item->url;
-        };
-        $thumbnailUrl = function($item) {
-            if ($item->thumbnail) {
-                if (str_starts_with($item->thumbnail, 'http')) {
-                    return $item->thumbnail;
-                }
-                return asset('storage/' . $item->thumbnail);
-            }
-            return null;
-        };
-    @endphp
-
     <!-- Grid View -->
     <div x-show="viewMode === 'grid'" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         @forelse($media as $item)
             <div class="bg-white rounded-xl border border-border shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-shadow relative"
-                 x-show="(!search || '{{ strtolower($item->name) }}'.includes(search.toLowerCase())) && (!typeFilter || '{{ $item->mime_type }}'.startsWith(typeFilter))">
+                 x-show="(!search || @js(strtolower($item->name)).includes(search.toLowerCase())) && (!typeFilter || @js($item->mime_type).startsWith(typeFilter))">
                 
                 <!-- Selection Checkbox -->
                 <div class="absolute top-2 left-2 z-20">
@@ -120,18 +105,9 @@
 
                 <!-- Thumbnail -->
                 <div class="aspect-video bg-surface relative group">
-                    @if($thumbnailUrl($item))
-                        <img src="{{ $thumbnailUrl($item) }}" alt="{{ $item->name }}" class="w-full h-full object-cover">
-                    @else
-                        <div class="w-full h-full flex items-center justify-center">
-                            <svg class="w-12 h-12 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
-                        </div>
-                    @endif
-                    <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                        <a href="{{ route('media.show', $item) }}" class="p-2 rounded-full bg-white/90 text-text hover:text-primary transition-colors">
+                    <x-media-preview :media="$item" />
+                    <div class="absolute right-2 top-2">
+                        <a href="{{ route('media.show', $item) }}" aria-label="Ver vista previa" class="inline-flex items-center justify-center p-2 rounded-full bg-white/90 text-text hover:text-primary transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -148,7 +124,7 @@
                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
-                            {{ $item->duration ? gmdate('i:s', $item->duration) : '-' }}
+                            <x-media-duration :media="$item" />
                         </span>
                         <span class="flex items-center gap-1">
                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -171,7 +147,7 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                             </svg>
                         </button>
-                        <button @click="openDeleteModal({{ $item->id }}, {{ json_encode($item->name) }})" class="p-2 rounded-lg bg-surface text-text-light hover:text-danger hover:bg-danger/10 transition-colors" title="Eliminar">
+                        <button @click="openDeleteModal({{ $item->id }}, @js($item->name))" class="p-2 rounded-lg bg-surface text-text-light hover:text-danger hover:bg-danger/10 transition-colors" title="Eliminar">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                             </svg>
@@ -220,22 +196,17 @@
                     <tbody class="divide-y divide-border">
                         @foreach($media as $item)
                             <tr class="hover:bg-surface/50 transition-colors"
-                                x-show="(!search || '{{ strtolower($item->name) }}'.includes(search.toLowerCase())) && (!typeFilter || '{{ $item->mime_type }}'.startsWith(typeFilter))">
+                                x-show="(!search || @js(strtolower($item->name)).includes(search.toLowerCase())) && (!typeFilter || @js($item->mime_type).startsWith(typeFilter))">
                                 <td class="px-4 py-4 w-10 text-center">
                                     <input type="checkbox" name="media_ids[]" :value="{{ $item->id }}" x-model.number="selectedIds" class="w-4 h-4 rounded border-border text-primary focus:ring-primary/20 cursor-pointer">
                                 </td>
                                 <td class="px-6 py-4">
                                     <div class="flex items-center gap-3">
-                                        <div class="w-10 h-10 rounded-lg bg-surface flex items-center justify-center shrink-0">
-                                            <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                            </svg>
-                                        </div>
+                                        <x-media-preview :media="$item" compact />
                                         <span class="font-medium text-text">{{ $item->name }}</span>
                                     </div>
                                 </td>
-                                <td class="px-6 py-4 text-text-light">{{ $item->duration ? gmdate('i:s', $item->duration) : '-' }}</td>
+                                <td class="px-6 py-4 text-text-light"><x-media-duration :media="$item" /></td>
                                 <td class="px-6 py-4 text-text-light">{{ $item->size ? number_format($item->size / 1024 / 1024, 2) . ' MB' : '-' }}</td>
                                 <td class="px-6 py-4 text-text-light">{{ $item->created_at->format('d/m/Y') }}</td>
                                 <td class="px-6 py-4 text-text-light">{{ $item->mime_type ? explode('/', $item->mime_type)[0] : '-' }}</td>
@@ -252,7 +223,7 @@
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                                             </svg>
                                         </button>
-                                        <button @click="openDeleteModal({{ $item->id }}, {{ json_encode($item->name) }})" class="p-2 rounded-lg text-text-light hover:text-danger hover:bg-danger/10 transition-colors" title="Eliminar">
+                                        <button @click="openDeleteModal({{ $item->id }}, @js($item->name))" class="p-2 rounded-lg text-text-light hover:text-danger hover:bg-danger/10 transition-colors" title="Eliminar">
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                                             </svg>

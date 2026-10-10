@@ -56,5 +56,12 @@ jobs:
       - name: Build frontend assets
         run: npm run build
 
+      - name: Execute JavaScript tests
+        run: node --test tests/js/*.test.mjs
+
       - name: Execute tests
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+          DB_URL: ''
         run: php artisan test
