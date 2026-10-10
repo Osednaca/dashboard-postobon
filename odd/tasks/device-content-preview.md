@@ -24,20 +24,23 @@ Preserve pre-existing modifications in `docs/DESPLIEGUE_LATENCIA.md` and the `pr
   - Auth/policy checks, safe fixed-source media reads, Range handling, no credential exposure or mutating external calls.
   - Checks: focused PHPUnit cases for matching, unavailable states, auth, source validation, local/private bytes and Range. Full suite at closure.
   - Verification: focused tests passed, then full isolated `php artisan test` passed (19 tests, 93 assertions); Pint check passed on 7 changed PHP files; `git diff --check` passed. Parent inspected resolver, source validation, controllers, tests and documentation.
-  - Commit: ready to create after observed checks. RDD: disabled/unmanaged. Slice 1 boundary: branch point → T1 commit.
+  - Commit: `82fff2cedef7fdc7096b4fbd901f0c758b2308e2`. RDD: disabled/unmanaged. Slice 1 boundary: `91694f0` → `82fff2c`.
   - Authored implementation/tests/docs: 462 lines before tracking document. Cohesive resolver + authenticated Range delivery + meaningful source/auth tests exceed the advisory task target; retain complete tests and formatting. A future PR may require a size exception for this indivisible unit; no PR is being created.
-- [ ] T2 — Add shared previews to dashboard and both device details.
+- [x] T2 — Add shared previews to dashboard and both device details.
   - Route: delegated; shared component/JS and three views are non-trivial changes.
   - Spanish states; responsive player; polling updates source only when content changes; same video must not restart on each poll; unavailable/offline states remove stale playback.
   - Checks: focused page rendering tests, frontend behavior checks, full PHPUnit suite, Pint on changed PHP, production build; browser verification if local environment supports it without remote operations.
-  - Commit: pending. RDD: disabled/unmanaged. Slice 2 boundary: T1 commit → T2 commit.
+  - Verification: `node --test tests/js/device-previews.test.mjs` passed (5 tests); full isolated `php artisan test` passed (20 tests, 108 assertions); Pint and `git diff --check` passed; `npm run build` passed (57 modules). Initial render fixture failures were fixed before the final green run.
+  - Browser: local standalone Blade fixtures with built assets and simulated data showed dashboard cards, device filtering, missing-file/error retry, offline and missing-mapping states; refresh preserved the same source/error state, with no console warnings/errors. Corrected detail width after visual inspection and rebuilt; confirmed centering in browser. Fixtures and temporary server are ignored test artifacts; server and browser tab closed.
+  - Commit: ready to create. RDD: disabled/unmanaged. Slice 2 boundary: `82fff2c` → T2 commit.
+  - Authored implementation/tests/docs: 331 lines before tracking updates. Rollback scope: shared preview component/JS/CSS, its three view integrations and matching render/JS checks.
 
 ## Verification and progress
 - Read-only discovery completed; documentation and code support preview of a known source file, not live capture.
 - Baseline `npm run build`: PASS, 56 modules transformed.
 - Baseline `php artisan test`: INTERRUPTED after Example and FleetUploadProgress tests passed. Pre-existing MediaDeleteTest lacked HTTP fakes and could attempt configured private-cloud DELETE calls. Session stopped with Ctrl+C (exit 1); no remote verification attempted. Add HTTP isolation to that existing test before running the full suite again.
-- Running authored line count from work-unit commits: 0.
-- Runtime/hardware: no remote device checks authorized; use local HTTP fakes and local UI checks.
+- Running authored line count from work-unit commits: 505 (462 implementation/tests/docs + 43 feature tracking lines) at `82fff2c`.
+- Runtime/hardware: local HTTP fakes and browser fixtures verified; live hardware playback and remote deployment not exercised. Earlier baseline was interrupted and its unsafe existing test was isolated before the passing full suite. Engram remains unavailable/pending.
 - Rollback boundary: new preview service/controller/routes/component and their integrations/tests/docs; preserve all prior unrelated changes.
 - T1 additional evidence: ambiguous original filenames are rejected; both telemetry providers unavailable preserves saved devices with unavailable state. Local WL35 deletion/format paths already maintain mappings, but external reordering cannot be detected with index/count telemetry; documented this limitation.
-- Next step: commit T1, record identity, then implement and verify T2. Parent and writer must read this file before source edits.
+- Next step: commit T2 and record final commit/count evidence. Implementation and local checks complete; deployment and hardware validation remain outside this local change.
