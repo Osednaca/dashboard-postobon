@@ -13,6 +13,7 @@ class Wl35DeviceMedia extends Model
         'device_id',
         'media_id',
         'video_index',
+        'filename',
     ];
 
     protected function casts(): array
@@ -26,5 +27,10 @@ class Wl35DeviceMedia extends Model
     public function media(): BelongsTo
     {
         return $this->belongsTo(Media::class);
+    }
+
+    public function getDisplayFilenameAttribute(): string
+    {
+        return $this->filename ?: ($this->media?->original_name ?: ($this->media?->name ?: 'Nombre de archivo no identificado'));
     }
 }
