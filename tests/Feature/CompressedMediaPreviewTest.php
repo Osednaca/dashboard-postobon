@@ -298,9 +298,12 @@ class CompressedMediaPreviewTest extends TestCase
         $pending = Cache::lock('media-preview:'.$identity.':pending', 600);
         $this->assertFalse($pending->get());
 
+        $checkedAt = Cache::get('media-preview:'.$identity)['checked_at'];
+        $this->travel(1)->minutes();
         Http::fake(['cloud.test/*' => Http::response('', 503)]);
         $second->handle($service);
         $this->assertSame($ready, $service->url($media));
+        $this->assertSame($checkedAt, Cache::get('media-preview:'.$identity)['checked_at']);
         Http::assertNothingSent();
         Process::assertRanTimes(fn ($process) => $process->command[0] === 'ffmpeg', 1);
         $this->assertTrue($pending->get());
@@ -312,7 +315,7 @@ class CompressedMediaPreviewTest extends TestCase
         $media = $this->media();
         $service = app(CompressedMediaPreview::class);
         $identity = $service->identity($media);
-        $execution = Cache::lock('media-preview:'.$identity.':generating', 360);
+        $execution = Cache::lock('media-preview:'.$identity.':generating', 600);
         $this->assertTrue($execution->get());
         $service->generate($media->id, $identity);
         Process::assertNothingRan();
@@ -320,6 +323,28 @@ class CompressedMediaPreviewTest extends TestCase
         $this->assertSame([], Storage::disk('local')->allFiles('media-previews'));
         $execution->release();
 
+        $this->converter();
+        $service->generate($media->id, $identity);
+        $this->assertStringContainsString('?preview=', $service->url($media));
+    }
+
+    public function test_delayed_duplicate_respects_failure_cooldown_before_retrying(): void
+    {
+        $media = $this->media();
+        $service = app(CompressedMediaPreview::class);
+        $identity = $service->identity($media);
+        $this->converter(fail: true);
+        $service->generate($media->id, $identity);
+        $checkedAt = Cache::get('media-preview:'.$identity)['checked_at'];
+        Process::fake();
+
+        $this->travel(1)->minutes();
+        $service->generate($media->id, $identity);
+        Process::assertNothingRan();
+        $this->assertSame($checkedAt, Cache::get('media-preview:'.$identity)['checked_at']);
+        $this->assertSame(route('media.content', $media), $service->url($media));
+
+        $this->travel(10)->minutes();
         $this->converter();
         $service->generate($media->id, $identity);
         $this->assertStringContainsString('?preview=', $service->url($media));

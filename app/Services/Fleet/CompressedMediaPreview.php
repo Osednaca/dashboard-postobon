@@ -108,8 +108,12 @@ class CompressedMediaPreview
 
     public function generate(int $mediaId, string $identity, ?string $pendingOwner = null): void
     {
-        $execution = Cache::lock($this->key($identity).':generating', 360);
+        $execution = Cache::lock($this->key($identity).':generating', 600);
         if (! $execution->get()) {
+            if ($pendingOwner !== null) {
+                Cache::restoreLock($this->key($identity).':pending', $pendingOwner)->release();
+            }
+
             return;
         }
         $disk = Storage::disk('local');
@@ -123,9 +127,11 @@ class CompressedMediaPreview
                 return;
             }
             $entry = Cache::get($this->key($identity), []);
-            $fresh = ($entry['checked_at'] ?? 0) > now()->timestamp - config('mediapreview.remote_refresh_seconds');
-            if ($fresh && (($entry['state'] ?? null) === 'original'
-                || (($entry['state'] ?? null) === 'ready'
+            $state = $entry['state'] ?? null;
+            $fresh = ($entry['checked_at'] ?? 0) > now()->timestamp -
+                ($state === 'failed' ? config('mediapreview.retry_seconds') : config('mediapreview.remote_refresh_seconds'));
+            if ($fresh && (in_array($state, ['original', 'failed'], true)
+                || ($state === 'ready'
                     && $this->file($media, $entry['variant']) !== null))) {
                 return;
             }
@@ -182,10 +188,16 @@ class CompressedMediaPreview
             $this->remember($identity, 'failed');
             Log::warning('No fue posible generar el preview comprimido.', ['media_id' => $mediaId]);
         } finally {
-            $disk->delete([$input, $output]);
-            $execution->release();
-            if ($pendingOwner !== null) {
-                Cache::restoreLock($this->key($identity).':pending', $pendingOwner)->release();
+            try {
+                $disk->delete([$input, $output]);
+            } finally {
+                try {
+                    $execution->release();
+                } finally {
+                    if ($pendingOwner !== null) {
+                        Cache::restoreLock($this->key($identity).':pending', $pendingOwner)->release();
+                    }
+                }
             }
         }
     }
