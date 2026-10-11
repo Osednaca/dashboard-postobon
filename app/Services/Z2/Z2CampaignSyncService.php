@@ -2,10 +2,15 @@
 
 namespace App\Services\Z2;
 
+use App\Jobs\PlayFleetMediaJob;
 use App\Models\Campaign;
 use App\Models\Device;
+use App\Models\FleetUpload;
 use App\Models\Group;
+use App\Services\CampaignTargetCatalog;
+use App\Services\Fleet\MediaPreviewSource;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class Z2CampaignSyncService
 {
@@ -21,6 +26,9 @@ class Z2CampaignSyncService
      */
     public function publishToDevices(Campaign $campaign, array $deviceIds): bool
     {
+        if ($campaign->target_devices !== null) {
+            return $this->queueExplicitRecipients($campaign);
+        }
         $success = true;
 
         foreach ($deviceIds as $deviceId) {
@@ -33,6 +41,7 @@ class Z2CampaignSyncService
             $media = $campaign->media()->first();
             if (! $media) {
                 Log::warning('[PrivateCloud] Campaign has no media', ['campaign' => $campaign->id]);
+
                 continue;
             }
 
@@ -51,6 +60,53 @@ class Z2CampaignSyncService
         }
 
         return $success;
+    }
+
+    public function validateRecipients(Campaign $campaign): void
+    {
+        if ($campaign->target_devices !== null) {
+            app(CampaignTargetCatalog::class)->validatedKeys($campaign->target_devices);
+        }
+    }
+
+    private function queueExplicitRecipients(Campaign $campaign): bool
+    {
+        $targets = app(CampaignTargetCatalog::class)->validatedKeys($campaign->target_devices);
+        if ($targets === []) {
+            return true;
+        }
+        $media = $campaign->media()->first();
+        if ($media === null) {
+            return true;
+        }
+        if (! str_starts_with($media->mime_type, 'video/') || app(MediaPreviewSource::class)->resolve($media) === null) {
+            throw new \RuntimeException('La campaña necesita un video disponible antes de publicarse.');
+        }
+        $connection = config('queue.default');
+        $driver = config('queue.connections.'.$connection.'.driver');
+        if (! in_array($driver, ['database', 'redis'], true)
+            || (int) config('queue.connections.'.$connection.'.retry_after') <= 1900) {
+            throw new \RuntimeException('La publicación de campañas requiere una cola asíncrona con retry_after mayor a 1900 segundos.');
+        }
+        $id = (string) Str::uuid();
+        $name = basename((string) ($media->original_name ?: $media->name));
+        if (! str_ends_with(mb_strtolower($name), '.mp4')) {
+            $name .= '.mp4';
+        }
+        $upload = FleetUpload::create([
+            'id' => $id, 'user_id' => auth()->id() ?? $campaign->created_by,
+            'source_media_id' => $media->id, 'original_name' => Str::limit($name, 250, ''),
+            'file_path' => 'fleet-uploads/'.$id.'.mp4', 'targets' => $targets,
+            'play_after_upload' => true, 'status' => 'queued', 'phase' => 'queued', 'progress' => 10,
+        ]);
+        try {
+            PlayFleetMediaJob::dispatch($id);
+        } catch (\Throwable $exception) {
+            $upload->delete();
+            throw $exception;
+        }
+
+        return true;
     }
 
     /**
@@ -94,6 +150,7 @@ class Z2CampaignSyncService
     public function activate(Campaign $campaign): bool
     {
         $campaign->update(['status' => 'active']);
+
         return true;
     }
 
@@ -103,6 +160,7 @@ class Z2CampaignSyncService
     public function pause(Campaign $campaign): bool
     {
         $campaign->update(['status' => 'paused']);
+
         return true;
     }
 
@@ -112,6 +170,7 @@ class Z2CampaignSyncService
     public function finish(Campaign $campaign): bool
     {
         $campaign->update(['status' => 'finished']);
+
         return true;
     }
 }

@@ -1,3 +1,5 @@
+import { initiallyVisible, observePreviewVisibility } from './preview-visibility.js';
+
 export function formatDuration(seconds) {
     if (!Number.isFinite(Number(seconds)) || Number(seconds) <= 0) return '—';
     const total = Math.floor(Number(seconds));
@@ -22,27 +24,38 @@ export function createMediaDurationStore() {
 }
 
 export function createMediaPreview(id, url, kind, knownDuration = 0) {
-    let observer;
+    let stopObserving;
     return {
         source: null,
         status: kind === 'unsupported' ? 'unsupported' : 'loading',
         seeking: false,
         destroyed: false,
+        inViewport: initiallyVisible(),
+        resumePlayback: false,
         init() {
             if (kind === 'unsupported') return;
-            if (typeof IntersectionObserver === 'undefined') {
-                this.start();
-                return;
-            }
-            observer = new IntersectionObserver((entries) => {
-                if (entries.some((entry) => entry.isIntersecting)) this.start();
-            }, { rootMargin: '150px' });
-            observer.observe(this.$el);
+            stopObserving = observePreviewVisibility(this.$el, visible => {
+                this.inViewport = visible;
+                this.syncPlayback();
+            });
         },
         start() {
-            if (this.destroyed || this.source !== null) return;
-            observer?.disconnect();
+            if (this.destroyed || !this.inViewport || this.source !== null || this.status === 'error') return;
             this.source = url;
+        },
+        syncPlayback() {
+            if (this.destroyed) return;
+            const video = this.$refs.video;
+            if (!this.inViewport) {
+                this.resumePlayback ||= Boolean(video && !video.paused && !video.ended);
+                video?.pause();
+                return;
+            }
+            this.start();
+            if (this.resumePlayback && this.status !== 'error') {
+                this.resumePlayback = false;
+                video?.play()?.catch(() => {});
+            }
         },
         metadata(video) {
             if (this.destroyed || this.status === 'error') return;
@@ -68,25 +81,27 @@ export function createMediaPreview(id, url, kind, knownDuration = 0) {
         },
         fail() {
             if (this.destroyed) return;
+            this.resumePlayback = false;
             this.$refs.video?.pause();
             this.status = 'error';
         },
         retry() {
             this.status = 'loading';
+            this.resumePlayback = false;
             this.seeking = false;
             this.source = null;
             this.$nextTick(() => {
                 if (!this.destroyed) {
-                    this.source = url;
+                    this.start();
                     this.$nextTick(() => {
-                        if (!this.destroyed) this.$refs.video?.load();
+                        if (!this.destroyed && this.source && this.inViewport) this.$refs.video?.load();
                     });
                 }
             });
         },
         destroy() {
             this.destroyed = true;
-            observer?.disconnect();
+            stopObserving?.();
             const video = this.$refs.video;
             if (video) {
                 video.pause();

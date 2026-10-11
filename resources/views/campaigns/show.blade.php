@@ -101,7 +101,7 @@
         {{-- Tabs --}}
         <div class="bg-white rounded-xl border border-border overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.05)]" x-data="{ tab: 'details' }">
             <div class="border-b border-border">
-                <nav class="flex -mb-px px-6 pt-4">
+                <nav class="flex -mb-px overflow-x-auto px-6 pt-4 [&>button]:shrink-0">
                     <button @click="tab = 'details'" :class="tab === 'details' ? 'border-primary text-primary' : 'border-transparent text-text-light hover:text-text hover:border-border'" class="mr-8 py-4 px-1 border-b-2 font-medium text-sm transition-colors">Detalles</button>
                     <button @click="tab = 'videos'" :class="tab === 'videos' ? 'border-primary text-primary' : 'border-transparent text-text-light hover:text-text hover:border-border'" class="mr-8 py-4 px-1 border-b-2 font-medium text-sm transition-colors">Videos</button>
                     <button @click="tab = 'devices'" :class="tab === 'devices' ? 'border-primary text-primary' : 'border-transparent text-text-light hover:text-text hover:border-border'" class="mr-8 py-4 px-1 border-b-2 font-medium text-sm transition-colors">Dispositivos</button>
@@ -132,7 +132,7 @@
                         </div>
                         <div class="flex justify-between py-3 border-b border-border">
                             <span class="text-sm text-text-muted">Fecha fin</span>
-                            <span class="text-sm font-medium text-text">{{ $campaign->end_date ? $campaign->end_date->format('Y-m-d') : '-' }}</span>
+                            <span class="text-sm font-medium text-text">{{ $campaign->end_date ? $campaign->end_date->format('Y-m-d') : 'Permanente · Sin fecha de fin' }}</span>
                         </div>
                     </div>
                     <div class="space-y-4">
@@ -192,56 +192,7 @@
 
                 {{-- Devices --}}
                 <div x-show="tab === 'devices'" x-transition>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        @forelse($campaign->deviceCampaigns as $deviceCampaign)
-                            @php $device = $deviceCampaign->device; @endphp
-                            @if($device)
-                                <div class="rounded-lg border border-border p-4 hover:bg-surface-dark transition-colors">
-                                    <div class="flex items-center justify-between">
-                                        <div class="flex items-center gap-3">
-                                            <div class="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
-                                                </svg>
-                                            </div>
-                                            <div>
-                                                <div class="text-sm font-medium text-text">{{ $device->name }}</div>
-                                                <div class="text-xs text-text-muted">{{ $device->location?->city ?? '-' }} · {{ $device->location?->name ?? '-' }}</div>
-                                            </div>
-                                        </div>
-                                        @php
-                                            $indicatorStatus = match($device->status) {
-                                                'active' => 'online',
-                                                'inactive' => 'offline',
-                                                'error' => 'offline',
-                                                'disabled' => 'disabled',
-                                                default => 'offline',
-                                            };
-                                        @endphp
-                                        <x-device-status-indicator :status="$indicatorStatus" />
-                                    </div>
-                                    <div class="mt-3 grid grid-cols-3 gap-2 text-center">
-                                        <div class="bg-surface rounded py-1.5">
-                                            <div class="text-xs text-text-muted">Reproducciones</div>
-                                            <div class="text-sm font-semibold text-text">{{ number_format($device->statistics->where('campaign_id', $campaign->id)->sum('plays')) }}</div>
-                                        </div>
-                                        <div class="bg-surface rounded py-1.5">
-                                            <div class="text-xs text-text-muted">Uptime</div>
-                                            <div class="text-sm font-semibold text-text">{{ $device->last_heartbeat_at && $device->last_heartbeat_at->gt(now()->subHour()) ? '100%' : '0%' }}</div>
-                                        </div>
-                                        <div class="bg-surface rounded py-1.5">
-                                            <div class="text-xs text-text-muted">Horas</div>
-                                            <div class="text-sm font-semibold text-text">{{ number_format($device->working_hours ?? 0, 0) }}</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            @endif
-                        @empty
-                            <div class="col-span-full text-center py-8">
-                                <p class="text-sm text-text-light">No hay dispositivos asignados a esta campaña</p>
-                            </div>
-                        @endforelse
-                    </div>
+                    <x-campaign-recipients :campaign="$campaign" />
                 </div>
 
                 {{-- Stats --}}

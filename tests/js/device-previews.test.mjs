@@ -5,13 +5,13 @@ import { createDevicePreviews, createPreviewPlayer } from '../../resources/js/de
 function player() {
     let source = null;
     const video = {
-        loads: 0, pauses: 0, plays: 0,
+        loads: 0, pauses: 0, plays: 0, paused: true, ended: false,
         getAttribute: () => source,
         setAttribute: (_, value) => { source = value; },
         removeAttribute: () => { source = null; },
         load() { this.loads++; },
-        pause() { this.pauses++; },
-        play() { this.plays++; return Promise.resolve(); },
+        pause() { this.pauses++; this.paused = true; },
+        play() { this.plays++; this.paused = false; return Promise.resolve(); },
     };
     return Object.assign(createPreviewPlayer(), { $refs: { video }, visible: true });
 }
@@ -54,6 +54,57 @@ test('file errors survive polls of the same source, retry reloads, new content c
     preview.failed();
     preview.update(ready('/media/2/content'));
     assert.equal(preview.error, false);
+});
+
+test('device sources are deferred offscreen and only playing videos resume after visibility changes', () => {
+    const preview = player();
+    preview.inViewport = false;
+    preview.update(ready());
+    assert.equal(preview.$refs.video.getAttribute('src'), null);
+    assert.equal(preview.$refs.video.plays, 0);
+    preview.inViewport = true;
+    preview.syncPlayback();
+    assert.equal(preview.$refs.video.plays, 1);
+    preview.inViewport = false;
+    preview.syncPlayback();
+    preview.visible = false;
+    preview.syncPlayback();
+    preview.inViewport = true;
+    preview.syncPlayback();
+    assert.equal(preview.$refs.video.paused, true);
+    preview.visible = true;
+    preview.syncPlayback();
+    assert.equal(preview.$refs.video.plays, 2);
+    assert.equal(preview.$refs.video.loads, 1);
+    preview.$refs.video.pause();
+    preview.inViewport = false;
+    preview.syncPlayback();
+    preview.inViewport = true;
+    preview.syncPlayback();
+    assert.equal(preview.$refs.video.plays, 2);
+});
+
+test('offscreen content changes discard old video, retry waits, and destroy prevents queued initialization', () => {
+    const preview = player();
+    preview.update(ready());
+    preview.inViewport = false;
+    preview.syncPlayback();
+    preview.device = ready('/media/2/content');
+    preview.update(preview.device);
+    assert.equal(preview.$refs.video.getAttribute('src'), null);
+    preview.failed();
+    preview.retry();
+    assert.equal(preview.$refs.video.getAttribute('src'), null);
+    preview.inViewport = true;
+    preview.syncPlayback();
+    assert.equal(preview.$refs.video.getAttribute('src'), '/media/2/content');
+    const ticks = [];
+    preview.$nextTick = callback => ticks.push(callback);
+    preview.init();
+    preview.destroy();
+    ticks.shift()();
+    preview.update(ready());
+    assert.equal(preview.$refs.video.getAttribute('src'), null);
 });
 
 function polling(fetch) {

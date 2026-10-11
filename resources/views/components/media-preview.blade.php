@@ -5,13 +5,13 @@
 @endphp
 <div
     x-data="mediaPreview(@js((string) $media->id), @js(route('media.content', $media)), @js($kind), @js($media->duration ?? 0))"
-    {{ $attributes->class(['media-preview relative overflow-hidden bg-black', 'h-10 w-10 shrink-0 rounded-lg' => $compact, 'aspect-video w-full' => !$compact]) }}
+    {{ $attributes->class(['media-preview relative overflow-hidden bg-black', 'h-10 w-10 shrink-0 rounded-lg' => $compact, 'mx-auto aspect-square w-full max-w-[28rem]' => !$compact]) }}
     aria-label="Vista previa de {{ $media->name }}"
 >
     @if($kind === 'video')
         <video x-ref="video" :src="source" preload="metadata" muted playsinline @if($detail) controls @endif
             class="h-full w-full object-contain" :class="status === 'ready' ? 'opacity-100' : 'opacity-0'"
-            x-on:loadedmetadata="metadata($event.target)" x-on:loadeddata="loaded()" x-on:seeked="ready()" x-on:error="fail()">
+            x-on:loadedmetadata="metadata($event.target)" x-on:loadeddata="loaded()" x-on:seeked="ready()" x-on:error="fail()" x-on:play="syncPlayback()">
             Tu navegador no soporta este video.
         </video>
     @elseif($kind === 'image')

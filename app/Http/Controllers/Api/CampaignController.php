@@ -14,14 +14,8 @@ use Illuminate\Http\Request;
 
 class CampaignController extends Controller
 {
-    /**
-     * @var CampaignService
-     */
     protected CampaignService $campaignService;
 
-    /**
-     * @var Z2CampaignSyncService
-     */
     protected Z2CampaignSyncService $z2CampaignSyncService;
 
     /**
@@ -82,6 +76,7 @@ class CampaignController extends Controller
     {
         try {
             $this->authorize('view', $campaign);
+
             return response()->json($campaign);
         } catch (\Exception $e) {
             return response()->json([
@@ -205,6 +200,9 @@ class CampaignController extends Controller
                 'order' => ['nullable', 'integer', 'min:0'],
             ]);
 
+            if ($campaign->status === 'active') {
+                $this->z2CampaignSyncService->validateRecipients($campaign);
+            }
             $this->campaignService->attachMedia(
                 $campaign->id,
                 $request->input('media_id'),
@@ -241,6 +239,9 @@ class CampaignController extends Controller
                 'media_id' => ['required', 'integer', 'exists:media,id'],
             ]);
 
+            if ($campaign->status === 'active') {
+                $this->z2CampaignSyncService->validateRecipients($campaign);
+            }
             $this->campaignService->detachMedia(
                 $campaign->id,
                 $request->input('media_id')

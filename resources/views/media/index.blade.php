@@ -104,7 +104,7 @@
                 </div>
 
                 <!-- Thumbnail -->
-                <div class="aspect-video bg-surface relative group">
+                <div class="aspect-square bg-surface relative group">
                     <x-media-preview :media="$item" />
                     <div class="absolute right-2 top-2">
                         <a href="{{ route('media.show', $item) }}" aria-label="Ver vista previa" class="inline-flex items-center justify-center p-2 rounded-full bg-white/90 text-text hover:text-primary transition-colors">

@@ -8,6 +8,7 @@ use App\Http\Requests\SetWl35VolumeRequest;
 use App\Http\Requests\UpdateWl35DeviceProfileRequest;
 use App\Models\Device;
 use App\Models\Establishment;
+use App\Models\Media;
 use App\Models\Wl35DeviceMedia;
 use App\Models\Wl35DeviceProfile;
 use App\Services\Fleet\UnifiedFleetClient;
@@ -64,12 +65,18 @@ class Wl35DeviceController extends Controller
         ];
 
         $establishments = Establishment::with('businessType')->orderBy('name')->get();
+        $libraryMedia = Media::where('mime_type', 'video/mp4')->orderBy('name')->get();
+        $videoNames = Wl35DeviceMedia::with('media')->where('device_id', $deviceId)
+            ->whereBetween('video_index', [1, max(0, (int) ($device['video_count'] ?? 0))])
+            ->get()->mapWithKeys(fn (Wl35DeviceMedia $mapping): array => [$mapping->video_index => $mapping->display_filename]);
 
         return view('devices.wl35-show', compact(
             'device',
             'profile',
             'establishments',
-            'gatewayError'
+            'gatewayError',
+            'libraryMedia',
+            'videoNames'
         ));
     }
 

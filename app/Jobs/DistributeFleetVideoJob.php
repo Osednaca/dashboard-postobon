@@ -3,7 +3,9 @@
 namespace App\Jobs;
 
 use App\Models\FleetUpload;
+use App\Services\Fleet\MediaSourceMaterializer;
 use App\Services\Fleet\UnifiedFleetClient;
+use App\Services\Fleet\Wl35MediaMapping;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -27,7 +29,7 @@ class DistributeFleetVideoJob implements ShouldQueue
 
     public function handle(UnifiedFleetClient $fleetClient): void
     {
-        $upload = FleetUpload::findOrFail($this->fleetUploadId);
+        $upload = FleetUpload::with('sourceMedia')->findOrFail($this->fleetUploadId);
 
         if ($upload->status === 'completed') {
             return;
@@ -42,6 +44,13 @@ class DistributeFleetVideoJob implements ShouldQueue
         ]);
 
         try {
+            if ($upload->source_media_id !== null) {
+                if ($upload->sourceMedia === null) {
+                    throw new \RuntimeException('El video fue eliminado antes de iniciar la carga.');
+                }
+                $upload->update(['phase' => 'downloading_media']);
+                app(MediaSourceMaterializer::class)->materialize($upload->sourceMedia, $upload->file_path);
+            }
             $result = $fleetClient->uploadPathAndDistribute(
                 Storage::disk('local')->path($upload->file_path),
                 $upload->original_name,
@@ -53,7 +62,10 @@ class DistributeFleetVideoJob implements ShouldQueue
                         'result' => array_merge($upload->result ?? [], $metadata),
                     ]);
                 },
+                false,
             );
+            app(Wl35MediaMapping::class)->remember($result['results'] ?? [], $upload->targets,
+                $upload->source_media_id, $upload->original_name);
 
             $upload->update([
                 'status' => 'completed',

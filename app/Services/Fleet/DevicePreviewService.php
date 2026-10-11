@@ -75,6 +75,7 @@ class DevicePreviewService
         return $devices->map(function (array $device) use ($media, $mappings): array {
             $current = $device['current_video'] ?? null;
             $source = null;
+            $knownFilename = null;
             $status = 'unavailable';
             if (array_key_exists('online', $device)) {
                 $status = ! $device['online'] ? 'offline' : (($device['power'] ?? null) === false ? 'powered_off' : 'unknown');
@@ -91,7 +92,9 @@ class DevicePreviewService
                             }
                         } elseif (filter_var($current, FILTER_VALIDATE_INT) !== false
                             && (int) $current > 0 && (int) $current <= (int) ($device['video_count'] ?? 0)) {
-                            $source = $mappings->get($device['id'].':'.(int) $current)?->media;
+                            $mapping = $mappings->get($device['id'].':'.(int) $current);
+                            $source = $mapping?->media;
+                            $knownFilename = $mapping?->display_filename;
                         }
                         $status = $source === null ? 'missing_mapping' : (str_starts_with($source->mime_type, 'video/')
                             && $this->sources->resolve($source) ? 'ready' : 'missing_file');
@@ -102,7 +105,7 @@ class DevicePreviewService
             return [
                 'key' => $device['type'].':'.$device['id'], 'type' => $device['type'], 'id' => (string) $device['id'],
                 'name' => $device['name'] ?? $device['id'], 'status' => $status,
-                'current_video' => $current, 'media_name' => $source?->name,
+                'current_video' => $current, 'media_name' => $knownFilename ?? $source?->name,
                 'url' => $status === 'ready' ? route('media.content', $source) : null,
                 'last_seen' => $device['last_seen'] ?? null,
                 'detail_url' => $device['detail_url'] ?? ($device['type'] === 'wl35'
