@@ -101,6 +101,10 @@
     <div class="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(21rem,0.8fr)]">
         <div class="space-y-6">
             <x-device-previews :device-key="$fleetKey" title="Contenido actual" />
+            <section class="rounded-xl border border-border bg-white p-5 sm:p-6">
+                <h2 class="mb-4 text-lg font-semibold text-text">Campañas Asignadas</h2>
+                <x-device-target-campaigns :target-key="$fleetKey" />
+            </section>
             <section class="rounded-xl border border-border bg-white p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] sm:p-6">
                 <div class="flex flex-wrap items-center justify-between gap-3">
                     <div>

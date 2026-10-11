@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -22,6 +23,7 @@ class Campaign extends Model
         'end_date',
         'segment_cities',
         'segment_groups',
+        'target_devices',
         'created_by',
     ];
 
@@ -33,12 +35,24 @@ class Campaign extends Model
             'priority' => 'integer',
             'segment_cities' => 'json',
             'segment_groups' => 'json',
+            'target_devices' => 'array',
         ];
     }
 
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function scopeForTarget(Builder $query, string $key, ?int $legacyDeviceId = null): Builder
+    {
+        return $query->where(function (Builder $query) use ($key, $legacyDeviceId): void {
+            $query->whereJsonContains('target_devices', $key);
+            if ($legacyDeviceId !== null) {
+                $query->orWhere(fn (Builder $legacy) => $legacy->whereNull('target_devices')
+                    ->whereHas('deviceCampaigns', fn (Builder $pivot) => $pivot->where('device_id', $legacyDeviceId)));
+            }
+        });
     }
 
     public function media(): BelongsToMany

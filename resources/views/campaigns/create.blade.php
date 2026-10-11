@@ -3,9 +3,6 @@
 
     @php
         $allMedia = \App\Models\Media::all();
-        $allLocations = \App\Models\Location::all();
-        $allGroups = \App\Models\Group::all();
-        $cities = $allLocations->pluck('city')->unique()->filter()->sort()->values()->toArray();
     @endphp
 
     <div class="max-w-4xl mx-auto space-y-6">
@@ -22,12 +19,12 @@
             </div>
         </div>
 
-        <form action="{{ route('campaigns.store') }}" method="POST" class="bg-white rounded-xl border border-border overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.05)]" x-data="{ currentTab: @js($errors->has('media_ids') || $errors->has('media_ids.*') ? 'videos' : 'general') }">
+        <form action="{{ route('campaigns.store') }}" method="POST" class="bg-white rounded-xl border border-border overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.05)]" x-data="{ currentTab: @js($errors->has('media_ids') || $errors->has('media_ids.*') ? 'videos' : ($errors->has('target_devices') || $errors->has('target_devices.*') ? 'segmentation' : 'general')) }">
             @csrf
 
             {{-- Tabs --}}
             <div class="border-b border-border">
-                <nav class="flex -mb-px px-6 pt-4">
+                <nav class="flex -mb-px overflow-x-auto px-6 pt-4 [&>button]:shrink-0">
                     <button type="button" @click="currentTab = 'general'" :class="currentTab === 'general' ? 'border-primary text-primary' : 'border-transparent text-text-light hover:text-text hover:border-border'" class="mr-8 py-4 px-1 border-b-2 font-medium text-sm transition-colors">
                         Información General
                     </button>
@@ -79,34 +76,7 @@
 
                 {{-- Segmentation Tab --}}
                 <div x-show="currentTab === 'segmentation'" x-transition>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                        <div>
-                            <label class="block text-sm font-medium text-text mb-3">Ciudades</label>
-                            <div class="space-y-2 max-h-64 overflow-y-auto border border-border rounded-lg p-3">
-                                @forelse($cities as $city)
-                                    <label class="flex items-center gap-3 p-2 rounded-lg hover:bg-surface-dark cursor-pointer transition-colors">
-                                        <input type="checkbox" name="cities[]" value="{{ $city }}" class="w-4 h-4 rounded border-border text-primary focus:ring-primary">
-                                        <span class="text-sm text-text">{{ $city }}</span>
-                                    </label>
-                                @empty
-                                    <p class="text-sm text-text-light p-2">No hay ciudades disponibles. <a href="{{ route('locations.create') }}" class="text-primary hover:underline">Crea una ubicación primero</a>.</p>
-                                @endforelse
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-text mb-3">Grupos</label>
-                            <div class="space-y-2 max-h-64 overflow-y-auto border border-border rounded-lg p-3">
-                                @forelse($allGroups as $group)
-                                    <label class="flex items-center gap-3 p-2 rounded-lg hover:bg-surface-dark cursor-pointer transition-colors">
-                                        <input type="checkbox" name="groups[]" value="{{ $group->id }}" class="w-4 h-4 rounded border-border text-primary focus:ring-primary">
-                                        <span class="text-sm text-text">{{ $group->name }}</span>
-                                    </label>
-                                @empty
-                                    <p class="text-sm text-text-light p-2">No hay grupos disponibles. <a href="{{ route('groups.create') }}" class="text-primary hover:underline">Crea un grupo primero</a>.</p>
-                                @endforelse
-                            </div>
-                        </div>
-                    </div>
+                    <x-campaign-target-selector />
                 </div>
             </div>
 

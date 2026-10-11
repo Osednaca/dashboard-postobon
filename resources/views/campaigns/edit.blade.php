@@ -3,12 +3,7 @@
 
     @php
         $allMedia = \App\Models\Media::all();
-        $allLocations = \App\Models\Location::all();
-        $allGroups = \App\Models\Group::all();
-        $cities = $allLocations->pluck('city')->unique()->filter()->sort()->values()->toArray();
         $selectedMediaIds = $campaign->media->pluck('id')->toArray();
-        $selectedCities = $campaign->segment_cities ?? [];
-        $selectedGroupIds = $campaign->segment_groups ?? [];
     @endphp
 
     <div class="max-w-4xl mx-auto space-y-6">
@@ -24,12 +19,12 @@
             </div>
         </div>
 
-        <form action="{{ route('campaigns.update', $campaign) }}" method="POST" class="bg-white rounded-xl border border-border overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.05)]" x-data="{ currentTab: @js($errors->has('media_ids') || $errors->has('media_ids.*') ? 'videos' : 'general') }">
+        <form action="{{ route('campaigns.update', $campaign) }}" method="POST" class="bg-white rounded-xl border border-border overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.05)]" x-data="{ currentTab: @js($errors->has('media_ids') || $errors->has('media_ids.*') ? 'videos' : ($errors->has('target_devices') || $errors->has('target_devices.*') ? 'segmentation' : 'general')) }">
             @csrf
             @method('PUT')
 
             <div class="border-b border-border">
-                <nav class="flex -mb-px px-6 pt-4">
+                <nav class="flex -mb-px overflow-x-auto px-6 pt-4 [&>button]:shrink-0">
                     <button type="button" @click="currentTab = 'general'" :class="currentTab === 'general' ? 'border-primary text-primary' : 'border-transparent text-text-light hover:text-text hover:border-border'" class="mr-8 py-4 px-1 border-b-2 font-medium text-sm transition-colors">General</button>
                     <button type="button" @click="currentTab = 'videos'" :class="currentTab === 'videos' ? 'border-primary text-primary' : 'border-transparent text-text-light hover:text-text hover:border-border'" class="mr-8 py-4 px-1 border-b-2 font-medium text-sm transition-colors">Videos</button>
                     <button type="button" @click="currentTab = 'segmentation'" :class="currentTab === 'segmentation' ? 'border-primary text-primary' : 'border-transparent text-text-light hover:text-text hover:border-border'" class="mr-8 py-4 px-1 border-b-2 font-medium text-sm transition-colors">Segmentación</button>
@@ -68,76 +63,10 @@
                 </div>
 
                 <div x-show="currentTab === 'segmentation'" x-transition>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                        <div>
-                            <label class="block text-sm font-medium text-text mb-3">Ciudades</label>
-                            <div class="space-y-2 max-h-64 overflow-y-auto border border-border rounded-lg p-3">
-                                @forelse($cities as $city)
-                                    <label class="flex items-center gap-3 p-2 rounded-lg hover:bg-surface-dark cursor-pointer transition-colors">
-                                        <input type="checkbox" name="cities[]" value="{{ $city }}" {{ in_array($city, old('cities', $selectedCities)) ? 'checked' : '' }} class="w-4 h-4 rounded border-border text-primary focus:ring-primary">
-                                        <span class="text-sm text-text">{{ $city }}</span>
-                                    </label>
-                                @empty
-                                    <p class="text-sm text-text-light p-2">No hay ciudades disponibles.</p>
-                                @endforelse
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-text mb-3">Grupos</label>
-                            <div class="space-y-2 max-h-64 overflow-y-auto border border-border rounded-lg p-3">
-                                @forelse($allGroups as $group)
-                                    <label class="flex items-center gap-3 p-2 rounded-lg hover:bg-surface-dark cursor-pointer transition-colors">
-                                        <input type="checkbox" name="groups[]" value="{{ $group->id }}" {{ in_array($group->id, old('groups', $selectedGroupIds)) ? 'checked' : '' }} class="w-4 h-4 rounded border-border text-primary focus:ring-primary">
-                                        <span class="text-sm text-text">{{ $group->name }}</span>
-                                    </label>
-                                @empty
-                                    <p class="text-sm text-text-light p-2">No hay grupos disponibles.</p>
-                                @endforelse
-                            </div>
-                        </div>
-                    </div>
+                    <x-campaign-target-selector :campaign="$campaign" />
                 </div>
-
                 <div x-show="currentTab === 'devices'" x-transition>
-                    <div class="space-y-4">
-                        <p class="text-sm text-text-muted">Vista previa de los dispositivos asignados según la segmentación actual.</p>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            @forelse($campaign->deviceCampaigns as $deviceCampaign)
-                                @php $device = $deviceCampaign->device; @endphp
-                                @if($device)
-                                    <div class="rounded-lg border border-border p-4 hover:bg-surface-dark transition-colors">
-                                        <div class="flex items-center gap-3">
-                                            <div class="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
-                                                </svg>
-                                            </div>
-                                            <div>
-                                                <div class="text-sm font-medium text-text">{{ $device->name }}</div>
-                                                <div class="text-xs text-text-muted">{{ $device->location?->city ?? '-' }} · {{ $device->location?->name ?? '-' }}</div>
-                                            </div>
-                                        </div>
-                                        <div class="mt-3 flex items-center gap-2">
-                                            @php
-                                                $indicatorStatus = match($device->status) {
-                                                    'active' => 'online',
-                                                    'inactive' => 'offline',
-                                                    'error' => 'offline',
-                                                    'disabled' => 'disabled',
-                                                    default => 'offline',
-                                                };
-                                            @endphp
-                                            <x-device-status-indicator :status="$indicatorStatus" />
-                                        </div>
-                                    </div>
-                                @endif
-                            @empty
-                                <div class="col-span-full text-center py-8">
-                                    <p class="text-sm text-text-light">No hay dispositivos asignados a esta campaña</p>
-                                </div>
-                            @endforelse
-                        </div>
-                    </div>
+                    <x-campaign-recipients :campaign="$campaign" />
                 </div>
             </div>
 

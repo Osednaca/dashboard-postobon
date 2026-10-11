@@ -112,13 +112,6 @@ class CampaignController extends Controller
 
         try {
             $data = $request->validated();
-            if ($request->has('cities')) {
-                $data['segment_cities'] = $request->input('cities') ?? [];
-            }
-            if ($request->has('groups')) {
-                $data['segment_groups'] = $request->input('groups') ?? [];
-            }
-
             $this->campaignService->update($campaign->id, $data);
 
             return redirect()->route('campaigns.index')
@@ -230,6 +223,9 @@ class CampaignController extends Controller
         $this->authorize('update', $campaign);
 
         try {
+            if ($campaign->status === 'active') {
+                $this->z2CampaignSyncService->validateRecipients($campaign);
+            }
             $mediaIds = $request->validated()['media_ids'] ?? [];
             foreach ($mediaIds as $mediaId) {
                 $campaign->media()->attach($mediaId);
@@ -258,6 +254,9 @@ class CampaignController extends Controller
         $this->authorize('update', $campaign);
 
         try {
+            if ($campaign->status === 'active') {
+                $this->z2CampaignSyncService->validateRecipients($campaign);
+            }
             $campaign->media()->detach($mediaId);
 
             if ($campaign->status === 'active') {

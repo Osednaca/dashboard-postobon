@@ -3,12 +3,14 @@
 namespace App\Http\Requests;
 
 use App\Http\Requests\Concerns\ValidatesCampaignMedia;
+use App\Http\Requests\Concerns\ValidatesCampaignTargets;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class StoreCampaignRequest extends FormRequest
 {
     use ValidatesCampaignMedia;
+    use ValidatesCampaignTargets;
 
     public function authorize(): bool
     {
@@ -18,6 +20,7 @@ class StoreCampaignRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->prepareCampaignMedia();
+        $this->prepareCampaignTargets();
         $this->merge([
             'created_by' => $this->created_by ?? auth()->id(),
             'status' => $this->status ?? 'draft',
@@ -41,7 +44,7 @@ class StoreCampaignRequest extends FormRequest
             'segment_cities' => ['nullable', 'array'],
             'segment_groups' => ['nullable', 'array'],
             'created_by' => ['required', 'exists:users,id'],
-        ] + $this->campaignMediaRules();
+        ] + $this->campaignMediaRules() + $this->campaignTargetRules();
     }
 
     public function messages(): array
@@ -64,6 +67,6 @@ class StoreCampaignRequest extends FormRequest
             'segment_groups.array' => 'Los grupos de segmentación deben ser un arreglo.',
             'created_by.required' => 'El creador es obligatorio.',
             'created_by.exists' => 'El usuario creador no existe.',
-        ] + $this->campaignMediaMessages();
+        ] + $this->campaignMediaMessages() + $this->campaignTargetMessages();
     }
 }

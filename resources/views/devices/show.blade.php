@@ -95,9 +95,17 @@
                 </svg>
                 Campañas Asignadas
             </h2>
-            @if($device->deviceCampaigns->count() > 0)
+            @php
+                $targetKey = \App\Services\CampaignTargetCatalog::z2Key($device->mac_address ?? '');
+                $hasExplicitCampaigns = \App\Models\Campaign::forTarget($targetKey)->exists();
+                $legacyAssignments = $device->deviceCampaigns->filter(fn ($assignment) => $assignment->campaign && $assignment->campaign->target_devices === null);
+            @endphp
+            @if($hasExplicitCampaigns)
+                <x-device-target-campaigns :target-key="$targetKey" />
+            @endif
+            @if($legacyAssignments->count() > 0)
                 <div class="space-y-3">
-                    @foreach($device->deviceCampaigns->sortByDesc('started_at')->take(5) as $deviceCampaign)
+                    @foreach($legacyAssignments->sortByDesc('started_at')->take(5) as $deviceCampaign)
                         <div class="p-4 rounded-lg bg-surface border border-border">
                             <div class="flex items-center justify-between mb-2">
                                 <h3 class="font-semibold text-text">{{ $deviceCampaign->campaign?->name ?? 'Sin nombre' }}</h3>
@@ -113,7 +121,7 @@
                         </div>
                     @endforeach
                 </div>
-            @else
+            @elseif(!$hasExplicitCampaigns)
                 <div class="text-center py-8">
                     <div class="w-12 h-12 rounded-xl bg-surface flex items-center justify-center mx-auto mb-3">
                         <svg class="w-6 h-6 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
