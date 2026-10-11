@@ -72,6 +72,8 @@ jobs:
           DB_DATABASE: ':memory:'
           DB_URL: ''
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
           command -v ffmpeg
           command -v ffprobe
           cat > tests/Feature/CompressedMediaPreviewSmokeTest.php <<'PHP'

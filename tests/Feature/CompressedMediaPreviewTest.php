@@ -270,4 +270,58 @@ class CompressedMediaPreviewTest extends TestCase
         $disk->assertMissing($old);
         $disk->assertExists('media-previews/unrelated.mp4');
     }
+
+    public function test_delayed_duplicate_preserves_ready_preview_and_cannot_release_new_pending_owner(): void
+    {
+        $media = $this->media();
+        $media->update(['file_path' => 'remote.mp4']);
+        $service = app(CompressedMediaPreview::class);
+        $identity = $service->identity($media);
+        $service->url($media);
+        $first = Queue::pushed(GenerateMediaPreviewJob::class)->first();
+
+        $this->travel(601)->seconds();
+        $service->url($media);
+        Queue::assertPushed(GenerateMediaPreviewJob::class, 2);
+        $second = Queue::pushed(GenerateMediaPreviewJob::class)->last();
+        $this->assertNotSame($first->pendingOwner, $second->pendingOwner);
+        Http::fake(function ($request, $options) {
+            $bytes = str_repeat('full-private-video', 100);
+            file_put_contents($options['sink'], $bytes);
+
+            return Http::response($bytes);
+        });
+        $this->converter();
+        $first->handle($service);
+        $ready = $service->url($media);
+        $this->assertStringContainsString('?preview=', $ready);
+        $pending = Cache::lock('media-preview:'.$identity.':pending', 600);
+        $this->assertFalse($pending->get());
+
+        Http::fake(['cloud.test/*' => Http::response('', 503)]);
+        $second->handle($service);
+        $this->assertSame($ready, $service->url($media));
+        Http::assertNothingSent();
+        Process::assertRanTimes(fn ($process) => $process->command[0] === 'ffmpeg', 1);
+        $this->assertTrue($pending->get());
+        $pending->release();
+    }
+
+    public function test_execution_lock_prevents_parallel_generation_for_the_same_identity(): void
+    {
+        $media = $this->media();
+        $service = app(CompressedMediaPreview::class);
+        $identity = $service->identity($media);
+        $execution = Cache::lock('media-preview:'.$identity.':generating', 360);
+        $this->assertTrue($execution->get());
+        $service->generate($media->id, $identity);
+        Process::assertNothingRan();
+        Http::assertNothingSent();
+        $this->assertSame([], Storage::disk('local')->allFiles('media-previews'));
+        $execution->release();
+
+        $this->converter();
+        $service->generate($media->id, $identity);
+        $this->assertStringContainsString('?preview=', $service->url($media));
+    }
 }
