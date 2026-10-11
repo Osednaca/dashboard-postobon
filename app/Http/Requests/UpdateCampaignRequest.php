@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Http\Requests\Concerns\ValidatesCampaignMedia;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
@@ -9,6 +10,8 @@ use Illuminate\Validation\Validator;
 
 class UpdateCampaignRequest extends FormRequest
 {
+    use ValidatesCampaignMedia;
+
     public function authorize(): bool
     {
         return true;
@@ -16,6 +19,7 @@ class UpdateCampaignRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $this->prepareCampaignMedia();
         if ($this->boolean('is_permanent')) {
             $this->merge(['end_date' => null]);
         }
@@ -35,7 +39,7 @@ class UpdateCampaignRequest extends FormRequest
             'segment_cities' => ['nullable', 'array'],
             'segment_groups' => ['nullable', 'array'],
             'created_by' => ['sometimes', 'exists:users,id'],
-        ];
+        ] + $this->campaignMediaRules();
     }
 
     public function withValidator(Validator $validator): void
@@ -68,6 +72,6 @@ class UpdateCampaignRequest extends FormRequest
             'segment_cities.array' => 'Las ciudades de segmentación deben ser un arreglo.',
             'segment_groups.array' => 'Los grupos de segmentación deben ser un arreglo.',
             'created_by.exists' => 'El usuario creador no existe.',
-        ];
+        ] + $this->campaignMediaMessages();
     }
 }

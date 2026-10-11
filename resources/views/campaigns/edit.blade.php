@@ -24,7 +24,7 @@
             </div>
         </div>
 
-        <form action="{{ route('campaigns.update', $campaign) }}" method="POST" class="bg-white rounded-xl border border-border overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.05)]" x-data="{ currentTab: 'general' }">
+        <form action="{{ route('campaigns.update', $campaign) }}" method="POST" class="bg-white rounded-xl border border-border overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.05)]" x-data="{ currentTab: @js($errors->has('media_ids') || $errors->has('media_ids.*') ? 'videos' : 'general') }">
             @csrf
             @method('PUT')
 
@@ -63,44 +63,8 @@
                     </div>
                 </div>
 
-                <div x-show="currentTab === 'videos'" x-transition x-data="{ videos: @js($campaign->media->map(fn($m) => ['id' => $m->id, 'name' => $m->name, 'duration' => $m->duration ? gmdate('i:s', $m->duration) : '00:00'])->toArray()) }">
-                    <div class="space-y-4">
-                        <p class="text-sm text-text-muted">Arrastra los videos para reordenar la secuencia de reproducción.</p>
-                        <div class="space-y-2">
-                            <template x-for="(video, index) in videos" :key="video.id">
-                                <div class="flex items-center gap-3 p-3 rounded-lg border border-border bg-surface hover:bg-surface-dark transition-colors">
-                                    <div class="cursor-move text-text-muted">
-                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"></path>
-                                        </svg>
-                                    </div>
-                                    <div class="w-16 h-10 rounded bg-surface-dark flex items-center justify-center shrink-0">
-                                        <svg class="w-4 h-4 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
-                                        </svg>
-                                    </div>
-                                    <div class="flex-1 min-w-0">
-                                        <div class="text-sm font-medium text-text" x-text="video.name"></div>
-                                        <div class="text-xs text-text-muted" x-text="video.duration"></div>
-                                    </div>
-                                    <button type="button" @click="videos.splice(index, 1)" class="p-1.5 rounded-lg text-danger hover:bg-danger/10 transition-colors">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                                        </svg>
-                                    </button>
-                                </div>
-                            </template>
-                        </div>
-                        @if($allMedia->count() > count($selectedMediaIds))
-                            <button type="button" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm font-medium text-text-light hover:bg-surface-dark transition-colors">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-                                </svg>
-                                Agregar video
-                            </button>
-                        @endif
-                        <input type="hidden" name="videos" :value="videos.map(v => v.id).join(',')">
-                    </div>
+                <div x-show="currentTab === 'videos'" x-transition>
+                    <x-campaign-media-selector :media="$allMedia" :selected-ids="$selectedMediaIds" />
                 </div>
 
                 <div x-show="currentTab === 'segmentation'" x-transition>

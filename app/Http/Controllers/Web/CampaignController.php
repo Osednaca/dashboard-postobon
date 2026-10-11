@@ -15,14 +15,8 @@ use Illuminate\View\View;
 
 class CampaignController extends Controller
 {
-    /**
-     * @var CampaignService
-     */
     protected CampaignService $campaignService;
 
-    /**
-     * @var Z2CampaignSyncService
-     */
     protected Z2CampaignSyncService $z2CampaignSyncService;
 
     /**
@@ -46,7 +40,7 @@ class CampaignController extends Controller
 
             return view('campaigns.index', compact('campaigns'));
         } catch (\Exception $e) {
-            Log::error('Error al listar campañas: ' . $e->getMessage());
+            Log::error('Error al listar campañas: '.$e->getMessage());
 
             return redirect()->route('dashboard.index')
                 ->with('error', 'Ocurrió un error al cargar las campañas.');
@@ -71,23 +65,14 @@ class CampaignController extends Controller
         $this->authorize('create', Campaign::class);
 
         try {
-            $campaign = $this->campaignService->create($request->validated());
-
-            if ($request->filled('videos')) {
-                $videoIds = explode(',', $request->input('videos'));
-                foreach ($videoIds as $index => $videoId) {
-                    if (!empty($videoId)) {
-                        $this->campaignService->attachMedia($campaign->id, (int) $videoId, $index + 1);
-                    }
-                }
-            }
+            $this->campaignService->create($request->validated());
 
             return redirect()->route('campaigns.index')
                 ->with('success', 'Campaña creada exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al crear campaña: ' . $e->getMessage());
+            Log::error('Error al crear campaña: '.$e->getMessage());
 
-            return back()->with('error', 'Ocurrió un error al crear la campaña. Por favor intente nuevamente.');
+            return back()->withInput()->with('error', 'Ocurrió un error al crear la campaña. Por favor intente nuevamente.');
         }
     }
 
@@ -101,7 +86,7 @@ class CampaignController extends Controller
         try {
             return view('campaigns.show', compact('campaign'));
         } catch (\Exception $e) {
-            Log::error('Error al mostrar campaña: ' . $e->getMessage());
+            Log::error('Error al mostrar campaña: '.$e->getMessage());
 
             return redirect()->route('campaigns.index')
                 ->with('error', 'Ocurrió un error al cargar la campaña.');
@@ -136,22 +121,12 @@ class CampaignController extends Controller
 
             $this->campaignService->update($campaign->id, $data);
 
-            if ($request->has('videos')) {
-                $campaign->media()->detach();
-                $videoIds = $request->filled('videos') ? explode(',', $request->input('videos')) : [];
-                foreach ($videoIds as $index => $videoId) {
-                    if (!empty($videoId)) {
-                        $this->campaignService->attachMedia($campaign->id, (int) $videoId, $index + 1);
-                    }
-                }
-            }
-
             return redirect()->route('campaigns.index')
                 ->with('success', 'Campaña actualizada exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al actualizar campaña: ' . $e->getMessage());
+            Log::error('Error al actualizar campaña: '.$e->getMessage());
 
-            return back()->with('error', 'Ocurrió un error al actualizar la campaña. Por favor intente nuevamente.');
+            return back()->withInput()->with('error', 'Ocurrió un error al actualizar la campaña. Por favor intente nuevamente.');
         }
     }
 
@@ -168,7 +143,7 @@ class CampaignController extends Controller
             return redirect()->route('campaigns.index')
                 ->with('success', 'Campaña eliminada exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al eliminar campaña: ' . $e->getMessage());
+            Log::error('Error al eliminar campaña: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al eliminar la campaña. Por favor intente nuevamente.');
         }
@@ -186,7 +161,7 @@ class CampaignController extends Controller
 
             return back()->with('success', 'Campaña activada exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al activar campaña: ' . $e->getMessage());
+            Log::error('Error al activar campaña: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al activar la campaña.');
         }
@@ -204,7 +179,7 @@ class CampaignController extends Controller
 
             return back()->with('success', 'Campaña pausada exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al pausar campaña: ' . $e->getMessage());
+            Log::error('Error al pausar campaña: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al pausar la campaña.');
         }
@@ -222,7 +197,7 @@ class CampaignController extends Controller
 
             return back()->with('success', 'Campaña finalizada exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al finalizar campaña: ' . $e->getMessage());
+            Log::error('Error al finalizar campaña: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al finalizar la campaña.');
         }
@@ -241,7 +216,7 @@ class CampaignController extends Controller
 
             return back()->with('success', 'Campaña programada exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al programar campaña: ' . $e->getMessage());
+            Log::error('Error al programar campaña: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al programar la campaña.');
         }
@@ -269,7 +244,7 @@ class CampaignController extends Controller
 
             return back()->with('success', 'Medio agregado a la campaña exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al agregar medio a campaña: ' . $e->getMessage());
+            Log::error('Error al agregar medio a campaña: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al agregar el medio a la campaña.');
         }
@@ -294,7 +269,7 @@ class CampaignController extends Controller
 
             return back()->with('success', 'Medio removido de la campaña exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al remover medio de campaña: ' . $e->getMessage());
+            Log::error('Error al remover medio de campaña: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al remover el medio de la campaña.');
         }

@@ -45,6 +45,7 @@ class Campaign extends Model
     {
         return $this->belongsToMany(Media::class, 'campaign_media')
             ->withPivot('order')
+            ->orderByPivot('order')
             ->withTimestamps();
     }
 

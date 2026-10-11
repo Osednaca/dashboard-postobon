@@ -6,23 +6,58 @@ use App\Models\Campaign;
 use App\Repositories\Contracts\CampaignRepositoryInterface;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 
 class CampaignService extends BaseService
 {
     /**
      * CampaignService constructor.
-     *
-     * @param CampaignRepositoryInterface $campaignRepository
      */
     public function __construct(CampaignRepositoryInterface $campaignRepository)
     {
         parent::__construct($campaignRepository);
     }
 
+    public function create(array $data): Model
+    {
+        return DB::transaction(function () use ($data): Model {
+            $campaign = parent::create(Arr::except($data, ['media_ids', 'media_selection_present', 'is_permanent']));
+            $this->syncSelectedMedia($campaign, $data);
+
+            return $campaign;
+        });
+    }
+
+    public function update(int|string $id, array $data): ?Model
+    {
+        return DB::transaction(function () use ($id, $data): ?Model {
+            $campaign = parent::update($id, Arr::except($data, ['media_ids', 'media_selection_present', 'is_permanent']));
+            if ($campaign instanceof Campaign) {
+                $this->syncSelectedMedia($campaign, $data);
+            }
+
+            return $campaign;
+        });
+    }
+
+    private function syncSelectedMedia(Campaign $campaign, array $data): void
+    {
+        if (! array_key_exists('media_ids', $data)) {
+            return;
+        }
+
+        $ordered = [];
+        foreach ($data['media_ids'] as $index => $id) {
+            $ordered[(int) $id] = ['order' => $index + 1];
+        }
+        $campaign->media()->sync($ordered);
+        $campaign->unsetRelation('media');
+    }
+
     /**
      * Get campaigns by status.
      *
-     * @param string $status
      * @return Collection<int, Campaign>
      */
     public function getByStatus(string $status): Collection
@@ -42,11 +77,6 @@ class CampaignService extends BaseService
 
     /**
      * Attach media to a campaign.
-     *
-     * @param int|string $campaignId
-     * @param int|string $mediaId
-     * @param int|null $order
-     * @return void
      */
     public function attachMedia(int|string $campaignId, int|string $mediaId, ?int $order = null): void
     {
@@ -55,10 +85,6 @@ class CampaignService extends BaseService
 
     /**
      * Detach media from a campaign.
-     *
-     * @param int|string $campaignId
-     * @param int|string $mediaId
-     * @return void
      */
     public function detachMedia(int|string $campaignId, int|string $mediaId): void
     {
@@ -67,9 +93,6 @@ class CampaignService extends BaseService
 
     /**
      * Transition campaign to scheduled status.
-     *
-     * @param int|string $id
-     * @return Campaign|null
      */
     public function schedule(int|string $id): ?Campaign
     {
@@ -85,9 +108,6 @@ class CampaignService extends BaseService
 
     /**
      * Activate a campaign.
-     *
-     * @param int|string $id
-     * @return Campaign|null
      */
     public function activate(int|string $id): ?Campaign
     {
@@ -103,9 +123,6 @@ class CampaignService extends BaseService
 
     /**
      * Pause a campaign.
-     *
-     * @param int|string $id
-     * @return Campaign|null
      */
     public function pause(int|string $id): ?Campaign
     {
@@ -121,9 +138,6 @@ class CampaignService extends BaseService
 
     /**
      * Finish a campaign.
-     *
-     * @param int|string $id
-     * @return Campaign|null
      */
     public function finish(int|string $id): ?Campaign
     {
@@ -140,9 +154,7 @@ class CampaignService extends BaseService
     /**
      * Segment a campaign by cities.
      *
-     * @param int|string $id
-     * @param array<int, string> $cities
-     * @return Campaign|null
+     * @param  array<int, string>  $cities
      */
     public function segmentByCities(int|string $id, array $cities): ?Campaign
     {
@@ -150,6 +162,7 @@ class CampaignService extends BaseService
 
         if ($campaign instanceof Campaign) {
             $segmentCities = array_unique(array_merge($campaign->segment_cities ?? [], $cities));
+
             return $this->repository->update($id, ['segment_cities' => $segmentCities]);
         }
 
@@ -159,9 +172,7 @@ class CampaignService extends BaseService
     /**
      * Segment a campaign by groups.
      *
-     * @param int|string $id
-     * @param array<int, int> $groupIds
-     * @return Campaign|null
+     * @param  array<int, int>  $groupIds
      */
     public function segmentByGroups(int|string $id, array $groupIds): ?Campaign
     {
@@ -169,6 +180,7 @@ class CampaignService extends BaseService
 
         if ($campaign instanceof Campaign) {
             $segmentGroups = array_unique(array_merge($campaign->segment_groups ?? [], $groupIds));
+
             return $this->repository->update($id, ['segment_groups' => $segmentGroups]);
         }
 
