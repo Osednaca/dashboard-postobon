@@ -56,6 +56,14 @@ jobs:
       - name: Build frontend assets
         run: npm run build
 
+      - name: Check PHP formatting
+        run: |
+          vendor/bin/pint --test app/Http/Controllers/Web/MediaContentController.php app/Jobs/GenerateMediaPreviewJob.php app/Services/Fleet/CompressedMediaPreview.php app/Services/Fleet/DevicePreviewService.php app/Services/Fleet/MediaSourceMaterializer.php config/mediapreview.php routes/console.php tests/Feature/CompressedMediaPreviewTest.php || {
+            vendor/bin/pint app/Http/Controllers/Web/MediaContentController.php app/Jobs/GenerateMediaPreviewJob.php app/Services/Fleet/CompressedMediaPreview.php app/Services/Fleet/DevicePreviewService.php app/Services/Fleet/MediaSourceMaterializer.php config/mediapreview.php routes/console.php tests/Feature/CompressedMediaPreviewTest.php
+            git diff -- app/Http/Controllers/Web/MediaContentController.php app/Jobs/GenerateMediaPreviewJob.php app/Services/Fleet/CompressedMediaPreview.php app/Services/Fleet/DevicePreviewService.php app/Services/Fleet/MediaSourceMaterializer.php config/mediapreview.php routes/console.php tests/Feature/CompressedMediaPreviewTest.php
+            exit 1
+          }
+
       - name: Execute JavaScript tests
         run: node --test tests/js/*.test.mjs
 
