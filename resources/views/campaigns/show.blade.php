@@ -132,7 +132,7 @@
                         </div>
                         <div class="flex justify-between py-3 border-b border-border">
                             <span class="text-sm text-text-muted">Fecha fin</span>
-                            <span class="text-sm font-medium text-text">{{ $campaign->end_date ? $campaign->end_date->format('Y-m-d') : '-' }}</span>
+                            <span class="text-sm font-medium text-text">{{ $campaign->end_date ? $campaign->end_date->format('Y-m-d') : 'Permanente · Sin fecha de fin' }}</span>
                         </div>
                     </div>
                     <div class="space-y-4">

@@ -58,10 +58,7 @@
                                 <label for="start_date" class="block text-sm font-medium text-text mb-1.5">Fecha de inicio</label>
                                 <input type="date" name="start_date" id="start_date" value="{{ old('start_date', $campaign->start_date ? $campaign->start_date->format('Y-m-d') : '') }}" class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors">
                             </div>
-                            <div>
-                                <label for="end_date" class="block text-sm font-medium text-text mb-1.5">Fecha de fin</label>
-                                <input type="date" name="end_date" id="end_date" value="{{ old('end_date', $campaign->end_date ? $campaign->end_date->format('Y-m-d') : '') }}" class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors">
-                            </div>
+                            <x-campaign-end-date :campaign="$campaign" />
                         </div>
                     </div>
                 </div>

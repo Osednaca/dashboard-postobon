@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreCampaignRequest extends FormRequest
 {
@@ -18,6 +19,9 @@ class StoreCampaignRequest extends FormRequest
             'status' => $this->status ?? 'draft',
             'priority' => $this->priority ?? 5,
         ]);
+        if ($this->boolean('is_permanent')) {
+            $this->merge(['end_date' => null]);
+        }
     }
 
     public function rules(): array
@@ -28,7 +32,8 @@ class StoreCampaignRequest extends FormRequest
             'status' => ['required', 'in:draft,active,paused,finished'],
             'priority' => ['required', 'integer', 'min:0'],
             'start_date' => ['required', 'date'],
-            'end_date' => ['required', 'date', 'after_or_equal:start_date'],
+            'is_permanent' => ['sometimes', 'boolean'],
+            'end_date' => [Rule::requiredIf(! $this->boolean('is_permanent')), 'nullable', 'date', 'after_or_equal:start_date'],
             'segment_cities' => ['nullable', 'array'],
             'segment_groups' => ['nullable', 'array'],
             'created_by' => ['required', 'exists:users,id'],
@@ -48,6 +53,7 @@ class StoreCampaignRequest extends FormRequest
             'start_date.required' => 'La fecha de inicio es obligatoria.',
             'start_date.date' => 'La fecha de inicio no tiene un formato válido.',
             'end_date.required' => 'La fecha de fin es obligatoria.',
+            'is_permanent.boolean' => 'La opción de campaña permanente no es válida.',
             'end_date.date' => 'La fecha de fin no tiene un formato válido.',
             'end_date.after_or_equal' => 'La fecha de fin debe ser igual o posterior a la fecha de inicio.',
             'segment_cities.array' => 'Las ciudades de segmentación deben ser un arreglo.',
