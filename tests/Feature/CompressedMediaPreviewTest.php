@@ -336,11 +336,11 @@ class CompressedMediaPreviewTest extends TestCase
         $this->converter(fail: true);
         $service->generate($media->id, $identity);
         $checkedAt = Cache::get('media-preview:'.$identity)['checked_at'];
-        Process::fake();
 
         $this->travel(1)->minutes();
         $service->generate($media->id, $identity);
-        Process::assertNothingRan();
+        Process::assertRanTimes(fn ($process) => $process->command[0] === 'ffmpeg', 1);
+        Process::assertRanTimes(fn ($process) => $process->command[0] === 'ffprobe', 1);
         $this->assertSame($checkedAt, Cache::get('media-preview:'.$identity)['checked_at']);
         $this->assertSame(route('media.content', $media), $service->url($media));
 
