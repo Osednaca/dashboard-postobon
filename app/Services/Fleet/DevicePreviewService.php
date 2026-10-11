@@ -15,6 +15,7 @@ class DevicePreviewService
         private readonly UnifiedFleetClient $fleet,
         private readonly PrivateCloudClient $cloud,
         private readonly MediaPreviewSource $sources,
+        private readonly CompressedMediaPreview $compressed,
     ) {}
 
     /** @return array<int, array<string, mixed>> */
@@ -106,7 +107,8 @@ class DevicePreviewService
                 'key' => $device['type'].':'.$device['id'], 'type' => $device['type'], 'id' => (string) $device['id'],
                 'name' => $device['name'] ?? $device['id'], 'status' => $status,
                 'current_video' => $current, 'media_name' => $knownFilename ?? $source?->name,
-                'url' => $status === 'ready' ? route('media.content', $source) : null,
+                'url' => $status === 'ready' ? ($device['type'] === 'z2'
+                    ? $this->compressed->url($source) : route('media.content', $source)) : null,
                 'last_seen' => $device['last_seen'] ?? null,
                 'detail_url' => $device['detail_url'] ?? ($device['type'] === 'wl35'
                     ? route('devices.wl35.show', $device['id']) : null),
