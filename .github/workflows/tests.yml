@@ -3,6 +3,7 @@ name: Tests
 on:
   push:
     branches:
+      - main
       - master
       - '*.x'
   pull_request:
@@ -19,7 +20,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        php: [8.2, 8.3, 8.4]
+        php: ['8.4']
 
     name: PHP ${{ matrix.php }}
 
@@ -43,5 +44,108 @@ jobs:
       - name: Generate app key
         run: php artisan key:generate
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend assets
+        run: npm run build
+
+      - name: Execute JavaScript tests
+        run: node --test tests/js/*.test.mjs
+
       - name: Execute tests
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+          DB_URL: ''
         run: php artisan test
+
+      - name: Validate real H264 preview generation
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+          DB_URL: ''
+        run: |
+          command -v ffmpeg
+          command -v ffprobe
+          cat > tests/Feature/CompressedMediaPreviewSmokeTest.php <<'PHP'
+          <?php
+          
+          namespace Tests\Feature;
+          
+          use App\Models\Media;
+          use App\Services\Fleet\CompressedMediaPreview;
+          use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+          use Illuminate\Support\Facades\Http;
+          use Illuminate\Support\Facades\Process;
+          use Illuminate\Support\Facades\Storage;
+          use Tests\TestCase;
+          
+          class CompressedMediaPreviewSmokeTest extends TestCase
+          {
+              use LazilyRefreshDatabase;
+          
+              public function test_real_ffmpeg_and_ffprobe_generate_a_smaller_complete_preview(): void
+              {
+                  Http::preventStrayRequests();
+                  Storage::fake('public');
+                  Storage::fake('local');
+                  config(['queue.default' => 'sync', 'mediapreview.ffmpeg' => 'ffmpeg', 'mediapreview.ffprobe' => 'ffprobe']);
+                  Storage::disk('public')->makeDirectory('media');
+                  $source = Storage::disk('public')->path('media/synthetic.mp4');
+                  $created = Process::timeout(60)->run([
+                      'ffmpeg', '-nostdin', '-y', '-hide_banner', '-loglevel', 'error',
+                      '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30', '-t', '3',
+                      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18',
+                      '-pix_fmt', 'yuv420p', $source,
+                  ]);
+                  $this->assertTrue($created->successful(), $created->errorOutput());
+                  $originalHash = hash_file('sha256', $source);
+                  $originalSize = filesize($source);
+                  $media = Media::create([
+                      'name' => 'Synthetic integration fixture', 'original_name' => 'synthetic.mp4',
+                      'file_path' => 'media/synthetic.mp4', 'mime_type' => 'video/mp4',
+                      'size' => $originalSize, 'duration' => 3,
+                  ]);
+                  $service = app(CompressedMediaPreview::class);
+                  $identity = $service->identity($media);
+                  $this->assertNotNull($identity);
+                  $service->generate($media->id, $identity);
+                  $url = $service->url($media);
+                  $this->assertStringContainsString('?preview=', $url);
+                  parse_str(parse_url($url, PHP_URL_QUERY), $query);
+                  $output = $service->file($media, $query['preview']);
+                  $this->assertNotNull($output);
+                  $this->assertLessThan($originalSize, filesize($output));
+                  $this->assertSame($originalHash, hash_file('sha256', $source));
+                  $this->assertSame(3, $media->fresh()->duration);
+                  $probe = Process::timeout(20)->run([
+                      'ffprobe', '-v', 'error', '-select_streams', 'v:0',
+                      '-show_entries', 'stream=codec_name,width,height,r_frame_rate,duration:format=duration',
+                      '-of', 'json', $output,
+                  ]);
+                  $this->assertTrue($probe->successful(), $probe->errorOutput());
+                  $metadata = json_decode($probe->output(), true, 512, JSON_THROW_ON_ERROR);
+                  $stream = $metadata['streams'][0];
+                  $duration = (float) ($stream['duration'] ?? $metadata['format']['duration']);
+                  $this->assertSame('h264', $stream['codec_name']);
+                  $this->assertLessThanOrEqual(448, max($stream['width'], $stream['height']));
+                  $this->assertSame('15/1', $stream['r_frame_rate']);
+                  $this->assertEqualsWithDelta(3, $duration, 0.2);
+                  Http::assertNothingSent();
+                  fwrite(STDOUT, "\nH264_SMOKE ".json_encode([
+                      'source_bytes' => $originalSize, 'preview_bytes' => filesize($output),
+                      'duration_seconds' => $duration, 'width' => $stream['width'],
+                      'height' => $stream['height'], 'fps' => $stream['r_frame_rate'],
+                      'original_sha256_unchanged' => true,
+                  ], JSON_THROW_ON_ERROR)."\n");
+              }
+          }
+          PHP
+          php artisan test --filter=CompressedMediaPreviewSmokeTest
