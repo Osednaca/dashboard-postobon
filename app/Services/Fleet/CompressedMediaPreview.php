@@ -89,22 +89,29 @@ class CompressedMediaPreview
         $driver = config('queue.connections.'.$connection.'.driver');
         // Never run conversion inside the polling request, including sync/deferred drivers.
         if (! in_array($driver, ['database', 'redis'], true)
-            || (int) config('queue.connections.'.$connection.'.retry_after', 0) <= 360
-            || ! Cache::add($this->key($identity).':pending', true, 600)) {
+            || (int) config('queue.connections.'.$connection.'.retry_after', 0) <= 360) {
+            return;
+        }
+        $pending = Cache::lock($this->key($identity).':pending', 600);
+        if (! $pending->get()) {
             return;
         }
         try {
-            GenerateMediaPreviewJob::dispatch($media->id, $identity);
+            GenerateMediaPreviewJob::dispatch($media->id, $identity, $pending->owner());
         } catch (Throwable $exception) {
-            Cache::forget($this->key($identity).':pending');
+            $pending->release();
             $this->remember($identity, 'failed');
             Log::warning('No se pudo encolar el preview comprimido.', ['media_id' => $media->id,
                 'exception_type' => $exception::class]);
         }
     }
 
-    public function generate(int $mediaId, string $identity): void
+    public function generate(int $mediaId, string $identity, ?string $pendingOwner = null): void
     {
+        $execution = Cache::lock($this->key($identity).':generating', 360);
+        if (! $execution->get()) {
+            return;
+        }
         $disk = Storage::disk('local');
         $directory = 'media-previews/'.$identity;
         $temporary = $directory.'/'.bin2hex(random_bytes(8));
@@ -113,6 +120,13 @@ class CompressedMediaPreview
         try {
             $media = Media::find($mediaId);
             if ($media === null || $this->identity($media) !== $identity) {
+                return;
+            }
+            $entry = Cache::get($this->key($identity), []);
+            $fresh = ($entry['checked_at'] ?? 0) > now()->timestamp - config('mediapreview.remote_refresh_seconds');
+            if ($fresh && (($entry['state'] ?? null) === 'original'
+                || (($entry['state'] ?? null) === 'ready'
+                    && $this->file($media, $entry['variant']) !== null))) {
                 return;
             }
             $size = $this->materializer->materialize($media, $input, (int) config('mediapreview.download_timeout'),
@@ -169,7 +183,10 @@ class CompressedMediaPreview
             Log::warning('No fue posible generar el preview comprimido.', ['media_id' => $mediaId]);
         } finally {
             $disk->delete([$input, $output]);
-            Cache::forget($this->key($identity).':pending');
+            $execution->release();
+            if ($pendingOwner !== null) {
+                Cache::restoreLock($this->key($identity).':pending', $pendingOwner)->release();
+            }
         }
     }
 
