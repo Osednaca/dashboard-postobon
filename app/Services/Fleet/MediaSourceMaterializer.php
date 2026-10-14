@@ -14,7 +14,7 @@ class MediaSourceMaterializer
 
     public function __construct(private readonly MediaPreviewSource $sources) {}
 
-    public function materialize(Media $media, string $destination): int
+    public function materialize(Media $media, string $destination, ?int $downloadTimeout = null, ?int $maxBytes = null): int
     {
         $localDisk = Storage::disk('local');
         $localDisk->makeDirectory(dirname($destination));
@@ -25,6 +25,9 @@ class MediaSourceMaterializer
             throw new RuntimeException('No se pudo encontrar el archivo de video seleccionado.');
         }
         if ($resolved['kind'] === 'local') {
+            if ($maxBytes !== null && filesize($resolved['path']) > $maxBytes) {
+                throw new RuntimeException('El video supera el límite de preparación.');
+            }
             $source = fopen($resolved['path'], 'rb');
 
             if ($source === false) {
@@ -39,7 +42,7 @@ class MediaSourceMaterializer
                 fclose($source);
             }
         } else {
-            $this->download($resolved['path'], $destinationPath);
+            $this->download($resolved['path'], $destinationPath, $downloadTimeout, $maxBytes);
         }
 
         $size = filesize($destinationPath);
@@ -48,7 +51,7 @@ class MediaSourceMaterializer
             throw new RuntimeException('La biblioteca devolvió un archivo de video vacío.');
         }
 
-        if ($size > self::MAX_BYTES) {
+        if ($size > ($maxBytes ?? self::MAX_BYTES)) {
             $localDisk->delete($destination);
             throw new RuntimeException('El video supera el límite de 250 MB para distribución.');
         }
@@ -56,13 +59,20 @@ class MediaSourceMaterializer
         return $size;
     }
 
-    private function download(string $sourcePath, string $destinationPath): void
+    private function download(string $sourcePath, string $destinationPath, ?int $downloadTimeout, ?int $maxBytes): void
     {
         $privateCloudBase = rtrim((string) config('privatecloud.base_url'), '/');
         $url = $privateCloudBase.$sourcePath;
         $request = Http::connectTimeout((int) config('privatecloud.connect_timeout', 10))
-            ->timeout((int) config('unifiedfleet.upload_timeout', 900))
+            ->timeout($downloadTimeout ?? (int) config('unifiedfleet.upload_timeout', 900))
             ->withOptions(['sink' => $destinationPath, 'allow_redirects' => false]);
+        if ($maxBytes !== null) {
+            $request = $request->withOptions(['progress' => function ($total, $downloaded) use ($maxBytes): void {
+                if ($total > $maxBytes || $downloaded > $maxBytes) {
+                    throw new RuntimeException('El video supera el límite de preparación.');
+                }
+            }]);
+        }
 
         if (
             filled(config('privatecloud.token'))

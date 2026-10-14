@@ -3,6 +3,7 @@ import Alpine from 'alpinejs';
 import { createDevicePreviews, createPreviewPlayer } from './device-previews';
 import { createMediaDurationStore, createMediaPreview } from './media-preview';
 import { createLibraryPlayback } from './library-playback';
+import { createDeviceList } from './device-list';
 import { setupPwa } from './pwa';
 import { setupDashboardMap } from './dashboard-map';
 import { createCampaignMediaSelector } from './campaign-media-selector';
