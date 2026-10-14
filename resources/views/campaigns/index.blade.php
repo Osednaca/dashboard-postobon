@@ -99,7 +99,7 @@
                                 </td>
                                 <td class="px-6 py-4">
                                     <div class="text-sm text-text">{{ $campaign->start_date ? $campaign->start_date->format('Y-m-d') : '-' }}</div>
-                                    <div class="text-xs text-text-muted">{{ $campaign->end_date ? $campaign->end_date->format('Y-m-d') : '-' }}</div>
+                                    <div class="text-xs text-text-muted">{{ $campaign->end_date ? $campaign->end_date->format('Y-m-d') : 'Permanente · Sin fecha de fin' }}</div>
                                 </td>
                                 <td class="px-6 py-4">
                                     <div class="flex items-center gap-1.5 text-sm text-text-light">
