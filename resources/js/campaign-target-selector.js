@@ -1,7 +1,7 @@
 export function createCampaignTargetSelector(catalog = [], initial = [], criteria = {}, options = {}) {
     const entries = new Map(catalog.map((device) => [device.key, device]));
     return {
-        mode: ['manual', 'segment', 'establishment'].includes(criteria.mode) ? criteria.mode : 'manual',
+        mode: ['manual', 'segment', 'establishment', 'all'].includes(criteria.mode) ? criteria.mode : 'manual',
         businessTypes: (Array.isArray(criteria.businessTypes) ? criteria.businessTypes : []).map(String),
         segmentGroups: (Array.isArray(criteria.groups) ? criteria.groups : []).map(String),
         establishment: String(criteria.establishment ?? ''),
@@ -20,6 +20,7 @@ export function createCampaignTargetSelector(catalog = [], initial = [], criteri
         },
         get recipients() {
             if (this.mode === 'manual') return this.selected;
+            if (this.mode === 'all') return [...entries.keys()];
             if (this.mode === 'establishment') {
                 return this.establishment ? [...entries.values()].filter((device) => device.establishment_id != null
                     && String(device.establishment_id) === this.establishment).map((device) => device.key) : [];

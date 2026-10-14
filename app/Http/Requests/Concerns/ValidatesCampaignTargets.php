@@ -12,6 +12,14 @@ trait ValidatesCampaignTargets
 {
     protected function prepareCampaignTargets(): void
     {
+        if ($this->input('audience_mode') === 'all') {
+            $this->merge([
+                'target_devices' => [], 'segment_cities' => [], 'segment_groups' => [],
+                'audience_business_type_ids' => [], 'audience_establishment_id' => null,
+            ]);
+
+            return;
+        }
         foreach (['cities' => 'segment_cities', 'groups' => 'segment_groups'] as $alias => $field) {
             if (! $this->exists($field) && $this->exists($alias)) {
                 $this->merge([$field => $this->input($alias) ?? []]);
@@ -37,7 +45,7 @@ trait ValidatesCampaignTargets
         $keys = app(CampaignTargetCatalog::class)->all()->keys()->all();
 
         return [
-            'audience_mode' => ['sometimes', 'required', Rule::in(['manual', 'segment', 'establishment'])],
+            'audience_mode' => ['sometimes', 'required', Rule::in(['manual', 'segment', 'establishment', 'all'])],
             'audience_business_type_ids' => ['nullable', 'array', 'max:1000'],
             'audience_business_type_ids.*' => ['required', 'integer', 'distinct', 'exists:business_types,id'],
             'audience_establishment_id' => ['required_if:audience_mode,establishment', 'nullable', 'integer', 'exists:establishments,id'],
@@ -56,7 +64,7 @@ trait ValidatesCampaignTargets
         }
         if (! $this->exists('audience_mode')) {
             $campaign = $this->route('campaign');
-            $changesStructuredAudience = in_array($campaign?->audience_mode, ['segment', 'establishment'], true)
+            $changesStructuredAudience = in_array($campaign?->audience_mode, ['segment', 'establishment', 'all'], true)
                 && ($this->exists('segment_groups') || $this->exists('segment_cities') || $this->exists('target_devices'));
             if ($this->exists('audience_business_type_ids') || $this->exists('audience_establishment_id') || $changesStructuredAudience) {
                 $validator->errors()->add('audience_mode', 'Indica cómo deseas seleccionar los destinatarios.');

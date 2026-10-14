@@ -60,6 +60,81 @@ class CampaignAudienceTest extends TestCase
         return $criteria + ['name' => 'Audiencia nueva', 'start_date' => '2026-10-14', 'is_permanent' => 1];
     }
 
+    public function test_all_mode_saves_every_known_identity_once_and_discards_irrelevant_client_criteria(): void
+    {
+        $this->audience();
+        Device::factory()->create(['mac_address' => 'FF:AA', 'group_id' => null, 'establishment_id' => null]);
+        Wl35DeviceProfile::create(['name' => 'Sin asignar 35', 'device_id' => 'unassigned35']);
+        $this->postJson(route('api.campaigns.store'), $this->createPayload([
+            'audience_mode' => 'all', 'target_devices' => ['wl35:unknown'],
+            'segment_groups' => [999999], 'segment_cities' => 'ignored',
+            'audience_business_type_ids' => [999999], 'audience_establishment_id' => 999999,
+        ]))->assertCreated();
+
+        $campaign = Campaign::sole();
+        $this->assertSame('all', $campaign->audience_mode);
+        $this->assertSame(['z2:AABB', 'z2:BBCC', 'z2:CCDD', 'z2:DDEE', 'z2:EEFF', 'z2:FFAA',
+            'wl35:oxxo35', 'wl35:exito35', 'wl35:unassigned35'], $campaign->target_devices);
+        $this->assertSame([], $campaign->segment_groups);
+        $this->assertSame([], $campaign->segment_cities);
+        $this->assertSame([], $campaign->audience_business_type_ids);
+        $this->assertNull($campaign->audience_establishment_id);
+        $this->get(route('campaigns.show', $campaign))->assertOk()->assertSee('Todos los dispositivos')
+            ->assertSee('Destinatarios fijados al guardar');
+        Http::assertNothingSent();
+    }
+
+    public function test_all_mode_rejects_empty_inventory_without_creating_a_campaign(): void
+    {
+        $this->postJson(route('api.campaigns.store'), $this->createPayload(['audience_mode' => 'all']))
+            ->assertUnprocessable()->assertJsonValidationErrors('audience_mode');
+        $this->assertSame(0, Campaign::count());
+        Http::assertNothingSent();
+    }
+
+    public function test_all_mode_keeps_its_snapshot_on_partial_edit_and_publication_until_explicitly_resaved(): void
+    {
+        Device::factory()->create(['mac_address' => 'AA:BB', 'group_id' => null, 'establishment_id' => null]);
+        Wl35DeviceProfile::create(['name' => 'Equipo 35', 'device_id' => 'all35']);
+        $this->postJson(route('api.campaigns.store'), $this->createPayload(['audience_mode' => 'all']))->assertCreated();
+        $campaign = Campaign::sole();
+        Device::factory()->create(['mac_address' => 'CC:DD']);
+        $this->patchJson(route('api.campaigns.update', $campaign), ['name' => 'Renombrada'])->assertOk();
+        $this->assertSame(['z2:AABB', 'wl35:all35'], $campaign->fresh()->target_devices);
+        foreach ([['target_devices' => ['z2:CCDD']], ['segment_groups' => []], ['segment_cities' => []]] as $criteria) {
+            $this->patchJson(route('api.campaigns.update', $campaign), $criteria)
+                ->assertUnprocessable()->assertJsonValidationErrors('audience_mode');
+        }
+
+        Storage::disk('public')->put('media/all-audience.mp4', 'fixture');
+        $media = Media::factory()->video()->create(['file_path' => 'media/all-audience.mp4']);
+        $campaign->media()->attach($media);
+        config(['queue.default' => 'database']);
+        app(Z2CampaignSyncService::class)->publishToDevices($campaign->fresh(), []);
+        $this->assertSame(['z2:AABB', 'wl35:all35'], FleetUpload::sole()->targets);
+
+        $this->patchJson(route('api.campaigns.update', $campaign), ['audience_mode' => 'all'])->assertOk();
+        $this->assertSame(['z2:AABB', 'z2:CCDD', 'wl35:all35'], $campaign->fresh()->target_devices);
+        $this->patchJson(route('api.campaigns.update', $campaign), ['audience_mode' => 'manual', 'target_devices' => ['z2:CCDD']])->assertOk();
+        $this->assertSame('manual', $campaign->fresh()->audience_mode);
+        $this->assertSame(['z2:CCDD'], $campaign->fresh()->target_devices);
+        Http::assertNothingSent();
+    }
+
+    public function test_all_mode_restores_on_edit_and_validation_retry(): void
+    {
+        Device::factory()->create(['mac_address' => 'AA:BB']);
+        $this->post(route('campaigns.store'), $this->createPayload(['audience_mode' => 'all']))
+            ->assertSessionHasNoErrors()->assertSessionHas('success');
+        $campaign = Campaign::sole();
+        $expected = ['mode' => 'all', 'businessTypes' => [], 'groups' => [], 'establishment' => null];
+        $this->get(route('campaigns.edit', $campaign))->assertOk()->assertSee(Js::from($expected)->toHtml(), false);
+        $this->from(route('campaigns.edit', $campaign))->put(route('campaigns.update', $campaign),
+            ['audience_mode' => 'all', 'name' => str_repeat('x', 256)])->assertSessionHasErrors('name');
+        $this->get(route('campaigns.edit', $campaign))->assertOk()->assertSee(Js::from($expected)->toHtml(), false);
+        $this->assertSame(['z2:AABB'], $campaign->fresh()->target_devices);
+    }
+
     public function test_type_and_group_intersection_saves_only_matching_physical_devices(): void
     {
         $fixtures = $this->audience();

@@ -114,13 +114,15 @@
                 {{-- Details --}}
                 <div x-show="tab === 'details'" x-transition class="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     <div class="space-y-4">
-                        @if(in_array($campaign->audience_mode, ['segment', 'establishment']))
+                        @if(in_array($campaign->audience_mode, ['segment', 'establishment', 'all']))
                             <div class="rounded-lg border border-border p-3 text-sm">
-                                <p class="font-medium text-text">{{ $campaign->audience_mode === 'segment' ? 'Audiencia por tipo de negocio y grupo' : 'Audiencia de un establecimiento' }}</p>
+                                <p class="font-medium text-text">{{ match ($campaign->audience_mode) { 'all' => 'Todos los dispositivos', 'segment' => 'Audiencia por tipo de negocio y grupo', default => 'Audiencia de un establecimiento' } }}</p>
                                 @if($campaign->audience_mode === 'segment')
                                     <p class="mt-1 text-text-muted">Tipos de negocio: {{ \App\Models\BusinessType::whereIn('id', $campaign->audience_business_type_ids ?? [])->pluck('name')->join(', ') ?: 'Todos' }}</p>
-                                @else
+                                @elseif($campaign->audience_mode === 'establishment')
                                     <p class="mt-1 text-text-muted">{{ \App\Models\Establishment::find($campaign->audience_establishment_id)?->name ?? 'Establecimiento no disponible' }}</p>
+                                @else
+                                    <p class="mt-1 text-text-muted">Incluye los equipos registrados al guardar, con o sin grupo o establecimiento. Los equipos nuevos se incluyen al editar y guardar de nuevo.</p>
                                 @endif
                                 <p class="mt-2 text-xs text-text-muted">Destinatarios fijados al guardar. Edita y guarda la campaña para recalcular la audiencia con los criterios actuales.</p>
                             </div>
