@@ -7,28 +7,24 @@ use App\Http\Requests\StoreGroupRequest;
 use App\Http\Requests\UpdateGroupRequest;
 use App\Models\Campaign;
 use App\Models\Group;
+use App\Services\GroupCreationService;
 use App\Services\GroupService;
 use App\Services\Z2\Z2GroupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class GroupController extends Controller
 {
-    /**
-     * @var GroupService
-     */
     protected GroupService $groupService;
 
-    /**
-     * @var Z2GroupService
-     */
     protected Z2GroupService $z2GroupService;
 
     /**
      * GroupController constructor.
      */
-    public function __construct(GroupService $groupService, Z2GroupService $z2GroupService)
+    public function __construct(GroupService $groupService, Z2GroupService $z2GroupService, private readonly GroupCreationService $groupCreation)
     {
         $this->groupService = $groupService;
         $this->z2GroupService = $z2GroupService;
@@ -45,8 +41,7 @@ class GroupController extends Controller
 
         try {
             $this->authorize('viewAny', Group::class);
-            $this->z2GroupService->syncGroups();
-            $groups = Group::paginate(request()->input('per_page', 15));
+            $groups = Group::with('businessType')->withCount(['devices', 'wl35Devices'])->paginate(request()->input('per_page', 15));
 
             return response()->json($groups);
         } catch (\Exception $e) {
@@ -64,7 +59,7 @@ class GroupController extends Controller
     {
         try {
             $this->authorize('create', Group::class);
-            $group = $this->z2GroupService->createGroup($request->validated()['name']);
+            $group = $this->groupCreation->create($request->validated(), $request->user()->id);
 
             if ($group) {
                 return response()->json($group, 201);
@@ -73,6 +68,8 @@ class GroupController extends Controller
             return response()->json([
                 'message' => 'Error al crear el grupo en la nube.',
             ], 500);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Error al crear el grupo.',
@@ -88,7 +85,8 @@ class GroupController extends Controller
     {
         try {
             $this->authorize('view', $group);
-            return response()->json($group);
+
+            return response()->json($group->load(['businessType', 'devices', 'wl35Devices'])->loadCount(['devices', 'wl35Devices']));
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Error al obtener el grupo.',
@@ -150,7 +148,7 @@ class GroupController extends Controller
 
             if ($this->z2GroupService->powerOnGroup($group->id)) {
                 return response()->json([
-                    'message' => 'Todos los dispositivos del grupo han sido encendidos.',
+                    'message' => 'Los equipos 42 del grupo han sido encendidos.',
                     'group' => $group->fresh(),
                 ]);
             }
@@ -176,7 +174,7 @@ class GroupController extends Controller
 
             if ($this->z2GroupService->powerOffGroup($group->id)) {
                 return response()->json([
-                    'message' => 'Todos los dispositivos del grupo han sido apagados.',
+                    'message' => 'Los equipos 42 del grupo han sido apagados.',
                     'group' => $group->fresh(),
                 ]);
             }
@@ -220,7 +218,7 @@ class GroupController extends Controller
 
             if ($this->z2GroupService->changeGroupContent($group->id, $media->file_path)) {
                 return response()->json([
-                    'message' => 'Contenido cambiado correctamente en todos los dispositivos del grupo.',
+                    'message' => 'Contenido cambiado correctamente en los equipos 42 del grupo.',
                     'group' => $group->fresh(),
                 ]);
             }
@@ -264,7 +262,7 @@ class GroupController extends Controller
 
             if ($this->z2GroupService->changeGroupContent($group->id, $media->file_path)) {
                 return response()->json([
-                    'message' => 'Campaña publicada correctamente en todos los dispositivos del grupo.',
+                    'message' => 'Campaña publicada correctamente en los equipos 42 del grupo.',
                     'group' => $group->fresh(),
                 ]);
             }

@@ -35,11 +35,11 @@
     @else
         <div class="px-5 py-8 text-center sm:px-6">
             <p class="text-sm font-semibold text-text">Sin coordenadas registradas</p>
-            <p class="mt-1 text-sm text-text-light">Ubica el establecimiento en el mapa para mostrarlo aquí.</p>
-            @if($establishment)
+            <p class="mt-1 text-sm text-text-light">El mapa aparecerá cuando el establecimiento tenga coordenadas.</p>
+            @if($establishment && auth()->user()->managesEstablishments())
                 <a href="{{ route('establishments.edit', $establishment->id) }}" class="mt-3 inline-flex text-sm font-semibold text-primary hover:underline">Editar ubicación del establecimiento</a>
-            @else
-                <p class="mt-2 text-xs text-text-muted">Selecciona un establecimiento en Información administrativa.</p>
+            @elseif(! $establishment)
+                <p class="mt-2 text-xs text-text-muted">Sin establecimiento asociado.</p>
             @endif
         </div>
     @endif

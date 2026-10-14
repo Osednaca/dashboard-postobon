@@ -9,18 +9,17 @@ class SchedulePolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->operatesDevices();
+        return $user->managesOperations();
     }
 
     public function view(User $user, Schedule $schedule): bool
     {
-        return $user->operatesDevices() && ($user->managesOperations()
-            || ($schedule->type !== 'activate_campaign' && $schedule->campaign_id === null));
+        return $user->managesOperations();
     }
 
     public function create(User $user): bool
     {
-        return $user->operatesDevices();
+        return $user->managesOperations();
     }
 
     public function update(User $user, Schedule $schedule): bool

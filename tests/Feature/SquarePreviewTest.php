@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Media;
+use App\Models\User;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -12,6 +13,7 @@ class SquarePreviewTest extends TestCase
     public function test_shared_device_and_library_players_keep_square_bounds_without_cropping(): void
     {
         Http::preventStrayRequests();
+        $this->actingAs(User::factory()->superadmin()->make(['id' => 1]));
         $media = new Media(['name' => 'Muestra', 'mime_type' => 'video/mp4']);
         $media->id = 42;
 

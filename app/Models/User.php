@@ -15,6 +15,7 @@ class User extends Authenticatable
     public const ROLES = [
         'superadmin' => 'Superadministrador',
         'admin' => 'Administrador',
+        'campanas' => 'Campañas',
         'tecnico' => 'Técnico (instalador)',
     ];
 
@@ -25,17 +26,47 @@ class User extends Authenticatable
 
     public function managesOperations(): bool
     {
-        return in_array($this->role, ['superadmin', 'admin'], true);
+        return in_array($this->role, ['superadmin', 'admin', 'campanas'], true);
     }
 
     public function operatesDevices(): bool
     {
-        return array_key_exists($this->role ?? '', self::ROLES);
+        return $this->isSuperadmin();
+    }
+
+    public function viewsDevices(): bool
+    {
+        return in_array($this->role, ['superadmin', 'tecnico', 'campanas'], true);
+    }
+
+    public function assignsDevices(): bool
+    {
+        return in_array($this->role, ['superadmin', 'tecnico'], true);
+    }
+
+    public function managesEstablishments(): bool
+    {
+        return $this->assignsDevices();
+    }
+
+    public function managesGroups(): bool
+    {
+        return in_array($this->role, ['superadmin', 'admin'], true);
+    }
+
+    public function createsGroups(): bool
+    {
+        return $this->managesOperations();
+    }
+
+    public function usesMedia(): bool
+    {
+        return $this->managesOperations();
     }
 
     public function assignableRoles(): array
     {
-        return $this->isSuperadmin() ? self::ROLES : ($this->role === 'admin' ? ['tecnico' => self::ROLES['tecnico']] : []);
+        return $this->isSuperadmin() ? self::ROLES : [];
     }
 
     public function roleLabel(): string

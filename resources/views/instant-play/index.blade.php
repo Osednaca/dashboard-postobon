@@ -20,7 +20,7 @@
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
                 <h1 class="text-2xl font-bold text-text">Reproducción Instantánea</h1>
-                <p class="text-sm text-text-light mt-1">Reproduce contenido en ventiladores Z2 y WL35 desde una sola selección</p>
+                <p class="text-sm text-text-light mt-1">Reproduce contenido en ventiladores 42 y 35 desde una sola selección</p>
             </div>
             <div class="flex items-center gap-2">
                 {{-- Mode toggle --}}
@@ -56,7 +56,7 @@
     @if($gatewayError)
         <div class="mb-6 flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-amber-900">
             <svg class="mt-0.5 h-5 w-5 shrink-0 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-            <div class="min-w-0"><div class="font-semibold">Los Z2 locales siguen disponibles, pero no fue posible cargar los WL35.</div><div class="mt-1 break-words text-xs leading-5 text-amber-800">{{ $gatewayError }}</div></div>
+            <div class="min-w-0"><div class="font-semibold">Los 42 locales siguen disponibles, pero no fue posible cargar los 35.</div><div class="mt-1 break-words text-xs leading-5 text-amber-800">{{ $gatewayError }}</div></div>
         </div>
     @endif
 
@@ -109,7 +109,7 @@
                         </svg>
                         Dispositivos
                     </h2>
-                    <div class="flex items-center gap-2 text-[11px] font-semibold"><span class="rounded-md bg-amber-100 px-2 py-1 text-amber-700">Z2 {{ $z2Count }}</span><span class="rounded-md bg-sky-100 px-2 py-1 text-sky-700">WL35 {{ $wl35Count }}</span></div>
+                    <div class="flex items-center gap-2 text-[11px] font-semibold"><span class="rounded-md bg-amber-100 px-2 py-1 text-amber-700">42 {{ $z2Count }}</span><span class="rounded-md bg-sky-100 px-2 py-1 text-sky-700">35 {{ $wl35Count }}</span></div>
                 </div>
 
                 @if(count($devicesWithPlaying) > 0)
@@ -138,7 +138,7 @@
                                          @if($item['online']) @click="if (mode === 'single' || mode === 'campaign') selectedDevice = {{ Js::from($key) }}" @endif>
                                         <div class="flex items-center gap-2 mb-1">
                                             <h3 class="font-semibold text-text text-sm truncate">{{ $item['name'] }}</h3>
-                                            <span class="rounded-md px-1.5 py-0.5 text-[10px] font-bold tracking-wide {{ $item['type'] === 'wl35' ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-700' }}">{{ strtoupper($item['type']) }}</span>
+                                            <span class="rounded-md px-1.5 py-0.5 text-[10px] font-bold tracking-wide {{ $item['type'] === 'wl35' ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-700' }}">{{ $item['type'] === 'wl35' ? '35' : '42' }}</span>
                                             <span class="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full
                                                 {{ $item['online'] ? 'bg-success/10 text-success' : 'bg-text-muted/10 text-text-muted' }}">
                                                 <span class="w-1.5 h-1.5 rounded-full {{ $item['online'] ? 'bg-success' : 'bg-text-muted' }}"></span>
@@ -265,7 +265,7 @@
                                             <option value="{{ $m->id }}">{{ $m->name }} {{ $m->duration ? '(' . gmdate('i:s', $m->duration) . ')' : '' }}</option>
                                         @endforeach
                                     </select>
-                                    <p class="mt-1.5 text-xs leading-5 text-text-muted">Si el video no existe en un WL35, se cargará y reproducirá automáticamente.</p>
+                                    <p class="mt-1.5 text-xs leading-5 text-text-muted">Si el video no existe en un 35, se cargará y reproducirá automáticamente.</p>
                                 </div>
                                 <button type="submit"
                                         :disabled="!selectedDevice || submitting"
@@ -298,7 +298,7 @@
                                             </option>
                                         @endforeach
                                     </select>
-                                    <p class="mt-1.5 text-xs leading-5 text-text-muted">Se reproduce el primer video asociado. Si falta en un WL35, se carga automáticamente.</p>
+                                    <p class="mt-1.5 text-xs leading-5 text-text-muted">Se reproduce el primer video asociado. Si falta en un 35, se carga automáticamente.</p>
                                 </div>
                                 <button type="submit"
                                         :disabled="!selectedDevice || submitting"
@@ -362,7 +362,7 @@
                                         <option value="{{ $m->id }}">{{ $m->name }} {{ $m->duration ? '(' . gmdate('i:s', $m->duration) . ')' : '' }}</option>
                                     @endforeach
                                 </select>
-                                <p class="mt-1.5 text-xs leading-5 text-text-muted">Cada Z2 reproduce desde la biblioteca; cada WL35 recibe el archivo y selecciona su nuevo índice.</p>
+                                <p class="mt-1.5 text-xs leading-5 text-text-muted">Cada 42 reproduce desde la biblioteca; cada 35 recibe el archivo y selecciona su nuevo índice.</p>
                             </div>
                             <button type="submit"
                                     :disabled="selectedDevices.length === 0 || submitting"
@@ -574,10 +574,10 @@
                 return {
                     queued: 'Reproducción en cola',
                     preparing_media: 'Preparando el video',
-                    sending_z2: 'Enviando la orden a Z2',
+                    sending_z2: 'Enviando la orden a 42',
                     downloading_media: 'Recuperando el video de la biblioteca',
                     uploading_gateway: 'Enviando el video al gateway',
-                    distributing: 'Convirtiendo y cargando en WL35',
+                    distributing: 'Convirtiendo y cargando en 35',
                     finalizing: 'Confirmando la reproducción',
                     completed: 'Reproducción preparada',
                     failed: 'La reproducción falló',
@@ -593,11 +593,11 @@
                 return {
                     queued: 'El worker procesará la selección sin mantener abierta esta petición.',
                     preparing_media: 'Se está validando el medio y separando los destinos por protocolo.',
-                    sending_z2: 'Los Z2 reproducen directamente el archivo existente en la nube privada.',
-                    downloading_media: 'El worker descarga una copia temporal para convertirla al formato WL35.',
-                    uploading_gateway: 'El MP4 temporal se está transfiriendo al gateway WL35.',
+                    sending_z2: 'Los 42 reproducen directamente el archivo existente en la nube privada.',
+                    downloading_media: 'El worker descarga una copia temporal para convertirla al formato 35.',
+                    uploading_gateway: 'El MP4 temporal se está transfiriendo al gateway 35.',
                     distributing: 'El gateway convierte y transmite el video. El ventilador puede detenerse durante esta fase.',
-                    finalizing: 'El WL35 está reiniciando; al reconectarse se seleccionará automáticamente el nuevo índice.',
+                    finalizing: 'El 35 está reiniciando; al reconectarse se seleccionará automáticamente el nuevo índice.',
                     failed: 'Revisa el mensaje y vuelve a intentarlo cuando el dispositivo esté conectado.',
                 }[this.playback.phase] || 'La operación continúa en segundo plano.';
             },

@@ -5,6 +5,7 @@ use App\Support\ExceptionDiagnostics;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -16,6 +17,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->redirectUsersTo(fn (Request $request): string => route(
+            $request->user()?->role === 'tecnico' ? 'establishments.index' : 'dashboard.index',
+        ));
+
         $middleware->appendToGroup('api', [
             EnsureFrontendRequestsAreStateful::class,
         ]);

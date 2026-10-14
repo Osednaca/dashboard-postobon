@@ -7,7 +7,7 @@
     <div>
         <a href="{{ route('devices.index') }}" class="text-sm font-medium text-primary hover:underline">← Dispositivos</a>
         <h1 class="mt-3 break-words text-2xl font-bold text-text">Editar {{ $device->name }}</h1>
-        <p class="mt-1 text-sm text-text-light">Actualiza la identidad del Z2 o cambia el establecimiento asociado.</p>
+        <p class="mt-1 text-sm text-text-light">Actualiza la identidad del 42 o cambia el establecimiento asociado.</p>
     </div>
 
     <form action="{{ route('devices.update', $device) }}" method="POST" class="space-y-6 rounded-xl border border-border bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] sm:p-8">

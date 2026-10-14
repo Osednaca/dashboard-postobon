@@ -190,7 +190,7 @@ class DeviceContentRemovalTest extends TestCase
         Http::fake(['cloud.test/*' => Http::response($this->snapshot(['old.mp4', 'sd-only.mp4']))]);
         app(DeviceContentRemovalTracker::class)->accepted(self::MAC, 'old.mp4');
 
-        $this->actingAs(User::factory()->admin()->create())->get(route('devices.show', $device))
+        $this->actingAs(User::factory()->superadmin()->create())->get(route('devices.show', $device))
             ->assertOk()->assertViewHas('devicePlaylist', ['sd-only.mp4'])
             ->assertSee('Eliminación solicitada')->assertSee('Pendiente de actualización del dispositivo.')
             ->assertDontSee('El dispositivo confirmó');
@@ -229,7 +229,7 @@ class DeviceContentRemovalTest extends TestCase
             'cloud.test/api/devices/AABBCCDDEEFF/format-sd' => Http::response(['result' => 0, 'delivered' => 'queued']),
             'cloud.test/api/devices/AABBCCDDEEFF' => Http::response($this->snapshot(['old.mp4'])),
         ]);
-        $this->actingAs(User::factory()->admin()->create());
+        $this->actingAs(User::factory()->superadmin()->create());
 
         $this->post(route('devices.remove-media', $device), ['ui_code' => 'old.mp4'])
             ->assertSessionHas('warning')->assertSessionMissing('success');
@@ -246,7 +246,7 @@ class DeviceContentRemovalTest extends TestCase
             'cloud.test/api/devices/*' => Http::response($this->snapshot(['old.mp4'])),
         ]);
 
-        $this->actingAs(User::factory()->admin()->create())
+        $this->actingAs(User::factory()->superadmin()->create())
             ->post(route('devices.bulk-format-sd'), ['device_ids' => [$accepted->id, $failed->id]])
             ->assertSessionHas('warning', 'Solicitud de formateo aceptada en 1 dispositivos; falló en 1. El borrado físico aún no está verificado.')
             ->assertSessionMissing('success');

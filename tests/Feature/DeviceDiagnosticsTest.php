@@ -49,7 +49,7 @@ class DeviceDiagnosticsTest extends TestCase
         $device = Device::factory()->create();
 
         $this->assertNull(app(Z2DeviceService::class)->getDeviceDetail($device->mac_address));
-        $this->actingAs(User::factory()->admin()->create())
+        $this->actingAs(User::factory()->superadmin()->create())
             ->get(route('devices.show', $device))->assertOk()
             ->assertViewHas('playlistAvailable', false)->assertSee($device->name);
         $this->assertFalse($this->diagnostics->hasErrorRecords());
@@ -60,7 +60,7 @@ class DeviceDiagnosticsTest extends TestCase
         Http::fake(['cloud.test/*' => Http::response([], 503)]);
         $device = Device::factory()->create(['last_heartbeat_at' => null, 'rpm' => null]);
 
-        $this->actingAs(User::factory()->admin()->create())->get(route('devices.show', $device))
+        $this->actingAs(User::factory()->superadmin()->create())->get(route('devices.show', $device))
             ->assertOk()->assertViewHas('deviceVolume', null)->assertSee('Nunca');
     }
 
@@ -72,7 +72,7 @@ class DeviceDiagnosticsTest extends TestCase
             $device->heartbeats()->create(['rpm' => $minutes, 'received_at' => now()->subMinutes($minutes)]);
         }
 
-        $this->actingAs(User::factory()->admin()->create())->get(route('devices.show', $device))
+        $this->actingAs(User::factory()->superadmin()->create())->get(route('devices.show', $device))
             ->assertOk()->assertViewHas('device', function (Device $device): bool {
                 return ! $device->relationLoaded('heartbeats');
             });
@@ -86,7 +86,7 @@ class DeviceDiagnosticsTest extends TestCase
         $this->mock(Z2DeviceService::class)->shouldReceive('getVolume')
             ->once()->andThrow(new \TypeError('secret-token-in-error-message'));
 
-        $response = $this->actingAs(User::factory()->admin()->create())
+        $response = $this->actingAs(User::factory()->superadmin()->create())
             ->withHeader('Authorization', 'Bearer secret-token-in-header')
             ->get(route('devices.show', $device).'?token=secret-token-in-query');
 
@@ -109,14 +109,14 @@ class DeviceDiagnosticsTest extends TestCase
             throw new \RuntimeException('secret-token-in-view');
         });
 
-        $this->actingAs(User::factory()->admin()->create())->get(route('devices.show', $device))
+        $this->actingAs(User::factory()->superadmin()->create())->get(route('devices.show', $device))
             ->assertStatus(500)->assertHeader('X-Error-Reference')->assertDontSee('secret-token');
         $this->assertTrue($this->diagnostics->hasErrorRecords());
     }
 
     public function test_normal_not_found_and_validation_responses_are_preserved(): void
     {
-        $this->actingAs(User::factory()->admin()->create())->get('/devices/999999')
+        $this->actingAs(User::factory()->superadmin()->create())->get('/devices/999999')
             ->assertNotFound()->assertHeaderMissing('X-Error-Reference');
         Route::post('/diagnostics-validation-test', fn () => request()->validate(['name' => 'required']));
         $this->postJson('/diagnostics-validation-test', [])->assertUnprocessable()

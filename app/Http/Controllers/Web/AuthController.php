@@ -34,7 +34,7 @@ class AuthController extends Controller
             if (Auth::attempt($credentials, $request->boolean('remember'))) {
                 $request->session()->regenerate();
 
-                return redirect()->route('dashboard.index')
+                return redirect()->route(Auth::user()->role === 'tecnico' ? 'establishments.index' : 'dashboard.index')
                     ->with('success', 'Inicio de sesión exitoso.');
             }
 
@@ -42,7 +42,7 @@ class AuthController extends Controller
                 'email' => 'Las credenciales proporcionadas no coinciden con nuestros registros.',
             ])->onlyInput('email');
         } catch (\Exception $e) {
-            Log::error('Error en login: ' . $e->getMessage());
+            Log::error('Error en login: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al iniciar sesión. Por favor intente nuevamente.');
         }
@@ -62,7 +62,7 @@ class AuthController extends Controller
             return redirect()->route('login')
                 ->with('success', 'Sesión cerrada exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error en logout: ' . $e->getMessage());
+            Log::error('Error en logout: '.$e->getMessage());
 
             return redirect()->route('login')
                 ->with('error', 'Ocurrió un error al cerrar sesión.');
@@ -91,7 +91,7 @@ class AuthController extends Controller
                 ? back()->with('success', 'Se ha enviado un enlace de restablecimiento de contraseña a su correo electrónico.')
                 : back()->withErrors(['email' => __($status)]);
         } catch (\Exception $e) {
-            Log::error('Error al enviar enlace de restablecimiento: ' . $e->getMessage());
+            Log::error('Error al enviar enlace de restablecimiento: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al enviar el enlace. Por favor intente nuevamente.');
         }
@@ -127,7 +127,7 @@ class AuthController extends Controller
                 ? redirect()->route('login')->with('success', 'Su contraseña ha sido restablecida exitosamente.')
                 : back()->withErrors(['email' => [__($status)]]);
         } catch (\Exception $e) {
-            Log::error('Error al restablecer contraseña: ' . $e->getMessage());
+            Log::error('Error al restablecer contraseña: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al restablecer la contraseña. Por favor intente nuevamente.');
         }

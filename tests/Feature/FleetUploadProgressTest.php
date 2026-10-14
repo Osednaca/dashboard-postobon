@@ -36,13 +36,13 @@ class FleetUploadProgressTest extends TestCase
     {
         Http::fake(['*' => Http::response(['devices' => [], 'media' => []])]);
 
-        $this->actingAs(User::factory()->admin()->create())->get('/devices')
+        $this->actingAs(User::factory()->superadmin()->create())->get('/devices')
             ->assertOk()->assertSee('Transmitiendo al ventilador')->assertSee('Convirtiendo el video');
     }
 
     public function test_devices_upload_status_uses_its_correlated_gateway_job_and_enforces_ownership(): void
     {
-        $user = User::factory()->admin()->create();
+        $user = User::factory()->superadmin()->create();
         $upload = $this->upload($user);
         Http::fake(['gateway.test/api/fleet/uploads/gateway-job' => Http::response([
             'phase' => 'relaying', 'progress' => 62,
@@ -58,7 +58,7 @@ class FleetUploadProgressTest extends TestCase
 
     public function test_missing_gateway_progress_keeps_the_background_job_running(): void
     {
-        $user = User::factory()->admin()->create();
+        $user = User::factory()->superadmin()->create();
         $upload = $this->upload($user);
         Http::fake(['gateway.test/*' => Http::response([], 404)]);
         $this->actingAs($user)->getJson(route('fleet.upload.status', $upload))
@@ -68,7 +68,7 @@ class FleetUploadProgressTest extends TestCase
 
     public function test_completed_job_preserves_each_device_error_for_the_modal(): void
     {
-        $user = User::factory()->admin()->create();
+        $user = User::factory()->superadmin()->create();
         $upload = $this->upload($user);
         $upload->update([
             'status' => 'completed', 'phase' => 'completed', 'progress' => 100,

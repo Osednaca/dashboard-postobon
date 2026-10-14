@@ -6,6 +6,7 @@ use App\Http\Requests\Concerns\ValidatesCampaignMedia;
 use App\Http\Requests\Concerns\ValidatesCampaignTargets;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class StoreCampaignRequest extends FormRequest
 {
@@ -45,6 +46,11 @@ class StoreCampaignRequest extends FormRequest
             'segment_groups' => ['nullable', 'array'],
             'created_by' => ['required', 'exists:users,id'],
         ] + $this->campaignMediaRules() + $this->campaignTargetRules();
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(fn (Validator $validator) => $this->validateCampaignAudience($validator));
     }
 
     public function messages(): array

@@ -19,7 +19,7 @@ class CampaignTargetCatalog
     {
         $items = collect();
         foreach (['z2' => Device::class, 'wl35' => Wl35DeviceProfile::class] as $type => $model) {
-            foreach ($model::with(['location', 'group', 'establishmentProfile'])->orderBy('id')->get() as $device) {
+            foreach ($model::with(['location', 'group', 'establishmentProfile.businessType'])->orderBy('id')->get() as $device) {
                 $id = $type === 'z2' ? $device->mac_address : $device->device_id;
                 if (blank($id)) {
                     continue;
@@ -37,6 +37,9 @@ class CampaignTargetCatalog
                     'name' => $device->name, 'city' => filled($device->city) ? $device->city : ($device->location?->city ?? ''),
                     'group_id' => $device->group?->id, 'group_name' => $device->group?->name,
                     'establishment' => $device->establishmentProfile?->name ?? $device->establishment,
+                    'establishment_id' => $device->establishmentProfile?->id,
+                    'business_type_id' => $device->establishmentProfile?->businessType?->id,
+                    'business_type_name' => $device->establishmentProfile?->businessType?->name,
                     'detail_url' => $type === 'z2' ? route('devices.show', $device) : route('devices.wl35.show', $id),
                 ]);
             }

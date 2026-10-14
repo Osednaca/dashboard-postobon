@@ -12,6 +12,16 @@ class DashboardController extends Controller
 
     public function index(): View
     {
-        return view('dashboard.index', ['data' => $this->dashboard->snapshot()]);
+        $data = $this->dashboard->snapshot();
+        if (! auth()->user()->viewsDevices()) {
+            foreach ($data['map_data'] as &$establishment) {
+                foreach ($establishment['devices'] as &$device) {
+                    $device['detail_url'] = null;
+                }
+            }
+            unset($establishment, $device);
+        }
+
+        return view('dashboard.index', compact('data'));
     }
 }

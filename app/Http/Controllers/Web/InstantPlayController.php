@@ -48,7 +48,7 @@ class InstantPlayController extends Controller
      */
     public function index(): View
     {
-        $this->authorize('viewAny', Device::class);
+        $this->authorize('reproduce', Device::class);
 
         // Get all active devices with MAC addresses
         $devices = Device::whereNotNull('mac_address')
@@ -113,7 +113,7 @@ class InstantPlayController extends Controller
                 return [
                     'key' => (string) ($device['key'] ?? 'wl35:'.($device['id'] ?? '')),
                     'type' => 'wl35',
-                    'name' => (string) ($profile?->name ?: ($device['name'] ?? $device['id'] ?? 'WL35')),
+                    'name' => (string) ($profile?->name ?: ($device['name'] ?? $device['id'] ?? '35')),
                     'identifier' => (string) ($device['id'] ?? ''),
                     'online' => $online,
                     'status_label' => $online ? 'En línea' : 'Fuera de línea',
@@ -177,7 +177,7 @@ class InstantPlayController extends Controller
      */
     public function playMedia(InstantPlayMediaRequest $request): JsonResponse|RedirectResponse
     {
-        $this->authorize('viewAny', Device::class);
+        $this->authorize('reproduce', Device::class);
         $data = $request->validated();
         $media = Media::findOrFail($data['media_id']);
         $this->authorize('view', $media);
@@ -185,7 +185,7 @@ class InstantPlayController extends Controller
 
         try {
             if (in_array(config('queue.default'), ['sync', 'null'], true)) {
-                throw new \RuntimeException('La carga automática a WL35 requiere QUEUE_CONNECTION=database o redis.');
+                throw new \RuntimeException('La carga automática a 35 requiere QUEUE_CONNECTION=database o redis.');
             }
 
             $uploadId = (string) Str::uuid();
@@ -214,7 +214,7 @@ class InstantPlayController extends Controller
                     'success' => true,
                     'upload_id' => $upload->id,
                     'status_url' => route('fleet.upload.status', $upload),
-                    'message' => 'La reproducción quedó en cola. Los WL35 recibirán el video automáticamente si hace falta.',
+                    'message' => 'La reproducción quedó en cola. Los 35 recibirán el video automáticamente si hace falta.',
                 ], 202);
             }
 
@@ -249,7 +249,7 @@ class InstantPlayController extends Controller
         ]);
 
         $device = Device::findOrFail($request->input('device_id'));
-        $this->authorize('update', $device);
+        $this->authorize('reproduce', Device::class);
 
         $media = Media::findOrFail($request->input('media_id'));
 
@@ -295,7 +295,7 @@ class InstantPlayController extends Controller
         ]);
 
         $device = Device::findOrFail($request->input('device_id'));
-        $this->authorize('update', $device);
+        $this->authorize('reproduce', Device::class);
 
         $campaign = Campaign::with('media')->findOrFail($request->input('campaign_id'));
 
@@ -368,7 +368,7 @@ class InstantPlayController extends Controller
             }
 
             try {
-                $this->authorize('update', $device);
+                $this->authorize('reproduce', Device::class);
 
                 if ($this->z2DeviceService->changeVideo($device->mac_address, $uiCode)) {
                     $successCount++;

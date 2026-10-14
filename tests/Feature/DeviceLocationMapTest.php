@@ -21,6 +21,7 @@ class DeviceLocationMapTest extends TestCase
         parent::setUp();
         config(['unifiedfleet.base_url' => 'http://gateway.test', 'unifiedfleet.fallback_base_url' => '']);
         Http::preventStrayRequests();
+        $this->actingAs(User::factory()->superadmin()->create());
     }
 
     private function coordinates(mixed $latitude = null, mixed $longitude = null): object
@@ -68,7 +69,7 @@ class DeviceLocationMapTest extends TestCase
         $html = Blade::render('<x-device-location-map />');
 
         $this->assertStringNotContainsString('<iframe', $html);
-        $this->assertStringContainsString('Selecciona un establecimiento', $html);
+        $this->assertStringContainsString('Sin establecimiento asociado.', $html);
     }
 
     public function test_unavailable_wl35_telemetry_keeps_establishment_map_and_guards_controls(): void
@@ -80,7 +81,7 @@ class DeviceLocationMapTest extends TestCase
         Wl35DeviceProfile::create(['device_id' => 'fan-a', 'name' => 'Entrada', 'establishment_id' => $establishment->id]);
         Http::fake(['gateway.test/*' => Http::response([], 503)]);
 
-        $this->actingAs(User::factory()->admin()->create())->get(route('devices.wl35.show', 'fan-a'))
+        $this->actingAs(User::factory()->superadmin()->create())->get(route('devices.wl35.show', 'fan-a'))
             ->assertOk()->assertSee('El estado en vivo no está disponible.')
             ->assertSee(':disabled="!canControl(rows[0])', false)
             ->assertSee('Mapa de Entrada')

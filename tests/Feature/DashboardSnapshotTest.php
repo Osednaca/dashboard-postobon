@@ -61,7 +61,7 @@ class DashboardSnapshotTest extends TestCase
             $this->live('z2', 'aabbccddeeff'), $this->live('z2', 'AA-BB-CC-DD-EE-FF'),
             $this->live('z2', 'SECOND'), $this->live('wl35', 'fan-a'), $this->live('wl35', 'fan-b', false),
         ]])]);
-        $user = User::factory()->admin()->create();
+        $user = User::factory()->superadmin()->create();
         $queries = [];
         DB::listen(function ($query) use (&$queries): void {
             $queries[] = $query->sql;
@@ -82,6 +82,24 @@ class DashboardSnapshotTest extends TestCase
         $this->assertSame('offline', $device->fresh()->status);
         Http::assertSentCount(1);
         Http::assertSent(fn ($request) => $request->method() === 'GET' && $request->url() === 'http://gateway.test/api/fleet');
+    }
+
+    public function test_administrator_dashboard_keeps_inventory_information_without_device_links(): void
+    {
+        $place = $this->establishment();
+        Device::factory()->create(['mac_address' => 'AA', 'establishment_id' => $place->id]);
+        Wl35DeviceProfile::create(['device_id' => 'fan-a', 'name' => 'Equipo 35', 'establishment_id' => $place->id]);
+        Http::fake(['gateway.test/api/fleet' => Http::response(['devices' => [
+            $this->live('z2', 'AA'), $this->live('wl35', 'fan-a'),
+        ]])]);
+
+        $response = $this->actingAs(User::factory()->admin()->create())->get(route('dashboard.index'))->assertOk();
+        $devices = $response->viewData('data')['map_data'][0]['devices'];
+        $this->assertCount(2, $devices);
+        $this->assertSame([null, null], array_column($devices, 'detail_url'));
+        $this->assertSame(['z2', 'wl35'], array_column($devices, 'type'));
+        $response->assertDontSee('href="'.route('devices.index').'"', false);
+        Http::assertNotSent(fn ($request) => $request->method() !== 'GET');
     }
 
     public function test_provider_failure_keeps_local_inventory_and_never_promotes_stale_online_status(): void

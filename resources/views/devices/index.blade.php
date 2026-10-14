@@ -4,7 +4,8 @@
 
 @section('content')
 @php
-    $libraryVideos = \App\Models\Media::where('mime_type', 'like', 'video/%')->orderBy('name')->get();
+    $canOperateDevices = auth()->user()->operatesDevices();
+    $libraryVideos = $canOperateDevices ? \App\Models\Media::where('mime_type', 'like', 'video/%')->orderBy('name')->get() : collect();
     $initialLocalIds = collect(old('device_ids', []))->map(fn ($id) => (string) $id)->unique()->values();
     $localFleetKeys = $devices->getCollection()->mapWithKeys(function ($device) {
         $mac = strtoupper(str_replace(':', '', (string) $device->mac_address));
@@ -61,6 +62,7 @@
     bulkAssigningMedia: false, fleetSubmitting: false,
     fleetUpload: { id: null, status: 'idle', phase: 'idle', progress: 0, fileName: '', error: '', result: null, elapsed: 0 },
     fleetUploadPoller: null, fleetUploadClock: null,
+    canOperateDevices: {{ Js::from($canOperateDevices) }},
     fleetUploadStatusTemplate: {{ Js::from(route('fleet.upload.status', ['fleetUpload' => '__UPLOAD_ID__'])) }},
     fleetFormat: { id: null, status: 'idle', progress: 0, error: '', result: null, elapsed: 0 },
     fleetFormatTargets: [], fleetFormatPoller: null, fleetFormatClock: null,
@@ -71,6 +73,7 @@
     filtersExpanded: false,
     bulkGroupId: '',
     init() {
+        if (!this.canOperateDevices) return;
         this.watchDialogs();
         const uploadId = window.localStorage.getItem('fleet-upload-id');
         if (uploadId) {
@@ -217,7 +220,7 @@
     },
     fleetUploadFailureMessage(item) {
         if (item.error === 'timeout waiting for WL35 upload ACK') {
-            return 'El WL35 no confirmó el inicio de carga. No se enviaron bytes de video. Es necesario comprobar la sesión y el almacenamiento del ventilador.';
+            return 'El 35 no confirmó el inicio de carga. No se enviaron bytes de video. Es necesario comprobar la sesión y el almacenamiento del ventilador.';
         }
         return item.error || 'El equipo no confirmó la distribución.';
     },
@@ -227,7 +230,7 @@
         }
         return {
             receiving: 'Subiendo al servidor', queued: 'Esperando al procesador', uploading_gateway: 'Enviando al gateway',
-            distributing: 'Preparando la distribución', converting: 'Convirtiendo el video', awaiting_device: 'Esperando al WL35', relaying: 'Transmitiendo al ventilador', finalizing: 'Confirmando resultados', completed: 'Distribución completada', failed: 'La distribución falló'
+            distributing: 'Preparando la distribución', converting: 'Convirtiendo el video', awaiting_device: 'Esperando al 35', relaying: 'Transmitiendo al ventilador', finalizing: 'Confirmando resultados', completed: 'Distribución completada', failed: 'La distribución falló'
         }[this.fleetUpload.phase] || 'Preparando la carga';
     },
     fleetUploadDescription() {
@@ -236,7 +239,7 @@
             const sent = transfers.reduce((sum, item) => sum + item.bytes, 0) / 1000000;
             const total = transfers.reduce((sum, item) => sum + item.total_bytes, 0) / 1000000;
             const speed = transfers.reduce((sum, item) => sum + (item.bytes_per_second || 0), 0) / 1000;
-            return `${sent.toFixed(1)} de ${total.toFixed(1)} MB transmitidos · ${speed.toFixed(0)} kB/s. El WL35 permanece pausado durante este envío.`;
+            return `${sent.toFixed(1)} de ${total.toFixed(1)} MB transmitidos · ${speed.toFixed(0)} kB/s. El 35 permanece pausado durante este envío.`;
         }
         if (this.fleetUpload.phase === 'queued' && this.fleetUpload.elapsed > 30) {
             return 'El trabajo sigue esperando al procesador. Si no avanza, el administrador debe revisar el worker de Laravel.';
@@ -249,8 +252,8 @@
             queued: 'El archivo ya está seguro en el VPS y espera su turno en la cola.',
             uploading_gateway: 'El VPS está transfiriendo el archivo al gateway unificado.',
             distributing: 'El gateway prepara cada formato y lo transmite a los ventiladores seleccionados.',
-            converting: 'El servidor está preparando el formato WL35. El ventilador continúa reproduciendo durante la conversión.',
-            awaiting_device: 'El video está preparado. Falta que el WL35 confirme que acepta iniciar la carga.',
+            converting: 'El servidor está preparando el formato 35. El ventilador continúa reproduciendo durante la conversión.',
+            awaiting_device: 'El video está preparado. Falta que el 35 confirme que acepta iniciar la carga.',
             finalizing: 'Los dispositivos están reportando el resultado final.',
             completed: 'El gateway terminó de procesar los equipos seleccionados.',
             failed: 'El archivo dejó de procesarse. Puedes revisar el detalle e intentarlo de nuevo.'
@@ -380,7 +383,7 @@
         if (this.fleetFormat.status === 'queued' && this.fleetFormat.elapsed > 30) {
             return 'La operación espera al procesador. Si no avanza, el administrador debe revisar el worker de Laravel.';
         }
-        if (this.fleetFormat.status === 'processing') return 'Los Z2 usan su formateo nativo. En cada WL35 se están eliminando los videos uno por uno.';
+        if (this.fleetFormat.status === 'processing') return 'Los 42 usan su formateo nativo. En cada 35 se están eliminando los videos uno por uno.';
         if (this.fleetFormat.status === 'completed') return 'Todos los equipos terminaron de responder. Revisa el resumen antes de actualizar.';
         if (this.fleetFormat.status === 'failed') return 'La operación se interrumpió. El detalle indica qué debes revisar antes de reintentar.';
         return 'Esta acción elimina de forma permanente todos los videos de los equipos seleccionados.';
@@ -431,10 +434,12 @@
     <x-device-live-feedback />
     <div x-data="devicePreviews(@js(route('devices.previews')))" @refresh-devices.window="refresh(true)" hidden></div>
     <header class="device-list-heading">
-        <div><h1 class="text-2xl font-bold tracking-tight text-text">Dispositivos</h1><p class="mt-1 text-sm text-text-light">Administra tus dispositivos Z2 y WL35 desde un solo lugar.</p></div>
+        <div><h1 class="text-2xl font-bold tracking-tight text-text">Dispositivos</h1><p class="mt-1 text-sm text-text-light">Administra tus dispositivos 42 y 35 desde un solo lugar.</p></div>
         <div class="device-list-header-actions">
             <button type="button" @click="$dispatch('refresh-devices')" class="device-list-button"><x-device-action-icon name="refresh" />Actualizar</button>
-            <a href="{{ route('devices.create') }}" class="device-list-button device-list-button-primary"><x-device-action-icon name="plus" />Nuevo dispositivo <span class="sr-only">Z2</span></a>
+            @if($canOperateDevices)
+            <a href="{{ route('devices.create') }}" class="device-list-button device-list-button-primary"><x-device-action-icon name="plus" />Nuevo dispositivo <span class="sr-only">42</span></a>
+            @endif
         </div>
     </header>
     <section aria-label="Resumen de dispositivos" class="device-list-stats">
@@ -442,19 +447,19 @@
             <div class="device-list-stat"><span class="device-list-stat-icon device-list-tone-{{ $tone }}"><x-device-action-icon :name="$icon" /></span><div><strong class="block text-xl font-bold tabular-nums" x-text="{{ $filter === '' ? 'visibleRows().length' : "countStatus('".$filter."')" }}">{{ $filter === '' ? $deviceRows->count() : $deviceRows->where('status', $filter)->count() }}</strong><span class="text-xs text-text-light">{{ $label }}</span></div></div>
         @endforeach
     </section>
-    <p class="!mt-2 text-xs text-text-light"><span class="hidden sm:inline">Resumen de los equipos visibles en esta página · {{ $devices->total() }} Z2 registrados y {{ $wl35Devices->count() }} WL35 en la lista. </span>Resumen y filtros de esta página.</p>
+    <p class="!mt-2 text-xs text-text-light"><span class="hidden sm:inline">Resumen de los equipos visibles en esta página · {{ $devices->total() }} 42 registrados y {{ $wl35Devices->count() }} 35 en la lista. </span>Resumen y filtros de esta página.</p>
 
     @if($gatewayError)
         <div class="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-amber-900">
             <svg class="mt-0.5 h-5 w-5 shrink-0 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
             <div>
-                <div class="font-semibold">Los Z2 siguen disponibles, pero no fue posible cargar los WL35.</div>
+                <div class="font-semibold">Los 42 siguen disponibles, pero no fue posible cargar los 35.</div>
                 <div class="mt-1 text-xs leading-5 text-amber-800">{{ $gatewayError }}</div>
             </div>
         </div>
     @elseif(!$gatewayConfigured)
         <div class="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-amber-900">
-            Los WL35 ya se pueden consultar, pero las órdenes unificadas requieren configurar <code class="font-semibold">UNIFIED_FLEET_API_TOKEN</code> con el mismo valor de <code class="font-semibold">ADMIN_TOKEN</code> del gateway.
+            Los 35 ya se pueden consultar, pero las órdenes unificadas requieren configurar <code class="font-semibold">UNIFIED_FLEET_API_TOKEN</code> con el mismo valor de <code class="font-semibold">ADMIN_TOKEN</code> del gateway.
         </div>
     @endif
 
@@ -477,7 +482,7 @@
             </label>
             <button type="button" @click="filtersExpanded = !filtersExpanded" :aria-expanded="filtersExpanded" class="device-filter-toggle"><span x-text="filtersExpanded ? 'Ocultar filtros' : 'Filtros'"></span><span x-show="[protocolFilter, statusFilter, establishmentFilter].filter(Boolean).length" class="rounded bg-primary/10 px-2 text-primary" x-text="[protocolFilter, statusFilter, establishmentFilter].filter(Boolean).length"></span><span aria-hidden="true" x-text="filtersExpanded ? '−' : '+'"></span></button>
             <select x-model="protocolFilter" aria-label="Tipo de dispositivo" class="min-w-0 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
-                <option value="">Todos los tipos</option><option value="z2">Z2</option><option value="wl35">WL35</option>
+                <option value="">Todos los tipos</option><option value="z2">42</option><option value="wl35">35</option>
             </select>
             <select x-model="statusFilter" aria-label="Estado" class="min-w-0 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
                 <option value="">Todos los estados</option><option value="online">En línea</option><option value="powered_off">Apagados</option><option value="offline">Fuera de línea</option><option value="unknown">Energía sin confirmar</option><option value="unavailable">Estado no disponible</option>
@@ -488,6 +493,7 @@
             </select>
         </div>
 
+        @if($canOperateDevices)
         <div x-show="selectedFleetKeys.length > 0" x-transition class="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4">
             <div class="mr-2 flex items-center gap-2"><span class="flex h-8 min-w-8 items-center justify-center rounded-lg bg-primary/10 px-2 text-sm font-bold text-primary" x-text="selectedFleetKeys.length"></span><span class="text-xs font-semibold text-text-light">seleccionados</span></div>
             <button type="button" @click="submitFleet('power', '1')" :disabled="fleetSubmitting || commandBusy" class="rounded-lg bg-success px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Encender</button>
@@ -499,11 +505,11 @@
             <button type="button" @click="openFleetFormat()" class="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-xs font-semibold text-danger transition hover:bg-danger/10">Formatear SD</button>
 
             <div class="relative" x-data="{ open: false }">
-                <button type="button" @click="open=!open" :disabled="!selectedIds.length" class="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-text-light disabled:cursor-not-allowed disabled:opacity-40">Administrar Z2<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></button>
+                <button type="button" @click="open=!open" :disabled="!selectedIds.length" class="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-text-light disabled:cursor-not-allowed disabled:opacity-40">Administrar 42<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></button>
                 <div x-show="open" x-cloak @click.away="open=false" class="absolute left-0 z-40 mt-2 w-56 rounded-lg border border-border bg-white py-1 shadow-xl">
-                    <button type="button" @click="open=false; submitBulk('power_on')" class="block w-full px-4 py-2 text-left text-sm hover:bg-surface">Encender Z2 directamente</button>
-                    <button type="button" @click="open=false; submitBulk('power_off')" class="block w-full px-4 py-2 text-left text-sm hover:bg-surface">Apagar Z2 directamente</button>
-                    <button type="button" @click="open=false; showBulkAssignMediaModal=true" class="block w-full px-4 py-2 text-left text-sm font-medium text-primary hover:bg-surface">Asignar medio Z2</button>
+                    <button type="button" @click="open=false; submitBulk('power_on')" class="block w-full px-4 py-2 text-left text-sm hover:bg-surface">Encender 42 directamente</button>
+                    <button type="button" @click="open=false; submitBulk('power_off')" class="block w-full px-4 py-2 text-left text-sm hover:bg-surface">Apagar 42 directamente</button>
+                    <button type="button" @click="open=false; showBulkAssignMediaModal=true" class="block w-full px-4 py-2 text-left text-sm font-medium text-primary hover:bg-surface">Asignar medio 42</button>
                     <button type="button" @click="open=false; submitBulk('change_group')" class="block w-full px-4 py-2 text-left text-sm hover:bg-surface">Cambiar grupo</button>
                     <button type="button" @click="open=false; submitBulk('enable')" class="block w-full px-4 py-2 text-left text-sm hover:bg-surface">Habilitar</button>
                     <button type="button" @click="open=false; submitBulk('disable')" class="block w-full px-4 py-2 text-left text-sm hover:bg-surface">Deshabilitar</button>
@@ -513,20 +519,22 @@
             </div>
 
             <div class="flex w-full flex-wrap items-center gap-2 xl:ml-auto xl:w-auto">
-                <select x-model="bulkGroupId" aria-label="Grupo para los Z2 seleccionados" class="min-w-0 flex-1 rounded-lg border border-border px-2 py-2 text-xs xl:w-36 xl:flex-none"><option value="">Grupo Z2</option>@foreach(App\Models\Group::orderBy('name')->get() as $group)<option value="{{ $group->id }}">{{ $group->name }}</option>@endforeach</select>
+                <select x-model="bulkGroupId" aria-label="Grupo para los 42 seleccionados" class="min-w-0 flex-1 rounded-lg border border-border px-2 py-2 text-xs xl:w-36 xl:flex-none"><option value="">Grupo 42</option>@foreach(App\Models\Group::orderBy('name')->get() as $group)<option value="{{ $group->id }}">{{ $group->name }}</option>@endforeach</select>
                 <button type="button" @click="selectedIds=[]; selectedFleetKeys=[]" class="rounded-lg px-3 py-2 text-xs font-semibold text-text-muted hover:bg-surface">Limpiar</button>
             </div>
         </div>
 
         <form x-ref="fleetCommand" action="{{ route('fleet.command') }}" method="POST" class="hidden">@csrf<input type="hidden" name="command"><input type="hidden" name="value"><template x-for="key in selectedFleetKeys" :key="'command-'+key"><input type="hidden" name="targets[]" :value="key"></template></form>
         <form id="bulk-operation-form" action="{{ route('devices.bulk-operation') }}" method="POST" class="hidden">@csrf<input id="bulk-operation-action" type="hidden" name="action"><input id="bulk-operation-group" type="hidden" name="target_group_id"><template x-for="id in selectedIds" :key="'legacy-'+id"><input type="hidden" name="device_ids[]" :value="id"></template></form>
+        @endif
     </section>
 
     @include('devices.partials.device-list-table')
 
-    <div x-show="showDeleteModal" data-dialog="showDeleteModal" role="dialog" aria-modal="true" aria-label="Eliminar dispositivo" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"><div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showDeleteModal=false"></div><div class="relative w-full max-w-md rounded-xl border border-border bg-white p-6 shadow-xl"><h3 class="text-lg font-semibold text-text">¿Eliminar dispositivo Z2?</h3><p class="mt-2 text-sm text-text-light">Se eliminará <strong x-text="deleteName"></strong> del registro local.</p><div class="mt-6 flex justify-end gap-3"><button type="button" @click="showDeleteModal=false" class="rounded-lg border border-border px-4 py-2.5 text-sm">Cancelar</button><form :action="'/devices/'+deleteId" method="POST">@csrf @method('DELETE')<button class="rounded-lg bg-danger px-4 py-2.5 text-sm font-medium text-white">Eliminar</button></form></div></div></div>
+    @if($canOperateDevices)
+    <div x-show="showDeleteModal" data-dialog="showDeleteModal" role="dialog" aria-modal="true" aria-label="Eliminar dispositivo" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"><div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showDeleteModal=false"></div><div class="relative w-full max-w-md rounded-xl border border-border bg-white p-6 shadow-xl"><h3 class="text-lg font-semibold text-text">¿Eliminar dispositivo 42?</h3><p class="mt-2 text-sm text-text-light">Se eliminará <strong x-text="deleteName"></strong> del registro local.</p><div class="mt-6 flex justify-end gap-3"><button type="button" @click="showDeleteModal=false" class="rounded-lg border border-border px-4 py-2.5 text-sm">Cancelar</button><form :action="'/devices/'+deleteId" method="POST">@csrf @method('DELETE')<button class="rounded-lg bg-danger px-4 py-2.5 text-sm font-medium text-white">Eliminar</button></form></div></div></div>
 
-    <div x-show="showBulkAssignMediaModal" data-dialog="showBulkAssignMediaModal" role="dialog" aria-modal="true" aria-label="Asignar medio a Z2" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"><div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showBulkAssignMediaModal=false"></div><div class="relative w-full max-w-md rounded-xl border border-border bg-white p-6 shadow-xl"><h3 class="text-lg font-semibold text-text">Asignar medio a Z2</h3><p class="mt-2 text-sm text-text-light">El mismo archivo se asignará a <strong x-text="selectedIds.length"></strong> dispositivos Z2.</p><form action="{{ route('devices.bulk-assign-media') }}" method="POST" class="mt-5 space-y-4" @submit="bulkAssigningMedia=true">@csrf<template x-for="id in selectedIds" :key="'media-'+id"><input type="hidden" name="device_ids[]" :value="id"></template><select name="media_id" required class="w-full rounded-lg border border-border bg-white px-4 py-2.5 text-sm"><option value="">Seleccionar medio</option>@foreach(App\Models\Media::orderBy('name')->get() as $media)<option value="{{ $media->id }}" @selected((string) old('media_id') === (string) $media->id)>{{ $media->name }}</option>@endforeach</select><div class="flex justify-end gap-3"><button type="button" @click="showBulkAssignMediaModal=false" class="rounded-lg border border-border px-4 py-2.5 text-sm">Cancelar</button><button :disabled="bulkAssigningMedia" class="rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50" x-text="bulkAssigningMedia ? 'Asignando…' : 'Asignar medio'"></button></div></form></div></div>
+    <div x-show="showBulkAssignMediaModal" data-dialog="showBulkAssignMediaModal" role="dialog" aria-modal="true" aria-label="Asignar medio a 42" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"><div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showBulkAssignMediaModal=false"></div><div class="relative w-full max-w-md rounded-xl border border-border bg-white p-6 shadow-xl"><h3 class="text-lg font-semibold text-text">Asignar medio a 42</h3><p class="mt-2 text-sm text-text-light">El mismo archivo se asignará a <strong x-text="selectedIds.length"></strong> dispositivos 42.</p><form action="{{ route('devices.bulk-assign-media') }}" method="POST" class="mt-5 space-y-4" @submit="bulkAssigningMedia=true">@csrf<template x-for="id in selectedIds" :key="'media-'+id"><input type="hidden" name="device_ids[]" :value="id"></template><select name="media_id" required class="w-full rounded-lg border border-border bg-white px-4 py-2.5 text-sm"><option value="">Seleccionar medio</option>@foreach(App\Models\Media::orderBy('name')->get() as $media)<option value="{{ $media->id }}" @selected((string) old('media_id') === (string) $media->id)>{{ $media->name }}</option>@endforeach</select><div class="flex justify-end gap-3"><button type="button" @click="showBulkAssignMediaModal=false" class="rounded-lg border border-border px-4 py-2.5 text-sm">Cancelar</button><button :disabled="bulkAssigningMedia" class="rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50" x-text="bulkAssigningMedia ? 'Asignando…' : 'Asignar medio'"></button></div></form></div></div>
 
     <div x-show="showFleetPlayModal" data-dialog="showFleetPlayModal" role="dialog" aria-modal="true" aria-label="Reproducir contenido" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showFleetPlayModal=false"></div>
@@ -535,15 +543,15 @@
             <x-library-playback :media="$libraryVideos" targets-expression="playbackTargets" />
             <details class="mt-5 border-t border-border pt-4">
                 <summary class="cursor-pointer text-sm font-semibold text-text-light">Reproducir contenido ya almacenado</summary>
-                <p class="mt-2 text-xs text-text-light">Usa el índice WL35 o el archivo Z2 disponible en el dispositivo.</p>
+                <p class="mt-2 text-xs text-text-light">Usa el índice 35 o el archivo 42 disponible en el dispositivo.</p>
                 <form action="{{ route('fleet.command') }}" method="POST" class="mt-4 space-y-4" @submit="fleetSubmitting=true">
                     @csrf
                     <input type="hidden" name="command" value="play">
                     <template x-for="key in playbackTargets" :key="'play-'+key"><input type="hidden" name="targets[]" :value="key"></template>
                     <div class="grid gap-4 sm:grid-cols-2">
-                        <label><span class="mb-1.5 block text-xs font-semibold text-text-light">Índice WL35</span><input type="number" name="wl35_video_index" min="1" max="255" value="{{ old('wl35_video_index', 1) }}" class="w-full rounded-lg border border-border px-3 py-2.5 text-sm"></label>
+                        <label><span class="mb-1.5 block text-xs font-semibold text-text-light">Índice 35</span><input type="number" name="wl35_video_index" min="1" max="255" value="{{ old('wl35_video_index', 1) }}" class="w-full rounded-lg border border-border px-3 py-2.5 text-sm"></label>
                         <label>
-                            <span class="mb-1.5 block text-xs font-semibold text-text-light">Archivo Z2</span>
+                            <span class="mb-1.5 block text-xs font-semibold text-text-light">Archivo 42</span>
                             <select name="z2_filename" class="w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm">
                                 <option value="">Seleccionar archivo</option>
                                 @foreach($fleetMedia as $asset)<option value="{{ $asset['filename'] ?? '' }}">{{ $asset['filename'] ?? 'Archivo' }}</option>@endforeach
@@ -590,8 +598,8 @@
                 <div x-show="fleetFormat.status === 'idle'" class="space-y-4">
                     <div class="rounded-xl border border-danger/20 bg-red-50 px-4 py-3 text-sm leading-6 text-red-900"><strong>Esta acción no se puede deshacer.</strong> Se borrarán todos los videos de <span class="font-semibold" x-text="fleetFormatTargets.length"></span> equipos.</div>
                     <div class="grid grid-cols-2 gap-3 text-center">
-                        <div class="rounded-xl bg-surface p-3"><div class="text-xl font-bold tabular-nums text-text" x-text="fleetFormatTargets.filter(key => key.startsWith('wl35:')).length"></div><div class="text-xs text-text-muted">WL35 · borrado secuencial</div></div>
-                        <div class="rounded-xl bg-surface p-3"><div class="text-xl font-bold tabular-nums text-text" x-text="fleetFormatTargets.filter(key => key.startsWith('z2:')).length"></div><div class="text-xs text-text-muted">Z2 · formateo nativo</div></div>
+                        <div class="rounded-xl bg-surface p-3"><div class="text-xl font-bold tabular-nums text-text" x-text="fleetFormatTargets.filter(key => key.startsWith('wl35:')).length"></div><div class="text-xs text-text-muted">35 · borrado secuencial</div></div>
+                        <div class="rounded-xl bg-surface p-3"><div class="text-xl font-bold tabular-nums text-text" x-text="fleetFormatTargets.filter(key => key.startsWith('z2:')).length"></div><div class="text-xs text-text-muted">42 · formateo nativo</div></div>
                     </div>
                 </div>
 
@@ -722,5 +730,6 @@
             </div>
         </div>
     </div>
+    @endif
 </div>
 @endsection

@@ -20,7 +20,7 @@ class DevicePreviewService
     ) {}
 
     /** @return array<int, array<string, mixed>> */
-    public function snapshot(): array
+    public function snapshot(bool $includeMedia = true): array
     {
         $live = [];
         if ($this->fleet->isConfigured()) {
@@ -75,7 +75,7 @@ class DevicePreviewService
         $mappings = Wl35DeviceMedia::with('media')->whereIn('device_id', $devices->where('type', 'wl35')->pluck('id'))
             ->get()->keyBy(fn ($mapping) => $mapping->device_id.':'.$mapping->video_index);
 
-        return $devices->map(function (array $device) use ($media, $mappings): array {
+        return $devices->map(function (array $device) use ($media, $mappings, $includeMedia): array {
             $current = $device['current_video'] ?? null;
             $source = null;
             $knownFilename = null;
@@ -110,7 +110,7 @@ class DevicePreviewService
                 'name' => $device['name'] ?? $device['id'], 'status' => $status,
                 'operating' => DeviceOperatingState::fromTelemetry($device),
                 'current_video' => $current, 'media_name' => $knownFilename ?? $source?->name,
-                'url' => $status === 'ready' ? ($device['type'] === 'z2'
+                'url' => $includeMedia && $status === 'ready' ? ($device['type'] === 'z2'
                     ? $this->compressed->url($source) : route('media.content', $source)) : null,
                 'last_seen' => $device['last_seen'] ?? null,
                 'detail_url' => $device['detail_url'] ?? ($device['type'] === 'wl35'

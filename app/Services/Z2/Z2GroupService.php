@@ -4,6 +4,8 @@ namespace App\Services\Z2;
 
 use App\Models\Device;
 use App\Models\Group;
+use App\Models\Wl35DeviceProfile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -68,8 +70,11 @@ class Z2GroupService
             return false;
         }
 
-        Device::where('group_id', $groupId)->update(['group_id' => null]);
-        $group->delete();
+        DB::transaction(function () use ($group, $groupId): void {
+            Device::where('group_id', $groupId)->update(['group_id' => null]);
+            Wl35DeviceProfile::where('group_id', $groupId)->update(['group_id' => null]);
+            $group->delete();
+        });
 
         Log::info('[PrivateCloud] Group deleted locally', ['id' => $groupId]);
 

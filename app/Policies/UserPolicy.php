@@ -8,22 +8,22 @@ class UserPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->managesOperations();
+        return $user->isSuperadmin();
     }
 
     public function view(User $user, User $model): bool
     {
-        return $user->is($model) || $this->update($user, $model);
+        return $user->isSuperadmin();
     }
 
     public function create(User $user): bool
     {
-        return $user->managesOperations();
+        return $user->isSuperadmin();
     }
 
     public function update(User $user, User $model): bool
     {
-        return $user->isSuperadmin() || ($user->role === 'admin' && $model->role === 'tecnico');
+        return $user->isSuperadmin();
     }
 
     public function delete(User $user, User $model): bool

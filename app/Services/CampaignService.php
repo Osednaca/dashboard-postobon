@@ -22,6 +22,7 @@ class CampaignService extends BaseService
     public function create(array $data): Model
     {
         return DB::transaction(function () use ($data): Model {
+            $data = app(CampaignAudienceResolver::class)->resolve($data);
             $campaign = parent::create(Arr::except($data, ['media_ids', 'media_selection_present', 'target_selection_present', 'is_permanent']));
             $this->syncSelectedMedia($campaign, $data);
 
@@ -32,6 +33,7 @@ class CampaignService extends BaseService
     public function update(int|string $id, array $data): ?Model
     {
         return DB::transaction(function () use ($id, $data): ?Model {
+            $data = app(CampaignAudienceResolver::class)->resolve($data);
             $campaign = parent::update($id, Arr::except($data, ['media_ids', 'media_selection_present', 'target_selection_present', 'is_permanent']));
             if ($campaign instanceof Campaign) {
                 $this->syncSelectedMedia($campaign, $data);

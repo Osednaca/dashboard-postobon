@@ -64,8 +64,10 @@ class Wl35DeviceController extends Controller
             'uploading' => false,
         ];
 
-        $establishments = Establishment::with('businessType')->orderBy('name')->get();
-        $libraryMedia = Media::where('mime_type', 'video/mp4')->orderBy('name')->get();
+        $establishments = auth()->user()->assignsDevices()
+            ? Establishment::with('businessType')->orderBy('name')->get() : collect();
+        $libraryMedia = auth()->user()->operatesDevices()
+            ? Media::where('mime_type', 'video/mp4')->orderBy('name')->get() : collect();
         $videoNames = Wl35DeviceMedia::with('media')->where('device_id', $deviceId)
             ->whereBetween('video_index', [1, max(0, (int) ($device['video_count'] ?? 0))])
             ->get()->mapWithKeys(fn (Wl35DeviceMedia $mapping): array => [$mapping->video_index => $mapping->display_filename]);
@@ -91,7 +93,7 @@ class Wl35DeviceController extends Controller
             $request->validated(),
         );
 
-        return back()->with('success', 'Información administrativa del WL35 actualizada.');
+        return back()->with('success', 'Información administrativa del 35 actualizada.');
     }
 
     public function deleteVideo(
@@ -114,7 +116,7 @@ class Wl35DeviceController extends Controller
                     ->each(fn (Wl35DeviceMedia $mapping) => $mapping->decrement('video_index'));
             });
 
-            return back()->with('success', "Video {$index} eliminado del WL35.");
+            return back()->with('success', "Video {$index} eliminado del 35.");
         } catch (Throwable $exception) {
             Log::error('No fue posible eliminar un video WL35.', [
                 'device_id' => $deviceId,
@@ -136,7 +138,7 @@ class Wl35DeviceController extends Controller
         try {
             $this->fleetClient->setWl35Volume($deviceId, $volume);
 
-            return back()->with('success', "Volumen del WL35 actualizado a {$volume}.");
+            return back()->with('success', "Volumen del 35 actualizado a {$volume}.");
         } catch (Throwable $exception) {
             Log::error('No fue posible actualizar el volumen WL35.', [
                 'device_id' => $deviceId,

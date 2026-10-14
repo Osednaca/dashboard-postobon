@@ -33,7 +33,7 @@ class DeviceLiveStateTest extends TestCase
                 ->push(['devices' => [['type' => 'wl35', 'id' => 'fan', 'online' => true, 'connected' => false, 'power' => false]]]),
             'cloud.test/api/devices' => Http::response(['devices' => []]),
         ]);
-        $this->actingAs(User::factory()->admin()->create());
+        $this->actingAs(User::factory()->superadmin()->create());
         $this->getJson(route('devices.previews'))->assertOk()
             ->assertJsonPath('devices.0.operating.status', 'online')->assertJsonPath('devices.0.operating.bluetooth', false);
         $this->getJson(route('devices.previews'))->assertOk()
@@ -49,7 +49,7 @@ class DeviceLiveStateTest extends TestCase
     {
         Device::factory()->create(['mac_address' => 'AA', 'power_status' => 'on', 'bluetooth_status' => 'on']);
         Http::fake(['*' => Http::response([], 503)]);
-        $this->actingAs(User::factory()->admin()->create())->getJson(route('devices.previews'))->assertOk()
+        $this->actingAs(User::factory()->superadmin()->create())->getJson(route('devices.previews'))->assertOk()
             ->assertJsonPath('devices.0.operating.status', 'unavailable')
             ->assertJsonPath('devices.0.operating.powered', null)->assertJsonPath('devices.0.operating.bluetooth', null);
     }
@@ -62,7 +62,7 @@ class DeviceLiveStateTest extends TestCase
             'cloud.test/api/devices/AA/bluetooth' => Http::response(['result' => 0]),
             'cloud.test/api/devices' => Http::response(['devices' => []]),
         ]);
-        $this->actingAs(User::factory()->admin()->create());
+        $this->actingAs(User::factory()->superadmin()->create());
         foreach (['power-on', 'power-off', 'bluetooth-on', 'bluetooth-off'] as $command) {
             $this->postJson(route('devices.'.$command, $device))->assertStatus(202)->assertJsonPath('success', true);
         }
@@ -78,7 +78,7 @@ class DeviceLiveStateTest extends TestCase
         $this->actingAs($user)->postJson(route('devices.power-on', $device))->assertForbidden();
         Http::assertNothingSent();
         Http::fake(['cloud.test/*' => Http::response(['result' => -1])]);
-        $this->actingAs(User::factory()->admin()->create())->postJson(route('devices.power-on', $device))
+        $this->actingAs(User::factory()->superadmin()->create())->postJson(route('devices.power-on', $device))
             ->assertStatus(502)->assertJsonPath('success', false);
     }
 
@@ -92,7 +92,7 @@ class DeviceLiveStateTest extends TestCase
                 ->push(['total' => 2, 'succeeded' => 1, 'failed' => 1])
                 ->push([], 503),
         ]);
-        $this->actingAs(User::factory()->admin()->create());
+        $this->actingAs(User::factory()->superadmin()->create());
         $payload = ['command' => 'power', 'value' => 0, 'targets' => ['wl35:a', 'wl35:b']];
         $this->postJson(route('fleet.command'), $payload)->assertStatus(202)->assertJsonPath('success', true);
         $this->postJson(route('fleet.command'), $payload)->assertStatus(502)->assertJsonPath('success', false)

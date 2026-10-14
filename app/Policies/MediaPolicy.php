@@ -9,36 +9,36 @@ class MediaPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->operatesDevices();
+        return $user->usesMedia();
     }
 
     public function view(User $user, Media $media): bool
     {
-        return $user->operatesDevices();
+        return $user->usesMedia();
     }
 
     public function create(User $user): bool
     {
-        return $user->operatesDevices();
+        return $user->usesMedia();
     }
 
     public function update(User $user, Media $media): bool
     {
-        return $user->operatesDevices();
+        return $user->usesMedia();
     }
 
     public function delete(User $user, Media $media): bool
     {
-        return $user->operatesDevices();
+        return $user->usesMedia();
     }
 
     public function restore(User $user, Media $media): bool
     {
-        return $user->operatesDevices();
+        return $user->usesMedia();
     }
 
     public function forceDelete(User $user, Media $media): bool
     {
-        return $user->operatesDevices();
+        return $user->usesMedia();
     }
 }

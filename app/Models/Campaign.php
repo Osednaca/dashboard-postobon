@@ -24,6 +24,9 @@ class Campaign extends Model
         'segment_cities',
         'segment_groups',
         'target_devices',
+        'audience_mode',
+        'audience_business_type_ids',
+        'audience_establishment_id',
         'created_by',
     ];
 
@@ -36,6 +39,8 @@ class Campaign extends Model
             'segment_cities' => 'json',
             'segment_groups' => 'json',
             'target_devices' => 'array',
+            'audience_business_type_ids' => 'array',
+            'audience_establishment_id' => 'integer',
         ];
     }
 

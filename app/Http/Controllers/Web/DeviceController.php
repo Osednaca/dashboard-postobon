@@ -86,7 +86,7 @@ class DeviceController extends Controller
                         $profile = $wl35Profiles->get((string) ($device['id'] ?? ''));
 
                         return array_merge($device, [
-                            'name' => $profile?->name ?: ($device['name'] ?? $device['id'] ?? 'WL35'),
+                            'name' => $profile?->name ?: ($device['name'] ?? $device['id'] ?? '35'),
                             'profile_location' => $profile?->location?->name,
                             'profile_location_id' => $profile?->location_id,
                             'profile_group' => $profile?->group?->name,
@@ -235,12 +235,12 @@ class DeviceController extends Controller
         $deviceBluetooth ??= $device->bluetooth_status ?? 'off';
 
         // Deduplicated media list for the select dropdown
-        $allMediaForDevice = Media::orderBy('name')
-            ->get()
-            ->unique('file_path')
-            ->values();
+        $allMediaForDevice = auth()->user()->operatesDevices()
+            ? Media::orderBy('name')->get()->unique('file_path')->values() : collect();
 
-        return view('devices.show', compact('device', 'devicePlaylist', 'pendingRemovals', 'playlistAvailable', 'allMediaForDevice', 'deviceVolume', 'deviceBluetooth'));
+        $establishments = auth()->user()->assignsDevices() ? Establishment::orderBy('name')->get() : collect();
+
+        return view('devices.show', compact('establishments', 'device', 'devicePlaylist', 'pendingRemovals', 'playlistAvailable', 'allMediaForDevice', 'deviceVolume', 'deviceBluetooth'));
     }
 
     /**
@@ -259,7 +259,7 @@ class DeviceController extends Controller
                 return back()->with('warning', 'Solicitud de formateo aceptada. El borrado físico aún no está verificado.');
             }
 
-            return back()->with('error', 'No se pudo formatear la tarjeta SD en la nube Z2.');
+            return back()->with('error', 'No se pudo formatear la tarjeta SD en la nube 42.');
         } catch (\Exception $e) {
             Log::error('Error al formatear la SD del dispositivo: '.$e->getMessage());
 
@@ -291,7 +291,7 @@ class DeviceController extends Controller
                 return back()->with('success', "Volumen del dispositivo ajustado a {$volume}%.");
             }
 
-            return back()->with('error', 'No se pudo actualizar el volumen en la nube Z2. '.$this->z2ErrorDetail($response));
+            return back()->with('error', 'No se pudo actualizar el volumen en la nube 42. '.$this->z2ErrorDetail($response));
         } catch (\Exception $e) {
             Log::error('Error al cambiar volumen del dispositivo: '.$e->getMessage());
 
@@ -511,7 +511,7 @@ class DeviceController extends Controller
         try {
             // 1. Unbind from Z2 cloud first
             if ($device->mac_address && ! $this->z2DeviceService->unbindDevice($device->mac_address)) {
-                return back()->with('error', 'No se pudo eliminar el dispositivo de la nube Z2.');
+                return back()->with('error', 'No se pudo eliminar el dispositivo de la nube 42.');
             }
 
             // 2. Delete locally
@@ -877,15 +877,15 @@ class DeviceController extends Controller
     private function z2ErrorDetail(?array $response): string
     {
         if ($response === null) {
-            return 'No hubo respuesta del servidor Z2 (revisa conectividad y autenticación).';
+            return 'No hubo respuesta del servidor 42 (revisa conectividad y autenticación).';
         }
 
         if (isset($response['_error'])) {
             return match ($response['_error']) {
-                'invalid_json_response' => 'La API de Z2 devolvió una respuesta NO-JSON (HTTP '.(int) ($response['status_code'] ?? 0).'). Cuerpo: '.(string) ($response['body'] ?? ''),
-                'request_exception' => 'Fallo de red/HTTP al llamar a Z2 (HTTP '.(int) ($response['status_code'] ?? 0).'): '.(string) ($response['message'] ?? ''),
-                'exception' => 'Excepción al llamar a Z2: '.(string) ($response['message'] ?? ''),
-                default => 'Error desconocido de Z2: '.json_encode($response, JSON_UNESCAPED_UNICODE),
+                'invalid_json_response' => 'La API de 42 devolvió una respuesta NO-JSON (HTTP '.(int) ($response['status_code'] ?? 0).'). Cuerpo: '.(string) ($response['body'] ?? ''),
+                'request_exception' => 'Fallo de red/HTTP al llamar a 42 (HTTP '.(int) ($response['status_code'] ?? 0).'): '.(string) ($response['message'] ?? ''),
+                'exception' => 'Excepción al llamar a 42: '.(string) ($response['message'] ?? ''),
+                default => 'Error desconocido de 42: '.json_encode($response, JSON_UNESCAPED_UNICODE),
             };
         }
 
@@ -893,6 +893,6 @@ class DeviceController extends Controller
         $msg = $response['msg'] ?? $response['message'] ?? '';
         $extra = mb_strimwidth(json_encode($response, JSON_UNESCAPED_UNICODE), 0, 300, '...');
 
-        return "Respuesta Z2: result={$code}".($msg ? " msg={$msg}" : '')." {$extra}";
+        return "Respuesta 42: result={$code}".($msg ? " msg={$msg}" : '')." {$extra}";
     }
 }

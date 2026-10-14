@@ -84,7 +84,7 @@ class UnifiedFleetClient
             fn (): Response => $this->request(false, $baseUrl)->delete(
                 '/api/devices/'.rawurlencode($deviceId).'/video/'.$index
             ),
-            "eliminar el video {$index} del WL35",
+            "eliminar el video {$index} del 35",
             $baseUrl
         );
     }
@@ -99,7 +99,7 @@ class UnifiedFleetClient
                 '/api/devices/'.rawurlencode($deviceId).'/volume',
                 ['value' => $volume],
             ),
-            'actualizar el volumen del WL35',
+            'actualizar el volumen del 35',
             $baseUrl
         );
     }
@@ -222,7 +222,7 @@ class UnifiedFleetClient
         } catch (ConnectionException $exception) {
             $target = $baseUrl ?? $this->baseUrl();
             throw new RuntimeException(
-                "El gateway WL35 no está accesible en {$target}. Verifica que dashboard-fan-wl35 esté ejecutándose y que UNIFIED_FLEET_API_URL apunte a su puerto HTTP.",
+                "El gateway 35 no está accesible en {$target}. Verifica que dashboard-fan-wl35 esté ejecutándose y que UNIFIED_FLEET_API_URL apunte a su puerto HTTP.",
                 previous: $exception
             );
         }

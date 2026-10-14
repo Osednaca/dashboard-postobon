@@ -89,4 +89,31 @@ class UserRoleMigrationTest extends TestCase
             DB::purge('role_sql');
         }
     }
+
+    public function test_campaign_role_migration_preserves_existing_roles_and_accounts_and_rollback_maps_only_campaigns(): void
+    {
+        $migration = require database_path('migrations/2026_10_14_000002_add_campanas_user_role.php');
+        $migration->down();
+        $accounts = [];
+        foreach (['superadmin', 'admin', 'tecnico'] as $role) {
+            $accounts[$role] = User::factory()->create(['role' => $role]);
+        }
+        $campaign = Campaign::factory()->create(['created_by' => $accounts['admin']->id]);
+        $password = $accounts['admin']->password;
+        $migration->up();
+        foreach ($accounts as $role => $account) {
+            $this->assertSame($role, $account->fresh()->role);
+        }
+        $campaignUser = User::factory()->create(['role' => 'campanas']);
+        $migration->down();
+        foreach ($accounts as $role => $account) {
+            $this->assertSame($role, $account->fresh()->role);
+        }
+        $this->assertSame('admin', $campaignUser->fresh()->role);
+        $this->assertSame($password, $accounts['admin']->fresh()->password);
+        $this->assertSame($accounts['admin']->id, $campaign->fresh()->created_by);
+        $this->assertSame(4, User::count());
+        $migration->up();
+        $this->assertSame('admin', $campaignUser->fresh()->role);
+    }
 }

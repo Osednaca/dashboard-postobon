@@ -22,7 +22,7 @@
                :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'">
             {{-- Brand Header with Postobon Logo --}}
             <div class="px-5 py-4 border-b border-border bg-white flex items-center justify-between">
-                <a href="{{ route('dashboard.index') }}" class="flex items-center gap-2">
+                <a href="{{ route(auth()->user()->managesOperations() ? 'dashboard.index' : 'establishments.index') }}" class="flex items-center gap-2">
                     <img src="{{ asset('logo_postobon.png') }}" alt="Postobón" class="h-7 w-auto object-contain">
                 </a>
                 <div class="flex items-center gap-1.5">
@@ -53,8 +53,19 @@
                 @endphp
 
                 @foreach($navItems as $item)
-                    @continue(in_array($item['route'], ['campaigns.index', 'users.index', 'audit.index', 'analytics.index'], true) && ! auth()->user()?->managesOperations())
-                    @php $isActive = request()->routeIs($item['route'] . '*'); @endphp
+                    @php
+                        $user = auth()->user();
+                        $allowed = match ($item['route']) {
+                            'devices.index' => $user->viewsDevices(),
+                            'establishments.index' => $user->managesEstablishments(),
+                            'groups.index' => $user->createsGroups(),
+                            'media.index' => $user->usesMedia(),
+                            'users.index', 'audit.index', 'analytics.index', 'notifications.index' => $user->isSuperadmin(),
+                            default => $user->managesOperations(),
+                        };
+                        $isActive = request()->routeIs(explode('.', $item['route'])[0].'.*');
+                    @endphp
+                    @continue(! $allowed)
                     <a href="{{ route($item['route']) }}"
                        class="group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 {{ $isActive ? 'bg-primary text-white shadow-sm shadow-primary/25 font-semibold' : 'text-text-light hover:bg-surface-dark hover:text-text' }}">
                         <svg class="w-5 h-5 shrink-0 {{ $isActive ? 'text-white' : 'text-text-muted group-hover:text-primary transition-colors' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -94,7 +105,9 @@
                     </button>
 
                     <div x-show="dropdownOpen" @click.away="dropdownOpen = false" x-transition class="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-border py-1 z-50">
-                        <a href="{{ route('users.show', auth()->id() ?? 1) }}" class="block px-4 py-2 text-sm text-text-light hover:bg-surface-dark hover:text-text">Perfil</a>
+                        @if(auth()->user()->isSuperadmin())
+                            <a href="{{ route('users.show', auth()->id() ?? 1) }}" class="block px-4 py-2 text-sm text-text-light hover:bg-surface-dark hover:text-text">Perfil</a>
+                        @endif
                         <form method="POST" action="{{ route('logout') }}">
                             @csrf
                             <button type="submit" class="w-full text-left px-4 py-2 text-sm text-danger hover:bg-surface-dark">Cerrar sesión</button>
