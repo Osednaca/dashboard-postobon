@@ -58,6 +58,34 @@ class CompressedMediaPreview
         return $absolute;
     }
 
+    public function status(Media $media): array
+    {
+        if (! config('mediapreview.enabled')) {
+            return ['status' => 'unavailable', 'url' => null, 'message' => 'La vista previa comprimida está desactivada.'];
+        }
+        $identity = $this->identity($media);
+        if ($identity === null) {
+            return ['status' => 'unavailable', 'url' => null, 'message' => 'Este archivo no admite vista previa comprimida.'];
+        }
+        // Reuse generation, freshness checks and deduplication without exposing the fallback URL.
+        $url = $this->url($media);
+        $entry = Cache::get($this->key($identity), []);
+        if (Cache::has($this->key($identity).':pending')) {
+            return ['status' => 'pending', 'url' => null, 'message' => 'Preparando vista previa comprimida…'];
+        }
+        $state = $entry['state'] ?? null;
+        $fresh = ($entry['checked_at'] ?? 0) > now()->timestamp - config('mediapreview.remote_refresh_seconds');
+        if ($fresh && ($state === 'original' || ($state === 'ready' && str_contains($url, '?preview=')))) {
+            // An original is usable only after conversion proved that it is already smaller.
+            return ['status' => 'ready', 'url' => $url, 'message' => null];
+        }
+        if ($state === 'failed') {
+            return ['status' => 'error', 'url' => null, 'message' => 'No se pudo generar la vista previa comprimida. Inténtalo más tarde.'];
+        }
+
+        return ['status' => 'unavailable', 'url' => null, 'message' => 'La vista previa comprimida no está disponible.'];
+    }
+
     public function identity(Media $media): ?string
     {
         if ($media->mime_type !== 'video/mp4') {

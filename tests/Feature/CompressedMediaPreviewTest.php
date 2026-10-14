@@ -72,6 +72,69 @@ class CompressedMediaPreviewTest extends TestCase
         Process::assertNothingRan();
     }
 
+    public function test_campaign_status_is_authorized_and_waits_for_compressed_media_without_original_fallback(): void
+    {
+        $media = $this->media();
+        $url = route('media.content', $media).'?preview_status=1';
+        $this->getJson($url)->assertUnauthorized();
+        $unauthorized = User::factory()->create();
+        $unauthorized->role = 'viewer';
+        $this->actingAs($unauthorized)->getJson($url)->assertForbidden();
+        Queue::assertNothingPushed();
+        $this->actingAs(User::factory()->admin()->create());
+        for ($i = 0; $i < 2; $i++) {
+            $this->getJson($url)->assertOk()->assertJsonPath('status', 'pending')->assertJsonPath('url', null)
+                ->assertHeader('Cache-Control', 'no-store, private');
+        }
+        Queue::assertPushed(GenerateMediaPreviewJob::class, 1);
+        Process::assertNothingRan();
+        $this->converter();
+        $service = app(CompressedMediaPreview::class);
+        $service->generate($media->id, $service->identity($media));
+        $this->getJson($url)->assertOk()->assertJsonPath('status', 'ready')
+            ->assertJsonPath('url', $service->url($media));
+        $this->assertStringContainsString('?preview=', $service->status($media)['url']);
+        $this->assertSame(str_repeat('original-video', 100), Storage::disk('public')->get($media->file_path));
+        Http::assertNothingSent();
+    }
+
+    public function test_campaign_status_reports_failed_disabled_and_unsupported_generation_without_original_bytes(): void
+    {
+        $media = $this->media();
+        $url = route('media.content', $media).'?preview_status=1';
+        $this->actingAs(User::factory()->admin()->create());
+        $this->converter(fail: true);
+        $service = app(CompressedMediaPreview::class);
+        $service->generate($media->id, $service->identity($media));
+        $this->getJson($url)->assertOk()->assertJsonPath('status', 'error')->assertJsonPath('url', null);
+        Queue::assertNothingPushed();
+        $this->travel(11)->minutes();
+        $this->getJson($url)->assertOk()->assertJsonPath('status', 'pending')->assertJsonPath('url', null);
+        Queue::assertPushed(GenerateMediaPreviewJob::class, 1);
+        config(['mediapreview.enabled' => false]);
+        $this->getJson($url)->assertOk()->assertJsonPath('status', 'unavailable')->assertJsonPath('url', null);
+        config(['mediapreview.enabled' => true]);
+        $media->update(['mime_type' => 'video/webm']);
+        $this->getJson($url)->assertOk()->assertJsonPath('status', 'unavailable')->assertJsonPath('url', null);
+        Http::assertNothingSent();
+    }
+
+    public function test_campaign_status_reports_unsafe_queue_and_allows_original_only_if_conversion_proved_it_smaller(): void
+    {
+        $media = $this->media();
+        $service = app(CompressedMediaPreview::class);
+        config(['queue.default' => 'sync']);
+        $this->assertSame('unavailable', $service->status($media)['status']);
+        $this->assertNull($service->status($media)['url']);
+        Queue::assertNothingPushed();
+        Process::assertNothingRan();
+        $this->converter(str_repeat('larger', 500));
+        $service->generate($media->id, $service->identity($media));
+        $this->assertSame('ready', $service->status($media)['status']);
+        $this->assertSame(route('media.content', $media), $service->status($media)['url']);
+        Http::assertNothingSent();
+    }
+
     public static function unsafeQueues(): array
     {
         return array_map(fn ($driver) => [$driver], ['sync', 'deferred', 'background', 'null', 'failover', 'redis']);

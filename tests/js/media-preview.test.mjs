@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createMediaDurationStore, createMediaPreview, formatDuration } from '../../resources/js/media-preview.js';
 
-function player(known = 0) {
+function player(known = 0, compressed = false, dependencies = {}) {
     const video = {
         duration: 3, readyState: 2, currentTime: 0,
         pauses: 0, loads: 0, plays: 0, paused: true, ended: false,
@@ -12,7 +12,7 @@ function player(known = 0) {
         removeAttribute(name) { this.removed = name; },
     };
     const ticks = [];
-    const state = createMediaPreview('42', '/media/42/content', 'video', known);
+    const state = createMediaPreview('42', '/media/42/content', 'video', known, compressed, dependencies);
     state.$refs = { video };
     state.$store = { mediaDurations: createMediaDurationStore() };
     state.$nextTick = (callback) => ticks.push(callback);
@@ -161,4 +161,124 @@ test('shared duration appears in both library views without replacing known dura
     store.discover('42', Infinity);
     assert.equal(store.label('42'), '00:10');
     assert.equal(store.label('42', 20), '00:20');
+});
+
+function compressedPlayer(responses) {
+    const timers = new Map();
+    const calls = [];
+    let timerId = 0;
+    const result = player(28, true, {
+        fetch: async (url, options) => {
+            calls.push({ url, options });
+            const response = responses.shift();
+            return { ok: true, json: async () => response };
+        },
+        setTimeout: (callback, delay) => {
+            timers.set(++timerId, { callback, delay });
+            return timerId;
+        },
+        clearTimeout: id => timers.delete(id),
+    });
+    return { ...result, calls, timers };
+}
+
+test('campaign waits for compressed media, deduplicates polling and never loads original while pending', async () => {
+    const { state, video, calls, timers } = compressedPlayer([
+        { status: 'pending', url: null, message: 'Preparando…' },
+        { status: 'ready', url: '/media/42/content?preview=compressed' },
+    ]);
+    const first = state.start();
+    state.start();
+    assert.equal(state.source, null);
+    await first;
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, '/media/42/content?preview_status=1');
+    assert.equal(calls[0].options.credentials, 'same-origin');
+    assert.equal(state.status, 'pending');
+    assert.equal(state.source, null);
+    const [id, timer] = [...timers][0];
+    assert.equal(timer.delay, 5000);
+    timers.delete(id);
+    timer.callback();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(state.source, '/media/42/content?preview=compressed');
+    assert.equal(state.message, null);
+    assert.equal(timers.size, 0);
+    state.metadata(video);
+    state.loaded();
+    assert.equal(state.status, 'pending');
+    state.ready();
+    assert.equal(state.status, 'ready');
+    state.destroy();
+});
+
+test('campaign polling pauses offscreen, resumes when visible, and stops on destruction', async () => {
+    const { state, calls, timers } = compressedPlayer(Array(3).fill({ status: 'pending', url: null }));
+    await state.start();
+    state.inViewport = false;
+    state.syncPlayback();
+    assert.equal(timers.size, 0);
+    await state.start();
+    assert.equal(calls.length, 1);
+    state.inViewport = true;
+    await state.start();
+    assert.equal(calls.length, 2);
+    state.destroy();
+    assert.equal(timers.size, 0);
+    assert.equal(state.source, null);
+});
+
+test('failed or unavailable compression stays explicit, does not fall back and supports retry', async () => {
+    for (const status of ['error', 'unavailable']) {
+        const { state, ticks, timers } = compressedPlayer([
+            { status, url: null, message: 'Vista previa no disponible.' },
+            { status: 'ready', url: '/media/42/content?preview=ready' },
+        ]);
+        await state.start();
+        assert.equal(state.source, null);
+        assert.equal(state.status, status);
+        assert.equal(state.message, 'Vista previa no disponible.');
+        assert.equal(timers.size, 0);
+        state.retry();
+        ticks.shift()();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(state.source, '/media/42/content?preview=ready');
+        state.destroy();
+    }
+});
+
+test('campaign preparation has a bounded wait and aborts outstanding requests on destruction', async () => {
+    const { state, timers, calls } = compressedPlayer(Array(72).fill({ status: 'pending', url: null }));
+    await state.start();
+    for (let i = 0; i < 72; i++) {
+        const [id, timer] = [...timers][0];
+        timers.delete(id);
+        timer.callback();
+        await new Promise(resolve => setImmediate(resolve));
+    }
+    assert.equal(calls.length, 72);
+    assert.equal(state.status, 'error');
+    assert.equal(state.source, null);
+    assert.equal(timers.size, 0);
+    let finish;
+    let signal;
+    const pending = player(0, true, { fetch: async (_url, options) => {
+        signal = options.signal;
+        return new Promise(resolve => { finish = resolve; });
+    } });
+    const request = pending.state.start();
+    pending.state.destroy();
+    assert.equal(signal.aborted, true);
+    finish({ ok: true, json: async () => ({ status: 'ready', url: '/must-not-load' }) });
+    await request;
+    assert.equal(pending.state.source, null);
+});
+
+test('campaign status network failures expose retry without fetching the original', async () => {
+    const { state } = player(0, true, { fetch: async () => { throw new Error('offline'); } });
+    await state.start();
+    assert.equal(state.status, 'error');
+    assert.equal(state.source, null);
+    assert.match(state.message, /No se pudo consultar/);
+    state.destroy();
 });
