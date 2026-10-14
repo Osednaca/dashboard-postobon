@@ -48,7 +48,7 @@ class InstantPlayController extends Controller
      */
     public function index(): View
     {
-        $this->authorize('viewAny', Device::class);
+        $this->authorize('reproduce', Device::class);
 
         // Get all active devices with MAC addresses
         $devices = Device::whereNotNull('mac_address')
@@ -177,7 +177,7 @@ class InstantPlayController extends Controller
      */
     public function playMedia(InstantPlayMediaRequest $request): JsonResponse|RedirectResponse
     {
-        $this->authorize('viewAny', Device::class);
+        $this->authorize('reproduce', Device::class);
         $data = $request->validated();
         $media = Media::findOrFail($data['media_id']);
         $this->authorize('view', $media);
@@ -249,7 +249,7 @@ class InstantPlayController extends Controller
         ]);
 
         $device = Device::findOrFail($request->input('device_id'));
-        $this->authorize('update', $device);
+        $this->authorize('reproduce', Device::class);
 
         $media = Media::findOrFail($request->input('media_id'));
 
@@ -295,7 +295,7 @@ class InstantPlayController extends Controller
         ]);
 
         $device = Device::findOrFail($request->input('device_id'));
-        $this->authorize('update', $device);
+        $this->authorize('reproduce', Device::class);
 
         $campaign = Campaign::with('media')->findOrFail($request->input('campaign_id'));
 
@@ -368,7 +368,7 @@ class InstantPlayController extends Controller
             }
 
             try {
-                $this->authorize('update', $device);
+                $this->authorize('reproduce', Device::class);
 
                 if ($this->z2DeviceService->changeVideo($device->mac_address, $uiCode)) {
                     $successCount++;

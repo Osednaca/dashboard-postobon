@@ -80,7 +80,7 @@ class DeviceLocationMapTest extends TestCase
         Wl35DeviceProfile::create(['device_id' => 'fan-a', 'name' => 'Entrada', 'establishment_id' => $establishment->id]);
         Http::fake(['gateway.test/*' => Http::response([], 503)]);
 
-        $this->actingAs(User::factory()->admin()->create())->get(route('devices.wl35.show', 'fan-a'))
+        $this->actingAs(User::factory()->superadmin()->create())->get(route('devices.wl35.show', 'fan-a'))
             ->assertOk()->assertSee('El estado en vivo no está disponible.')
             ->assertSee(':disabled="!canControl(rows[0])', false)
             ->assertSee('Mapa de Entrada')

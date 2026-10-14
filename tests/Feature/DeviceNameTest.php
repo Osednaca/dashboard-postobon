@@ -61,7 +61,7 @@ class DeviceNameTest extends TestCase
             'power' => 1, 'btSwitch' => 1, 'speed' => 900, 'version' => 'new',
             'hardVersion' => 'Z2-Pro', 'lastSeenIso' => '2026-10-10T12:00:00Z',
         ]]);
-        $this->actingAs(User::factory()->admin()->create())->put(route('devices.update', $device), [
+        $this->actingAs(User::factory()->superadmin()->create())->put(route('devices.update', $device), [
             'name' => 'Entrada principal', 'establishment_id' => $establishment->id,
         ])->assertRedirect(route('devices.index'))->assertSessionHasNoErrors();
         $this->assertSame('Entrada principal', $device->fresh()->name);
@@ -109,7 +109,7 @@ class DeviceNameTest extends TestCase
         $viewer = User::factory()->create();
         $viewer->role = 'viewer';
         $this->actingAs($viewer)->putJson(route('devices.update', $device), $payload)->assertForbidden();
-        $this->actingAs(User::factory()->admin()->create())
+        $this->actingAs(User::factory()->superadmin()->create())
             ->putJson(route('devices.update', $device), array_replace($payload, ['name' => str_repeat('x', 256)]))
             ->assertUnprocessable()->assertJsonValidationErrors('name');
         $this->assertSame('Nombre guardado', $device->fresh()->name);

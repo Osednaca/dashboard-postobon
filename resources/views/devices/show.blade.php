@@ -3,6 +3,7 @@
 @section('title', $device->name)
 
 @section('content')
+@php $canOperateDevices = auth()->user()->operatesDevices(); @endphp
 <div class="max-w-5xl mx-auto" x-data="{ ...deviceLive([{ key: {{ Js::from('z2:'.strtoupper(str_replace(':', '', $device->mac_address ?? ''))) }}, type: 'z2', status: 'unavailable', online: null, connected: null, powered: null, bluetooth: null }]), showUnbindModal: false, showRemoveVideoModal: false, showFormatSdModal: false, removeVideoCode: '', removeVideoName: '' }" @device-snapshot="applySnapshot($event.detail)">
     <x-device-live-feedback />
     <!-- Page Header -->
@@ -20,6 +21,7 @@
                 <x-device-live-status row="rows[0]" />
             </div>
         </div>
+        @if($canOperateDevices)
         <div class="flex items-center gap-2">
             <form action="{{ route('devices.power-on', $device) }}" method="POST" class="inline" @submit.prevent="sendDeviceCommand($event.currentTarget, $event.submitter)" x-show="rows[0].powered !== true">
                 @csrf
@@ -74,9 +76,11 @@
                 Desvincular
             </button>
         </div>
+        @endif
     </div>
 
     <div class="space-y-6">
+        @include('devices.partials.establishment-assignment', ['assignmentUrl' => route('devices.assign-establishment', $device), 'assignedEstablishmentId' => $device->establishment_id])
         <x-device-previews :device-key="'z2:'.strtoupper(str_replace(':', '', $device->mac_address ?? ''))" title="Contenido actual" />
 
         @can('viewAny', App\Models\Campaign::class)
@@ -171,6 +175,7 @@
                                     @endif
                                 </div>
                             </div>
+                            @if($canOperateDevices)
                             <button
                                 type="button"
                                 @click="showRemoveVideoModal = true; removeVideoCode = '{{ $playlistItem }}'; removeVideoName = '{{ $playlistMedia ? addslashes($playlistMedia->name) : $playlistItem }}'"
@@ -181,6 +186,7 @@
                                 </svg>
                                 Quitar
                             </button>
+                            @endif
                         </div>
                     @endforeach
                 </div>
@@ -204,6 +210,7 @@
             @endif
         </div>
 
+        @if($canOperateDevices)
         <!-- Assign Media Directly -->
         <div class="bg-white rounded-xl border border-border shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-6">
             <h2 class="text-lg font-semibold text-text mb-4 flex items-center gap-2">
@@ -220,6 +227,7 @@
             @endif
         </div>
 
+        @endif
         <div class="bg-white rounded-xl border border-border shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-6">
             <h2 class="text-lg font-semibold text-text mb-4 flex items-center gap-2">
                 <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -232,6 +240,7 @@
                     <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">MAC Address</p>
                     <p class="text-sm text-text font-mono">{{ $device->mac_address }}</p>
                 </div>
+                @if($canOperateDevices)
                 <div class="p-4 rounded-lg bg-surface sm:col-span-2 border border-border/60" x-data="{ currentVol: {{ isset($deviceVolume) && $deviceVolume !== null ? $deviceVolume : 50 }} }">
                     <div class="flex items-center justify-between mb-2">
                         <p class="text-xs font-medium text-text-muted uppercase tracking-wider flex items-center gap-1.5">
@@ -285,6 +294,16 @@
                         </form>
                     </div>
                 </div>
+                @else
+                    <div class="p-4 rounded-lg bg-surface">
+                        <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Volumen</p>
+                        <p class="text-sm text-text">{{ isset($deviceVolume) ? $deviceVolume.'%' : 'Sin reporte' }}</p>
+                    </div>
+                    <div class="p-4 rounded-lg bg-surface">
+                        <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Bluetooth</p>
+                        <p class="text-sm text-text" x-text="rows[0].bluetooth === null ? 'Sin confirmar' : (rows[0].bluetooth ? 'Activo' : 'Inactivo')"></p>
+                    </div>
+                @endif
                 <div class="p-4 rounded-lg bg-surface">
                     <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Firmware</p>
                     <p class="text-sm text-text">{{ $device->firmware ?? 'No especificado' }}</p>
@@ -341,6 +360,7 @@
         </div>
     </div>
 
+    @if($canOperateDevices)
     <!-- Unbind Modal -->
     <div x-show="showUnbindModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" style="display: none;">
         <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showUnbindModal = false"></div>
@@ -419,5 +439,6 @@
             </div>
         </div>
     </div>
+    @endif
 </div>
 @endsection

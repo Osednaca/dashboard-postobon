@@ -4,6 +4,7 @@
 
 @section('content')
 @php
+    $canOperateDevices = auth()->user()->operatesDevices();
     $deviceId = (string) $device['id'];
     $fleetKey = (string) ($device['key'] ?? 'wl35:'.$deviceId);
     $displayName = $profile?->name ?: ($device['name'] ?? $deviceId);
@@ -48,6 +49,7 @@
             <p class="mt-1 font-mono text-xs text-text-muted">{{ $deviceId }}</p>
         </div>
 
+        @if($canOperateDevices)
         <div class="flex flex-wrap gap-2">
             <form action="{{ route('fleet.command') }}" method="POST" @submit.prevent="sendDeviceCommand($event.currentTarget, $event.submitter)">
                 @csrf
@@ -80,6 +82,7 @@
                 </button>
             </form>
         </div>
+        @endif
     </div>
 
     @if($gatewayError)
@@ -87,7 +90,7 @@
             <svg class="mt-0.5 h-5 w-5 shrink-0 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
             <div>
                 <p class="font-semibold">El estado en vivo no está disponible.</p>
-                <p class="mt-1 text-xs leading-5 text-amber-800">La información administrativa se conserva y puede editarse. {{ $gatewayError }}</p>
+                <p class="mt-1 text-xs leading-5 text-amber-800">La información administrativa se conserva. {{ $gatewayError }}</p>
             </div>
         </div>
     @endif
@@ -135,6 +138,7 @@
                 </dl>
             </section>
 
+            @if($canOperateDevices)
             <section class="rounded-xl border border-border bg-white p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] sm:p-6">
                 <div>
                     <h2 class="text-lg font-semibold text-text">Reproducción y volumen</h2>
@@ -191,17 +195,20 @@
                 </form>
             </section>
 
+            @endif
             <section class="overflow-hidden rounded-xl border border-border bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
                 <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4 sm:px-6">
                     <div>
                         <h2 class="text-lg font-semibold text-text">Videos en la tarjeta SD</h2>
-                        <p class="mt-1 text-sm text-text-light">Reproduce o elimina un archivo individual por su índice.</p>
+                        <p class="mt-1 text-sm text-text-light">{{ $canOperateDevices ? 'Reproduce o elimina un archivo individual por su índice.' : 'Archivos almacenados en el dispositivo, por índice.' }}</p>
                     </div>
+                    @if($canOperateDevices)
                     <button type="button" @click="showFormatModal = true" :disabled="!canControl(rows[0]) || !rows[0].videoCount"
                         class="inline-flex items-center gap-2 rounded-lg border border-danger/25 px-3 py-2 text-xs font-semibold text-danger transition hover:bg-danger/5 disabled:cursor-not-allowed disabled:opacity-40">
                         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 7h14M9 11v6m6-6v6M8 7l1-3h6l1 3m1 0-1 13H8L7 7"/></svg>
                         Formatear SD
                     </button>
+                    @endif
                 </div>
 
                 @if($videoCount > 0)
@@ -217,6 +224,7 @@
                                         <p class="text-xs text-text-muted">Índice {{ $index }}{{ (int) $currentVideo === $index ? ' · en reproducción' : '' }}</p>
                                     </div>
                                 </div>
+                                @if($canOperateDevices)
                                 <div class="flex shrink-0 items-center gap-1">
                                     <form action="{{ route('fleet.command') }}" method="POST" @submit.prevent="sendDeviceCommand($event.currentTarget, $event.submitter)">
                                         @csrf
@@ -232,6 +240,7 @@
                                         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                                     </button>
                                 </div>
+                                @endif
                             </div>
                         @endfor
                     </div>
@@ -248,7 +257,17 @@
             <x-device-location-map :profile="$profile" :device-name="$displayName" />
         </div>
 
-        <aside>
+        <aside class="space-y-6">
+            @include('devices.partials.establishment-assignment', ['assignmentUrl' => route('devices.wl35.assign-establishment', ['deviceId' => $deviceId]), 'assignedEstablishmentId' => $profile?->establishment_id])
+            <section class="rounded-xl border border-border bg-white p-5 sm:p-6">
+                <h2 class="text-lg font-semibold text-text">Información administrativa</h2>
+                <dl class="mt-4 space-y-3 text-sm">
+                    <div><dt class="text-text-muted">Establecimiento</dt><dd class="font-medium">{{ $profile?->establishmentProfile?->name ?? 'Sin establecimiento' }}</dd></div>
+                    <div><dt class="text-text-muted">Dirección</dt><dd>{{ $profile?->establishmentProfile?->address ?? 'Sin dirección' }}</dd></div>
+                    @if($profile?->notes)<div><dt class="text-text-muted">Notas</dt><dd>{{ $profile->notes }}</dd></div>@endif
+                </dl>
+            </section>
+            @if($canOperateDevices)
             <form action="{{ route('devices.wl35.update', ['deviceId' => $deviceId]) }}" method="POST" class="rounded-xl border border-border bg-white p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] xl:sticky xl:top-6 sm:p-6">
                 @csrf
                 @method('PATCH')
@@ -280,9 +299,11 @@
 
                 <button type="submit" class="mt-5 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-primary/20 transition hover:bg-primary/90">Guardar información</button>
             </form>
+            @endif
         </aside>
     </div>
 
+    @if($canOperateDevices)
     <div x-show="showDeleteModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="delete-video-title">
         <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showDeleteModal = false"></div>
         <div class="relative w-full max-w-md rounded-xl border border-border bg-white p-6 shadow-[0_24px_70px_rgba(15,23,42,0.28)]" @click.outside="showDeleteModal = false">
@@ -316,5 +337,6 @@
             </form>
         </div>
     </div>
+    @endif
 </div>
 @endsection

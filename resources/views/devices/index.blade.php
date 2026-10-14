@@ -4,7 +4,8 @@
 
 @section('content')
 @php
-    $libraryVideos = \App\Models\Media::where('mime_type', 'like', 'video/%')->orderBy('name')->get();
+    $canOperateDevices = auth()->user()->operatesDevices();
+    $libraryVideos = $canOperateDevices ? \App\Models\Media::where('mime_type', 'like', 'video/%')->orderBy('name')->get() : collect();
     $initialLocalIds = collect(old('device_ids', []))->map(fn ($id) => (string) $id)->unique()->values();
     $localFleetKeys = $devices->getCollection()->mapWithKeys(function ($device) {
         $mac = strtoupper(str_replace(':', '', (string) $device->mac_address));
@@ -61,6 +62,7 @@
     bulkAssigningMedia: false, fleetSubmitting: false,
     fleetUpload: { id: null, status: 'idle', phase: 'idle', progress: 0, fileName: '', error: '', result: null, elapsed: 0 },
     fleetUploadPoller: null, fleetUploadClock: null,
+    canOperateDevices: {{ Js::from($canOperateDevices) }},
     fleetUploadStatusTemplate: {{ Js::from(route('fleet.upload.status', ['fleetUpload' => '__UPLOAD_ID__'])) }},
     fleetFormat: { id: null, status: 'idle', progress: 0, error: '', result: null, elapsed: 0 },
     fleetFormatTargets: [], fleetFormatPoller: null, fleetFormatClock: null,
@@ -71,6 +73,7 @@
     filtersExpanded: false,
     bulkGroupId: '',
     init() {
+        if (!this.canOperateDevices) return;
         this.watchDialogs();
         const uploadId = window.localStorage.getItem('fleet-upload-id');
         if (uploadId) {
@@ -434,7 +437,9 @@
         <div><h1 class="text-2xl font-bold tracking-tight text-text">Dispositivos</h1><p class="mt-1 text-sm text-text-light">Administra tus dispositivos Z2 y WL35 desde un solo lugar.</p></div>
         <div class="device-list-header-actions">
             <button type="button" @click="$dispatch('refresh-devices')" class="device-list-button"><x-device-action-icon name="refresh" />Actualizar</button>
+            @if($canOperateDevices)
             <a href="{{ route('devices.create') }}" class="device-list-button device-list-button-primary"><x-device-action-icon name="plus" />Nuevo dispositivo <span class="sr-only">Z2</span></a>
+            @endif
         </div>
     </header>
     <section aria-label="Resumen de dispositivos" class="device-list-stats">
@@ -488,6 +493,7 @@
             </select>
         </div>
 
+        @if($canOperateDevices)
         <div x-show="selectedFleetKeys.length > 0" x-transition class="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4">
             <div class="mr-2 flex items-center gap-2"><span class="flex h-8 min-w-8 items-center justify-center rounded-lg bg-primary/10 px-2 text-sm font-bold text-primary" x-text="selectedFleetKeys.length"></span><span class="text-xs font-semibold text-text-light">seleccionados</span></div>
             <button type="button" @click="submitFleet('power', '1')" :disabled="fleetSubmitting || commandBusy" class="rounded-lg bg-success px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Encender</button>
@@ -520,10 +526,12 @@
 
         <form x-ref="fleetCommand" action="{{ route('fleet.command') }}" method="POST" class="hidden">@csrf<input type="hidden" name="command"><input type="hidden" name="value"><template x-for="key in selectedFleetKeys" :key="'command-'+key"><input type="hidden" name="targets[]" :value="key"></template></form>
         <form id="bulk-operation-form" action="{{ route('devices.bulk-operation') }}" method="POST" class="hidden">@csrf<input id="bulk-operation-action" type="hidden" name="action"><input id="bulk-operation-group" type="hidden" name="target_group_id"><template x-for="id in selectedIds" :key="'legacy-'+id"><input type="hidden" name="device_ids[]" :value="id"></template></form>
+        @endif
     </section>
 
     @include('devices.partials.device-list-table')
 
+    @if($canOperateDevices)
     <div x-show="showDeleteModal" data-dialog="showDeleteModal" role="dialog" aria-modal="true" aria-label="Eliminar dispositivo" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"><div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showDeleteModal=false"></div><div class="relative w-full max-w-md rounded-xl border border-border bg-white p-6 shadow-xl"><h3 class="text-lg font-semibold text-text">¿Eliminar dispositivo Z2?</h3><p class="mt-2 text-sm text-text-light">Se eliminará <strong x-text="deleteName"></strong> del registro local.</p><div class="mt-6 flex justify-end gap-3"><button type="button" @click="showDeleteModal=false" class="rounded-lg border border-border px-4 py-2.5 text-sm">Cancelar</button><form :action="'/devices/'+deleteId" method="POST">@csrf @method('DELETE')<button class="rounded-lg bg-danger px-4 py-2.5 text-sm font-medium text-white">Eliminar</button></form></div></div></div>
 
     <div x-show="showBulkAssignMediaModal" data-dialog="showBulkAssignMediaModal" role="dialog" aria-modal="true" aria-label="Asignar medio a Z2" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"><div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showBulkAssignMediaModal=false"></div><div class="relative w-full max-w-md rounded-xl border border-border bg-white p-6 shadow-xl"><h3 class="text-lg font-semibold text-text">Asignar medio a Z2</h3><p class="mt-2 text-sm text-text-light">El mismo archivo se asignará a <strong x-text="selectedIds.length"></strong> dispositivos Z2.</p><form action="{{ route('devices.bulk-assign-media') }}" method="POST" class="mt-5 space-y-4" @submit="bulkAssigningMedia=true">@csrf<template x-for="id in selectedIds" :key="'media-'+id"><input type="hidden" name="device_ids[]" :value="id"></template><select name="media_id" required class="w-full rounded-lg border border-border bg-white px-4 py-2.5 text-sm"><option value="">Seleccionar medio</option>@foreach(App\Models\Media::orderBy('name')->get() as $media)<option value="{{ $media->id }}" @selected((string) old('media_id') === (string) $media->id)>{{ $media->name }}</option>@endforeach</select><div class="flex justify-end gap-3"><button type="button" @click="showBulkAssignMediaModal=false" class="rounded-lg border border-border px-4 py-2.5 text-sm">Cancelar</button><button :disabled="bulkAssigningMedia" class="rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50" x-text="bulkAssigningMedia ? 'Asignando…' : 'Asignar medio'"></button></div></form></div></div>
@@ -722,5 +730,6 @@
             </div>
         </div>
     </div>
+    @endif
 </div>
 @endsection

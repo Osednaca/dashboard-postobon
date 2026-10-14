@@ -9,12 +9,22 @@ class DevicePolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->operatesDevices();
+        return $user->viewsDevices();
     }
 
     public function view(User $user, Device $device): bool
     {
-        return $user->operatesDevices();
+        return $user->viewsDevices();
+    }
+
+    public function assignEstablishment(User $user): bool
+    {
+        return $user->assignsDevices();
+    }
+
+    public function reproduce(User $user): bool
+    {
+        return $user->managesOperations();
     }
 
     public function create(User $user): bool

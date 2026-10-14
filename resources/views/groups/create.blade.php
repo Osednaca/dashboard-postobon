@@ -7,7 +7,11 @@
     <!-- Page Header -->
     <div class="mb-8">
         <div class="flex items-center gap-2 text-sm text-text-light mb-2">
-            <a href="{{ route('groups.index') }}" class="hover:text-primary transition-colors">Grupos</a>
+            @if(auth()->user()->managesGroups())
+                <a href="{{ route('groups.index') }}" class="hover:text-primary transition-colors">Grupos</a>
+            @else
+                <a href="{{ route('dashboard.index') }}" class="hover:text-primary transition-colors">Dashboard</a>
+            @endif
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
             </svg>
@@ -54,7 +58,7 @@
 
             <!-- Actions -->
             <div class="flex items-center justify-end gap-3 pt-6 border-t border-border">
-                <a href="{{ route('groups.index') }}" class="px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-text hover:bg-surface transition-colors">Cancelar</a>
+                <a href="{{ route(auth()->user()->managesGroups() ? 'groups.index' : 'dashboard.index') }}" class="px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-text hover:bg-surface transition-colors">Cancelar</a>
                 <button type="submit" class="inline-flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary/90 transition-colors shadow-sm shadow-primary/20">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>

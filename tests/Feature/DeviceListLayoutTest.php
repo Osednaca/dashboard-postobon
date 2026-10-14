@@ -16,7 +16,7 @@ class DeviceListLayoutTest extends TestCase
     public function test_list_preserves_device_commands_and_reports_only_known_content(): void
     {
         Http::preventStrayRequests();
-        $this->actingAs(User::factory()->admin()->create());
+        $this->actingAs(User::factory()->superadmin()->create());
         $device = Device::factory()->create([
             'name' => 'Z2 recepción', 'mac_address' => 'AA:BB', 'status' => 'offline',
             'power_status' => 'off', 'bluetooth_status' => 'on',
@@ -61,7 +61,7 @@ class DeviceListLayoutTest extends TestCase
     public function test_empty_list_and_gateway_error_keep_actions_and_filter_recovery_available(): void
     {
         Http::preventStrayRequests();
-        $this->actingAs(User::factory()->admin()->create());
+        $this->actingAs(User::factory()->superadmin()->create());
         $this->view('devices.index', [
             'devices' => new LengthAwarePaginator(collect(), 0, 15), 'wl35Devices' => collect(),
             'fleetZ2Devices' => collect(), 'fleetMedia' => collect(), 'establishments' => collect(),

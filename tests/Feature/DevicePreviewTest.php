@@ -59,7 +59,7 @@ class DevicePreviewTest extends TestCase
         $this->media('next.mp4');
         $device = Device::factory()->create(['mac_address' => 'AA:BB:CC:DD:EE:FF']);
         $this->telemetry([array_merge($this->active('z2', 'AABBCCDDEEFF', 'campaign.mp4'), ['desired_video' => 'next.mp4'])]);
-        $this->actingAs(User::factory()->admin()->create())->getJson(route('devices.previews'))
+        $this->actingAs(User::factory()->superadmin()->create())->getJson(route('devices.previews'))
             ->assertOk()->assertJsonPath('devices.0.status', 'ready')
             ->assertJsonPath('devices.0.url', route('media.content', $current))
             ->assertJsonPath('devices.0.detail_url', route('devices.show', $device))
@@ -138,7 +138,7 @@ class DevicePreviewTest extends TestCase
         Device::factory()->create(['mac_address' => 'AA:BB:CC:DD:EE:FF']);
         Wl35DeviceProfile::create(['device_id' => 'saved-fan', 'name' => 'Ventilador guardado']);
         Http::fake(['gateway.test/*' => Http::response([], 503), 'cloud.test/*' => Http::response([], 503)]);
-        $this->actingAs(User::factory()->admin()->create())->getJson(route('devices.previews'))
+        $this->actingAs(User::factory()->superadmin()->create())->getJson(route('devices.previews'))
             ->assertOk()->assertJsonCount(2, 'devices')
             ->assertJsonPath('devices.0.status', 'unavailable')->assertJsonPath('devices.0.url', null)
             ->assertJsonPath('devices.1.status', 'unavailable')->assertJsonPath('devices.1.url', null);
@@ -156,7 +156,7 @@ class DevicePreviewTest extends TestCase
     {
         $media = $this->media('media/local.mp4');
         Storage::disk('public')->put($media->file_path, '0123456789');
-        $this->actingAs(User::factory()->admin()->create());
+        $this->actingAs(User::factory()->superadmin()->create());
         $response = $this->withHeader('Range', 'bytes=2-5')->get(route('media.content', $media));
         $response->assertStatus(206)->assertHeader('Content-Range', 'bytes 2-5/10')
             ->assertHeader('Content-Length', '4')->assertHeader('Content-Type', 'video/mp4');
@@ -175,7 +175,7 @@ class DevicePreviewTest extends TestCase
         Http::fake(['cloud.test/fileDownload/Videos/campaign.mp4' => Http::response('2345', 206, [
             'Content-Length' => '4', 'Content-Range' => 'bytes 2-5/10', 'Accept-Ranges' => 'bytes',
         ])]);
-        $this->actingAs(User::factory()->admin()->create())->withHeader('Range', 'bytes=2-5')
+        $this->actingAs(User::factory()->superadmin()->create())->withHeader('Range', 'bytes=2-5')
             ->get(route('media.content', $media))->assertStatus(206)
             ->assertHeader('Content-Range', 'bytes 2-5/10')->assertStreamedContent('2345');
         Http::assertSent(fn (Request $request) => $request->url() === 'http://cloud.test/fileDownload/Videos/campaign.mp4'
@@ -185,7 +185,7 @@ class DevicePreviewTest extends TestCase
 
     public function test_untrusted_paths_are_not_read_or_requested_and_upstream_errors_are_preserved(): void
     {
-        $this->actingAs(User::factory()->admin()->create());
+        $this->actingAs(User::factory()->superadmin()->create());
         foreach (['../outside.mp4', 'media/../../outside.mp4', 'https://other.test/video.mp4', 'C:\\video.mp4'] as $path) {
             $this->get(route('media.content', $this->media($path)))->assertNotFound();
         }
@@ -212,7 +212,7 @@ class DevicePreviewTest extends TestCase
             ]]),
             'cloud.test/api/media' => Http::response(['media' => []]),
         ]);
-        $this->actingAs(User::factory()->admin()->create());
+        $this->actingAs(User::factory()->superadmin()->create());
         $this->get(route('dashboard.index'))->assertOk()->assertDontSee('Vista previa del contenido')
             ->assertDontSee('devicePreviews(')->assertDontSee('mediaPreview(')
             ->assertDontSee(Js::from(route('devices.previews'))->toHtml(), false);

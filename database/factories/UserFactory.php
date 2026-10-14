@@ -39,6 +39,11 @@ class UserFactory extends Factory
         ]);
     }
 
+    public function campanas(): static
+    {
+        return $this->state(fn (array $attributes) => ['role' => 'campanas']);
+    }
+
     public function operator(): static
     {
         return $this->tecnico();

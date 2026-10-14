@@ -9,7 +9,7 @@ class InstantPlayMediaRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user() !== null;
+        return $this->user()?->managesOperations() ?? false;
     }
 
     public function rules(): array

@@ -40,7 +40,7 @@ class DevicePlaybackTest extends TestCase
 
     private function operation(Media $media): FleetUpload
     {
-        return FleetUpload::create(['user_id' => User::factory()->admin()->create()->id, 'source_media_id' => $media->id,
+        return FleetUpload::create(['user_id' => User::factory()->superadmin()->create()->id, 'source_media_id' => $media->id,
             'original_name' => 'campaign.mp4', 'file_path' => 'fleet-uploads/test.mp4', 'targets' => ['z2:AABB'],
             'status' => 'queued', 'phase' => 'queued', 'progress' => 10, 'play_after_upload' => true]);
     }
@@ -51,7 +51,7 @@ class DevicePlaybackTest extends TestCase
         $device = Device::factory()->create(['mac_address' => 'AA:BB']);
         Http::fake(['cloud.test/api/devices*' => Http::response(['result' => 0, 'devices' => [], 'device' => ['playlist' => []]]),
             'gateway.test/api/fleet' => Http::response(['devices' => [], 'media' => []])]);
-        $this->actingAs(User::factory()->admin()->create());
+        $this->actingAs(User::factory()->superadmin()->create());
         foreach ([route('devices.show', $device), route('devices.index'), route('instant-play.index')] as $url) {
             $this->get($url)->assertOk()->assertSee(route('instant-play.media'), false)
                 ->assertSee('value="58702"', false)->assertSee($media->name);
@@ -65,7 +65,7 @@ class DevicePlaybackTest extends TestCase
     {
         Bus::fake([PlayFleetMediaJob::class]);
         $media = $this->media();
-        $this->actingAs(User::factory()->admin()->create())->postJson(route('instant-play.media'), [
+        $this->actingAs(User::factory()->superadmin()->create())->postJson(route('instant-play.media'), [
             'media_id' => $media->id, 'targets' => ['z2:AABB', 'wl35:fan-a'],
         ])->assertStatus(202)->assertJsonPath('success', true);
         $upload = FleetUpload::firstOrFail();
@@ -220,7 +220,7 @@ class DevicePlaybackTest extends TestCase
     public function test_library_route_rejects_images_deleted_media_and_unavailable_queue(): void
     {
         $media = $this->media();
-        $user = User::factory()->admin()->create();
+        $user = User::factory()->superadmin()->create();
         $payload = ['media_id' => $media->id, 'targets' => ['z2:AABB']];
         $media->update(['mime_type' => 'image/png']);
         $this->actingAs($user)->postJson(route('instant-play.media'), $payload)->assertUnprocessable();

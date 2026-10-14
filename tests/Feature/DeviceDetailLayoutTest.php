@@ -30,7 +30,7 @@ class DeviceDetailLayoutTest extends TestCase
             'playlist' => $populated ? ['campaign.mp4'] : [], 'volume' => 40,
             'btSwitch' => 1, 'diagnostic_marker' => 'RAW-CLOUD-MARKER',
         ]])]);
-        $user = User::factory()->admin()->create();
+        $user = User::factory()->superadmin()->create();
         $device = Device::factory()->create(['mac_address' => 'AABB', 'rpm' => 1200]);
         if ($populated) {
             $campaign = Campaign::create(['name' => 'Campaña local', 'status' => 'active', 'priority' => 1, 'created_by' => $user->id]);

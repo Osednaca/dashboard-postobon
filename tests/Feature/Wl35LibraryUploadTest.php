@@ -36,7 +36,7 @@ class Wl35LibraryUploadTest extends TestCase
         Http::preventStrayRequests();
         Storage::fake('local');
         Storage::fake('public');
-        $this->actingAs(User::factory()->admin()->create());
+        $this->actingAs(User::factory()->superadmin()->create());
     }
 
     private function media(string $path = 'media/campaign.mp4'): Media

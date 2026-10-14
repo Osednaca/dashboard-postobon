@@ -235,12 +235,12 @@ class DeviceController extends Controller
         $deviceBluetooth ??= $device->bluetooth_status ?? 'off';
 
         // Deduplicated media list for the select dropdown
-        $allMediaForDevice = Media::orderBy('name')
-            ->get()
-            ->unique('file_path')
-            ->values();
+        $allMediaForDevice = auth()->user()->operatesDevices()
+            ? Media::orderBy('name')->get()->unique('file_path')->values() : collect();
 
-        return view('devices.show', compact('device', 'devicePlaylist', 'pendingRemovals', 'playlistAvailable', 'allMediaForDevice', 'deviceVolume', 'deviceBluetooth'));
+        $establishments = auth()->user()->assignsDevices() ? Establishment::orderBy('name')->get() : collect();
+
+        return view('devices.show', compact('establishments', 'device', 'devicePlaylist', 'pendingRemovals', 'playlistAvailable', 'allMediaForDevice', 'deviceVolume', 'deviceBluetooth'));
     }
 
     /**

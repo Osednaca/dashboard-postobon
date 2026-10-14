@@ -9,36 +9,36 @@ class GroupPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->operatesDevices();
+        return $user->managesGroups();
     }
 
     public function view(User $user, Group $group): bool
     {
-        return $user->operatesDevices();
+        return $user->managesGroups();
     }
 
     public function create(User $user): bool
     {
-        return $user->operatesDevices();
+        return $user->createsGroups();
     }
 
     public function update(User $user, Group $group): bool
     {
-        return $user->operatesDevices();
+        return $user->managesGroups();
     }
 
     public function delete(User $user, Group $group): bool
     {
-        return $user->operatesDevices();
+        return $user->managesGroups();
     }
 
     public function restore(User $user, Group $group): bool
     {
-        return $user->operatesDevices();
+        return $user->managesGroups();
     }
 
     public function forceDelete(User $user, Group $group): bool
     {
-        return $user->operatesDevices();
+        return $user->managesGroups();
     }
 }

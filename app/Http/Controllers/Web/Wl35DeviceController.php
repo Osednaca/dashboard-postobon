@@ -64,8 +64,10 @@ class Wl35DeviceController extends Controller
             'uploading' => false,
         ];
 
-        $establishments = Establishment::with('businessType')->orderBy('name')->get();
-        $libraryMedia = Media::where('mime_type', 'video/mp4')->orderBy('name')->get();
+        $establishments = auth()->user()->assignsDevices()
+            ? Establishment::with('businessType')->orderBy('name')->get() : collect();
+        $libraryMedia = auth()->user()->operatesDevices()
+            ? Media::where('mime_type', 'video/mp4')->orderBy('name')->get() : collect();
         $videoNames = Wl35DeviceMedia::with('media')->where('device_id', $deviceId)
             ->whereBetween('video_index', [1, max(0, (int) ($device['video_count'] ?? 0))])
             ->get()->mapWithKeys(fn (Wl35DeviceMedia $mapping): array => [$mapping->video_index => $mapping->display_filename]);

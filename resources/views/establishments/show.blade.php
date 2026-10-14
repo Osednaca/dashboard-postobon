@@ -71,7 +71,10 @@
     <section class="overflow-hidden rounded-xl border border-border bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
         <div class="flex flex-col gap-2 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <div><h2 class="text-lg font-semibold text-text">Dispositivos Z2</h2><p class="mt-1 text-sm text-text-light">{{ $establishment->devices_count }} asociados a este establecimiento.</p></div>
-            <a href="{{ route('devices.create') }}" class="text-sm font-semibold text-primary hover:underline">Registrar Z2</a>
+            @if(auth()->user()->operatesDevices())
+                <a href="{{ route('devices.create') }}" class="text-sm font-semibold text-primary hover:underline">Registrar Z2</a>
+            @endif
+            <a href="{{ route('devices.index') }}" class="text-sm font-semibold text-primary hover:underline">Asignar dispositivo existente</a>
         </div>
         @forelse($z2Devices as $device)
             <a href="{{ route('devices.show', $device) }}" class="flex flex-col gap-3 border-b border-border px-5 py-4 transition last:border-b-0 hover:bg-surface/60 sm:flex-row sm:items-center sm:justify-between sm:px-6">
@@ -79,7 +82,7 @@
                 <div class="flex items-center gap-3"><x-device-status-indicator :status="$device->status" /><span class="inline-flex items-center gap-1 text-xs font-medium text-primary">Ver detalle<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg></span></div>
             </a>
         @empty
-            <div class="px-6 py-10 text-center"><p class="font-semibold text-text">No hay Z2 asociados</p><p class="mt-1 text-sm text-text-light">Puedes registrar uno nuevo o editar un dispositivo existente.</p></div>
+            <div class="px-6 py-10 text-center"><p class="font-semibold text-text">No hay Z2 asociados</p><p class="mt-1 text-sm text-text-light">Asigna un equipo existente desde su página de detalle.</p></div>
         @endforelse
         @if($z2Devices->hasPages())<div class="border-t border-border px-5 py-4 sm:px-6">{{ $z2Devices->links() }}</div>@endif
     </section>

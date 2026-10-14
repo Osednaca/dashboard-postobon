@@ -13,6 +13,6 @@ class DevicePreviewController extends Controller
     {
         $this->authorize('viewAny', Device::class);
 
-        return response()->json(['devices' => $previews->snapshot()])->header('Cache-Control', 'private, no-store');
+        return response()->json(['devices' => $previews->snapshot(auth()->user()->usesMedia())])->header('Cache-Control', 'private, no-store');
     }
 }

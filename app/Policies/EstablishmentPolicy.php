@@ -9,26 +9,26 @@ class EstablishmentPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->operatesDevices();
+        return $user->managesEstablishments();
     }
 
     public function create(User $user): bool
     {
-        return $user->operatesDevices();
+        return $user->managesEstablishments();
     }
 
     public function view(User $user, Establishment $establishment): bool
     {
-        return $user->operatesDevices();
+        return $user->managesEstablishments();
     }
 
     public function update(User $user, Establishment $establishment): bool
     {
-        return $user->operatesDevices();
+        return $user->managesEstablishments();
     }
 
     public function delete(User $user, Establishment $establishment): bool
     {
-        return $user->operatesDevices();
+        return $user->managesEstablishments();
     }
 }

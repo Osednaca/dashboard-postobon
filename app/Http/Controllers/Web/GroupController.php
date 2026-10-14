@@ -16,14 +16,8 @@ use Illuminate\View\View;
 
 class GroupController extends Controller
 {
-    /**
-     * @var GroupService
-     */
     protected GroupService $groupService;
 
-    /**
-     * @var Z2GroupService
-     */
     protected Z2GroupService $z2GroupService;
 
     /**
@@ -47,7 +41,7 @@ class GroupController extends Controller
 
             return view('groups.index', compact('groups'));
         } catch (\Exception $e) {
-            Log::error('Error al listar grupos: ' . $e->getMessage());
+            Log::error('Error al listar grupos: '.$e->getMessage());
 
             return redirect()->route('dashboard.index')
                 ->with('error', 'Ocurrió un error al cargar los grupos.');
@@ -75,13 +69,13 @@ class GroupController extends Controller
             $group = $this->z2GroupService->createGroup($request->validated()['name']);
 
             if ($group) {
-                return redirect()->route('groups.index')
+                return redirect()->route($request->user()->managesGroups() ? 'groups.index' : 'campaigns.index')
                     ->with('success', 'Grupo creado exitosamente.');
             }
 
             return back()->with('error', 'Ocurrió un error al crear el grupo en la nube.');
         } catch (\Exception $e) {
-            Log::error('Error al crear grupo: ' . $e->getMessage());
+            Log::error('Error al crear grupo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al crear el grupo. Por favor intente nuevamente.');
         }
@@ -97,7 +91,7 @@ class GroupController extends Controller
         try {
             return view('groups.show', compact('group'));
         } catch (\Exception $e) {
-            Log::error('Error al mostrar grupo: ' . $e->getMessage());
+            Log::error('Error al mostrar grupo: '.$e->getMessage());
 
             return redirect()->route('groups.index')
                 ->with('error', 'Ocurrió un error al cargar el grupo.');
@@ -127,7 +121,7 @@ class GroupController extends Controller
             return redirect()->route('groups.index')
                 ->with('success', 'Grupo actualizado exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al actualizar grupo: ' . $e->getMessage());
+            Log::error('Error al actualizar grupo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al actualizar el grupo. Por favor intente nuevamente.');
         }
@@ -148,7 +142,7 @@ class GroupController extends Controller
 
             return back()->with('error', 'Ocurrió un error al eliminar el grupo en la nube.');
         } catch (\Exception $e) {
-            Log::error('Error al eliminar grupo: ' . $e->getMessage());
+            Log::error('Error al eliminar grupo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al eliminar el grupo. Por favor intente nuevamente.');
         }
@@ -168,7 +162,7 @@ class GroupController extends Controller
 
             return back()->with('error', 'Ocurrió un error al encender los dispositivos del grupo en la nube.');
         } catch (\Exception $e) {
-            Log::error('Error al encender dispositivos del grupo: ' . $e->getMessage());
+            Log::error('Error al encender dispositivos del grupo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al encender los dispositivos del grupo.');
         }
@@ -188,7 +182,7 @@ class GroupController extends Controller
 
             return back()->with('error', 'Ocurrió un error al apagar los dispositivos del grupo en la nube.');
         } catch (\Exception $e) {
-            Log::error('Error al apagar dispositivos del grupo: ' . $e->getMessage());
+            Log::error('Error al apagar dispositivos del grupo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al apagar los dispositivos del grupo.');
         }
@@ -223,7 +217,7 @@ class GroupController extends Controller
 
             return back()->with('error', 'Ocurrió un error al cambiar el contenido del grupo en la nube.');
         } catch (\Exception $e) {
-            Log::error('Error al cambiar contenido del grupo: ' . $e->getMessage());
+            Log::error('Error al cambiar contenido del grupo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al cambiar el contenido del grupo.');
         }
@@ -258,7 +252,7 @@ class GroupController extends Controller
 
             return back()->with('error', 'Ocurrió un error al publicar la campaña en el grupo en la nube.');
         } catch (\Exception $e) {
-            Log::error('Error al publicar campaña en el grupo: ' . $e->getMessage());
+            Log::error('Error al publicar campaña en el grupo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al publicar la campaña en el grupo.');
         }
