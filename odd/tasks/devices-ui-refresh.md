@@ -22,10 +22,10 @@ Design: existing Postobon palette and shell; compact counters, aligned search/fi
   - Acceptance: readable desktop table; compact mobile layout without page-level horizontal scroll; search, type/status/establishment filters and reset/empty states work; existing selection/bulk controls retained; device actions reach the same supported handlers with accurate Bluetooth labels; destructive confirmations retained; keyboard focus, Escape/backdrop dismissal and visible menu labels; no fabricated current content or reference-only operations.
   - Checks: focused render/interaction regressions, full isolated PHP suite, existing JS tests where applicable, production asset build, relevant formatting and diff checks; local rendered fixtures at desktop/mobile with browser interaction if available. Never contact live hardware or reuse production sessions.
   - Rollback: only this screen's presentation/interaction changes and associated regression checks/docs; retain prior device APIs and unrelated work.
-  - Commit/slice: pending. Close with Conventional Commit containing implementation/checks/docs and record identity here.
+  - Commit/slice: `2569cc7` — `feat(devices): adapt responsive device list and action menus`; boundary `5e41c98` → `2569cc7`, 661 authored additions plus deletions including tracking (623 implementation/tests). RDD disabled/unmanaged. One cohesive responsive-screen work unit; local slice only, no PR.
 
 ## Progress and next step
-T1 outcome and applicable checks observed by writer and parent. Local work-unit commit being recorded below.
+T1 completed and committed; outcome and applicable checks observed by writer and parent.
 
 - Replaced the nine-column layout with seven combined columns and one shared set of rows that becomes a compact list below 1280 px. Added actual status capsules, page-scoped counters, clear search/filter labels and no-match recovery. Mobile filters expand on demand; search and active filter count remain visible.
 - Added per-device play/power/Bluetooth shortcuts and a labelled secondary menu that becomes a bottom sheet on small screens. Existing Z2 endpoints, WL35 commands, bulk group/location/media operations, upload/format progress and destructive confirmations remain. No brightness, Wi-Fi, pairing, restart or invented content mappings were added.
@@ -35,4 +35,4 @@ T1 outcome and applicable checks observed by writer and parent. Local work-unit 
 - Local visual fixture: `storage/framework/testing/device-list-visual/render.php`, static `server.cjs`, URL `http://127.0.0.1:8766/devices`; generated files remain ignored. Renderer uses isolated in-memory SQLite and fake HTTP; server rejects mutations and serves only local assets. No live index request or device operation used.
 - Current authored implementation/test count: approximately 623 additions plus deletions, excluding the tracking document and ignored generated assets. One cohesive screen unit keeps shared selection, menus, responsive rows and checks together; no artificial split. Retained feature-branch-chain strategy, no remote delivery.
 - Browser tab closed and viewport override reset after verification. Initial focus timing and reactive-counter defects found during local verification were corrected and rechecked; no unresolved functional failure remains. Hardware execution and production deployment were intentionally not performed.
-- Engram full-document mirror remains pending/unavailable. Next: record the local Conventional Commit; production delivery remains a separate user decision.
+- Local preview server stopped. Engram full-document mirror remains pending/unavailable. Next: user can review the local change and decide production delivery; no implementation work remains.
