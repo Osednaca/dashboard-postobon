@@ -2,19 +2,19 @@
 
 namespace App\Policies;
 
-use App\Models\User;
 use App\Models\AuditLog;
+use App\Models\User;
 
 class AuditLogPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->role === 'admin';
+        return $user->managesOperations();
     }
 
     public function view(User $user, AuditLog $auditLog): bool
     {
-        return $user->role === 'admin';
+        return $user->managesOperations();
     }
 
     public function create(User $user): bool

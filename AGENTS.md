@@ -66,8 +66,10 @@ Required `.env` variables:
 
 ## Roles
 
-- **administrator**: Full access to all modules
-- **operator**: Access to dashboard, devices, groups, campaigns, media, locations
+- **superadmin**: Full access and management of all user accounts.
+- **admin**: Operational management and management of technician accounts; cannot manage admin/superadmin accounts.
+- **tecnico**: Installation, configuration and control of devices; no campaign or user management.
+- The role migration preserves accounts: existing `admin` becomes `superadmin`, and `operator` becomes `tecnico`. Subscriptions and locations are retired; establishments and historical records remain.
 
 ## Scheduling
 
@@ -80,7 +82,6 @@ Defined in `routes/console.php`:
 - Offline detection: every 10 minutes
 - Schedule processing: every minute
 - Analytics: daily at 00:00
-- Subscriptions: daily at 08:00
 
 ## API Endpoints
 

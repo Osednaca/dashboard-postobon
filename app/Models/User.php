@@ -12,6 +12,37 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
+    public const ROLES = [
+        'superadmin' => 'Superadministrador',
+        'admin' => 'Administrador',
+        'tecnico' => 'Técnico (instalador)',
+    ];
+
+    public function isSuperadmin(): bool
+    {
+        return $this->role === 'superadmin';
+    }
+
+    public function managesOperations(): bool
+    {
+        return in_array($this->role, ['superadmin', 'admin'], true);
+    }
+
+    public function operatesDevices(): bool
+    {
+        return array_key_exists($this->role ?? '', self::ROLES);
+    }
+
+    public function assignableRoles(): array
+    {
+        return $this->isSuperadmin() ? self::ROLES : ($this->role === 'admin' ? ['tecnico' => self::ROLES['tecnico']] : []);
+    }
+
+    public function roleLabel(): string
+    {
+        return self::ROLES[$this->role] ?? 'Sin acceso';
+    }
+
     protected $fillable = [
         'name',
         'email',

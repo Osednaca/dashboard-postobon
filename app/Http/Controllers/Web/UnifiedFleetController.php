@@ -44,6 +44,20 @@ class UnifiedFleetController extends Controller
         try {
             $result = $this->fleetClient->sendCommand($payload);
 
+            if ($request->expectsJson()) {
+                $total = (int) ($result['total'] ?? count($result['results'] ?? []));
+                $succeeded = (int) ($result['succeeded'] ?? 0);
+                $failed = (int) ($result['failed'] ?? max(0, $total - $succeeded));
+
+                return response()->json([
+                    'success' => $failed === 0 && $total > 0,
+                    'message' => $failed === 0 && $total > 0
+                        ? 'Orden enviada. Esperando el estado reportado por los dispositivos.'
+                        : "Orden aceptada por {$succeeded} de {$total} equipos; {$failed} fallaron.",
+                    'results' => $result['results'] ?? [],
+                ], $failed === 0 && $total > 0 ? 202 : 502);
+            }
+
             return $this->redirectWithResult($result, 'orden');
         } catch (Throwable $exception) {
             Log::error('Falló una orden de flota unificada.', [
@@ -51,6 +65,10 @@ class UnifiedFleetController extends Controller
                 'targets' => $payload['targets'] ?? [],
                 'error' => $exception->getMessage(),
             ]);
+
+            if ($request->expectsJson()) {
+                return response()->json(['success' => false, 'message' => 'No se pudo confirmar el envío de la orden. Consulta el estado antes de reintentar.'], 502);
+            }
 
             return back()->withInput()->with('error', $exception->getMessage());
         }

@@ -2,43 +2,44 @@
 
 namespace App\Policies;
 
-use App\Models\User;
 use App\Models\Schedule;
+use App\Models\User;
 
 class SchedulePolicy
 {
     public function viewAny(User $user): bool
     {
-        return in_array($user->role, ['admin', 'operator']);
+        return $user->operatesDevices();
     }
 
     public function view(User $user, Schedule $schedule): bool
     {
-        return in_array($user->role, ['admin', 'operator']);
+        return $user->operatesDevices() && ($user->managesOperations()
+            || ($schedule->type !== 'activate_campaign' && $schedule->campaign_id === null));
     }
 
     public function create(User $user): bool
     {
-        return in_array($user->role, ['admin', 'operator']);
+        return $user->operatesDevices();
     }
 
     public function update(User $user, Schedule $schedule): bool
     {
-        return in_array($user->role, ['admin', 'operator']);
+        return $this->view($user, $schedule);
     }
 
     public function delete(User $user, Schedule $schedule): bool
     {
-        return in_array($user->role, ['admin', 'operator']);
+        return $this->view($user, $schedule);
     }
 
     public function restore(User $user, Schedule $schedule): bool
     {
-        return in_array($user->role, ['admin', 'operator']);
+        return $this->view($user, $schedule);
     }
 
     public function forceDelete(User $user, Schedule $schedule): bool
     {
-        return in_array($user->role, ['admin', 'operator']);
+        return $this->view($user, $schedule);
     }
 }

@@ -39,6 +39,7 @@
                     >
                         Masivo
                     </button>
+                    @can('viewAny', App\Models\Campaign::class)
                     <button
                         @click="mode = 'campaign'"
                         :class="mode === 'campaign' ? 'bg-primary text-white shadow-sm' : 'text-text-light hover:text-text'"
@@ -46,6 +47,7 @@
                     >
                         Campaña
                     </button>
+                    @endcan
                 </div>
             </div>
         </div>
@@ -277,6 +279,7 @@
                             </form>
                         </template>
 
+                        @can('viewAny', App\Models\Campaign::class)
                         {{-- Campaign mode: select campaign --}}
                         <template x-if="mode === 'campaign'">
                             <form action="{{ route('instant-play.media') }}" method="POST" class="space-y-4" @submit="submitPlayback($event)">
@@ -308,6 +311,7 @@
                                 </button>
                             </form>
                         </template>
+                        @endcan
                     </div>
                 </div>
             </template>

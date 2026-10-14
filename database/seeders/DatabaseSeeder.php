@@ -10,13 +10,11 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             UserSeeder::class,
-            LocationSeeder::class,
             GroupSeeder::class,
             DeviceSeeder::class,
             MediaSeeder::class,
             CampaignSeeder::class,
             ScheduleSeeder::class,
-            SubscriptionSeeder::class,
             NotificationSeeder::class,
             AuditLogSeeder::class,
             DeviceHeartbeatSeeder::class,

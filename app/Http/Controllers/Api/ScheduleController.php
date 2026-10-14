@@ -13,9 +13,6 @@ use Illuminate\Validation\ValidationException;
 
 class ScheduleController extends Controller
 {
-    /**
-     * @var ScheduleService
-     */
     protected ScheduleService $scheduleService;
 
     /**
@@ -31,16 +28,17 @@ class ScheduleController extends Controller
      */
     public function index(): JsonResponse|RedirectResponse
     {
+        $this->authorize('viewAny', Schedule::class);
+
         if ($redirect = $this->redirectBrowserToWeb('schedules.index')) {
             return $redirect;
         }
 
         try {
-            $this->authorize('viewAny', Schedule::class);
-
-            $schedules = $this->scheduleService->paginate(
-                request()->input('per_page', 15)
-            );
+            $schedules = Schedule::query()
+                ->when(! auth()->user()->managesOperations(), fn ($query) => $query
+                    ->where('type', '!=', 'activate_campaign')->whereNull('campaign_id'))
+                ->paginate(request()->input('per_page', 15));
 
             return response()->json($schedules);
         } catch (\Exception $e) {
@@ -56,9 +54,9 @@ class ScheduleController extends Controller
      */
     public function store(StoreScheduleRequest $request): JsonResponse
     {
-        try {
-            $this->authorize('create', Schedule::class);
+        $this->authorize('create', Schedule::class);
 
+        try {
             $schedule = $this->scheduleService->create($request->validated());
 
             return response()->json($schedule, 201);
@@ -77,9 +75,9 @@ class ScheduleController extends Controller
      */
     public function show(Schedule $schedule): JsonResponse
     {
-        try {
-            $this->authorize('view', $schedule);
+        $this->authorize('view', $schedule);
 
+        try {
             return response()->json($schedule);
         } catch (\Exception $e) {
             return response()->json([
@@ -94,9 +92,9 @@ class ScheduleController extends Controller
      */
     public function update(UpdateScheduleRequest $request, Schedule $schedule): JsonResponse
     {
-        try {
-            $this->authorize('update', $schedule);
+        $this->authorize('update', $schedule);
 
+        try {
             $updated = $this->scheduleService->update($schedule->id, $request->validated());
 
             return response()->json($updated);
@@ -115,9 +113,9 @@ class ScheduleController extends Controller
      */
     public function destroy(Schedule $schedule): JsonResponse
     {
-        try {
-            $this->authorize('delete', $schedule);
+        $this->authorize('delete', $schedule);
 
+        try {
             $this->scheduleService->delete($schedule->id);
 
             return response()->json([

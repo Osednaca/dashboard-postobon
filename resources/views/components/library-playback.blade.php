@@ -1,11 +1,11 @@
-@props(['media', 'deviceKey' => null])
+@props(['media', 'deviceKey' => null, 'targetsExpression' => 'selectedFleetKeys'])
 <div x-data="libraryPlayback(@js(route('fleet.upload.status', ['fleetUpload' => '__UPLOAD_ID__'])))">
     <form action="{{ route('instant-play.media') }}" method="POST" @submit.prevent="submit($event)" class="space-y-4">
         @csrf
         @if($deviceKey)
             <input type="hidden" name="targets[]" value="{{ $deviceKey }}">
         @else
-            <template x-for="key in selectedFleetKeys" :key="'library-'+key"><input type="hidden" name="targets[]" :value="key"></template>
+            <template x-for="key in {{ $targetsExpression }}" :key="'library-'+key"><input type="hidden" name="targets[]" :value="key"></template>
         @endif
         <label class="block">
             <span class="mb-1.5 block text-sm font-medium text-text">Video de la biblioteca</span>
