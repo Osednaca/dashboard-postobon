@@ -1,16 +1,16 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\AnalyticsController;
+use App\Http\Controllers\Api\AuditController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CampaignController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DeviceController;
 use App\Http\Controllers\Api\GroupController;
 use App\Http\Controllers\Api\MediaController;
-use App\Http\Controllers\Api\CampaignController;
-use App\Http\Controllers\Api\ScheduleController;
-use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\NotificationController;
-use App\Http\Controllers\Api\AuditController;
+use App\Http\Controllers\Api\ScheduleController;
+use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
