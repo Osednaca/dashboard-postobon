@@ -4,9 +4,10 @@ namespace App\Console\Commands;
 
 use App\Models\Device;
 use App\Models\Notification;
+use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
 
 class CheckOfflineDevices extends Command
 {
@@ -40,7 +41,7 @@ class CheckOfflineDevices extends Command
 
             $this->warn("Device {$device->name} ({$device->mac_address}) marked offline. Last heartbeat: {$minutesSinceHeartbeat} minutes ago");
 
-            $adminUsers = \App\Models\User::where('role', 'admin')->get();
+            $adminUsers = User::whereIn('role', ['superadmin', 'admin'])->get();
             foreach ($adminUsers as $admin) {
                 Notification::create([
                     'user_id' => $admin->id,

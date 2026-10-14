@@ -6,13 +6,13 @@ use App\Models\User;
 use App\Repositories\Contracts\UserRepositoryInterface;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class UserService extends BaseService
 {
     /**
      * UserService constructor.
-     *
-     * @param UserRepositoryInterface $userRepository
      */
     public function __construct(UserRepositoryInterface $userRepository)
     {
@@ -21,9 +21,6 @@ class UserService extends BaseService
 
     /**
      * Find a user by email.
-     *
-     * @param string $email
-     * @return User|null
      */
     public function findByEmail(string $email): ?User
     {
@@ -34,7 +31,6 @@ class UserService extends BaseService
     /**
      * Find users by role.
      *
-     * @param string $role
      * @return Collection<int, User>
      */
     public function findByRole(string $role): Collection
@@ -44,21 +40,17 @@ class UserService extends BaseService
 
     /**
      * Assign a role to a user.
-     *
-     * @param int|string $id
-     * @param string $role
-     * @return User|null
      */
     public function assignRole(int|string $id, string $role): ?User
     {
-        $user = $this->repository->update($id, ['role' => $role]);
+        $user = $this->update($id, ['role' => $role]);
 
         /** @var User|null */
         return $user;
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function create(array $data): Model
     {
@@ -70,14 +62,39 @@ class UserService extends BaseService
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function update(int|string $id, array $data): ?Model
     {
-        if (isset($data['password'])) {
+        if (! empty($data['password'])) {
             $data['password'] = bcrypt($data['password']);
+        } else {
+            unset($data['password']);
         }
 
-        return parent::update($id, $data);
+        return DB::transaction(function () use ($id, $data) {
+            $superadmins = User::where('role', 'superadmin')->orderBy('id')->lockForUpdate()->get();
+            $user = User::lockForUpdate()->find($id);
+
+            if ($user?->isSuperadmin() && isset($data['role']) && $data['role'] !== 'superadmin' && $superadmins->count() <= 1) {
+                throw ValidationException::withMessages(['role' => 'Debe existir al menos un superadministrador.']);
+            }
+
+            return parent::update($id, $data);
+        });
+    }
+
+    public function delete(int|string $id): bool
+    {
+        return DB::transaction(function () use ($id) {
+            $superadmins = User::where('role', 'superadmin')->orderBy('id')->lockForUpdate()->get();
+            $user = User::lockForUpdate()->find($id);
+
+            if ($user && ($user->is(auth()->user()) || ($user->isSuperadmin() && $superadmins->count() <= 1))) {
+                throw ValidationException::withMessages(['user' => 'No puedes eliminar tu cuenta ni el último superadministrador.']);
+            }
+
+            return parent::delete($id);
+        });
     }
 }

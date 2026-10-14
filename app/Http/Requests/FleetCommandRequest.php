@@ -9,7 +9,7 @@ class FleetCommandRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user() !== null;
+        return $this->user()?->operatesDevices() ?? false;
     }
 
     public function rules(): array

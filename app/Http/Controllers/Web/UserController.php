@@ -9,13 +9,11 @@ use App\Models\User;
 use App\Services\UserService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class UserController extends Controller
 {
-    /**
-     * @var UserService
-     */
     protected UserService $userService;
 
     /**
@@ -34,11 +32,17 @@ class UserController extends Controller
         $this->authorize('viewAny', User::class);
 
         try {
-            $users = User::paginate(15);
+            $users = User::query()
+                ->when(! auth()->user()->isSuperadmin(), fn ($query) => $query->where('role', 'tecnico'))
+                ->when(request('search'), fn ($query, $search) => $query->where(function ($query) use ($search) {
+                    $query->where('name', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%");
+                }))
+                ->when(request('role'), fn ($query, $role) => $query->where('role', $role))
+                ->orderBy('name')->paginate(15)->withQueryString();
 
             return view('users.index', compact('users'));
         } catch (\Exception $e) {
-            Log::error('Error al listar usuarios: ' . $e->getMessage());
+            Log::error('Error al listar usuarios: '.$e->getMessage());
 
             return redirect()->route('dashboard.index')
                 ->with('error', 'Ocurrió un error al cargar los usuarios.');
@@ -68,7 +72,7 @@ class UserController extends Controller
             return redirect()->route('users.index')
                 ->with('success', 'Usuario creado exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al crear usuario: ' . $e->getMessage());
+            Log::error('Error al crear usuario: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al crear el usuario. Por favor intente nuevamente.');
         }
@@ -84,7 +88,7 @@ class UserController extends Controller
         try {
             return view('users.show', compact('user'));
         } catch (\Exception $e) {
-            Log::error('Error al mostrar usuario: ' . $e->getMessage());
+            Log::error('Error al mostrar usuario: '.$e->getMessage());
 
             return redirect()->route('users.index')
                 ->with('error', 'Ocurrió un error al cargar el usuario.');
@@ -113,8 +117,10 @@ class UserController extends Controller
 
             return redirect()->route('users.index')
                 ->with('success', 'Usuario actualizado exitosamente.');
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
-            Log::error('Error al actualizar usuario: ' . $e->getMessage());
+            Log::error('Error al actualizar usuario: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al actualizar el usuario. Por favor intente nuevamente.');
         }
@@ -133,7 +139,7 @@ class UserController extends Controller
             return redirect()->route('users.index')
                 ->with('success', 'Usuario eliminado exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al eliminar usuario: ' . $e->getMessage());
+            Log::error('Error al eliminar usuario: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al eliminar el usuario. Por favor intente nuevamente.');
         }
