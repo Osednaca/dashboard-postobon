@@ -96,3 +96,20 @@ test('exact establishment preview ignores other criteria and excludes other same
     selector.city = 'Bogotá';
     assert.deepEqual(selector.recipients, ['wl35:fan-none']);
 });
+
+test('all-device mode restores every unique identity independently of filters and manual selection', () => {
+    const selector = createCampaignTargetSelector([...audienceCatalog, catalog[2], audienceCatalog[0]], ['z2:AABB'], {
+        mode: 'all', businessTypes: [20], groups: [2], establishment: 200,
+    });
+    selector.city = 'Bogotá';
+    selector.group = '2';
+    assert.equal(selector.mode, 'all');
+    assert.deepEqual(selector.recipients, [...new Set(audienceCatalog.map(device => device.key))]);
+    assert.ok(selector.recipients.includes('wl35:fan-none'));
+    assert.ok(selector.recipients.includes('z2:OTHER-CITY'));
+    selector.mode = 'manual';
+    assert.deepEqual(selector.recipients, ['z2:AABB']);
+    selector.mode = 'all';
+    assert.equal(selector.recipients.length, 6);
+    assert.deepEqual(createCampaignTargetSelector([], [], { mode: 'all' }).recipients, []);
+});

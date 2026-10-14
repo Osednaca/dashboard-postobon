@@ -17,9 +17,16 @@ class CampaignAudienceResolver
         if ($mode === null) {
             return $data;
         }
+        if ($mode === 'all') {
+            // The inventory defines this audience; submitted filters and targets cannot restrict it.
+            $data = array_replace($data, [
+                'target_devices' => [], 'segment_cities' => [], 'segment_groups' => [],
+                'audience_business_type_ids' => [], 'audience_establishment_id' => null,
+            ]);
+        }
 
         Validator::make($data, [
-            'audience_mode' => ['required', Rule::in(['manual', 'segment', 'establishment'])],
+            'audience_mode' => ['required', Rule::in(['manual', 'segment', 'establishment', 'all'])],
             'audience_business_type_ids' => ['nullable', 'array', 'max:1000'],
             'audience_business_type_ids.*' => ['required', 'integer', 'distinct', 'exists:business_types,id'],
             'segment_groups' => ['nullable', 'array', 'max:1000'],
@@ -42,6 +49,9 @@ class CampaignAudienceResolver
 
         $establishment = (int) ($data['audience_establishment_id'] ?? 0);
         $keys = $this->catalog->all()->filter(function (array $device) use ($mode, $types, $groups, $establishment): bool {
+            if ($mode === 'all') {
+                return true;
+            }
             if ($mode === 'establishment') {
                 return $device['establishment_id'] === $establishment;
             }
@@ -51,7 +61,9 @@ class CampaignAudienceResolver
         })->keys()->all();
 
         if ($keys === []) {
-            throw ValidationException::withMessages(['audience_mode' => 'No hay dispositivos que coincidan con esta audiencia. Ajusta los criterios o vincula equipos al establecimiento.']);
+            throw ValidationException::withMessages(['audience_mode' => $mode === 'all'
+                ? 'No hay dispositivos disponibles para esta campaña. Registra o sincroniza equipos antes de guardar.'
+                : 'No hay dispositivos que coincidan con esta audiencia. Ajusta los criterios o vincula equipos al establecimiento.']);
         }
 
         $data['target_devices'] = $keys;

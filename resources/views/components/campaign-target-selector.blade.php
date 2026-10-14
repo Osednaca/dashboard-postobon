@@ -22,8 +22,10 @@
             <option value="manual">Dispositivos individuales</option>
             <option value="segment">Tipo de negocio y grupo</option>
             <option value="establishment">Un establecimiento</option>
+            <option value="all">Todos los dispositivos</option>
         </select>
     </label>
+    <p x-show="mode === 'all'" x-cloak class="text-sm text-text-muted">Incluye todos los equipos 42 y 35 registrados, incluso los que no tienen grupo o establecimiento.</p>
     <div x-show="mode === 'segment'" x-cloak class="space-y-3">
         <p class="text-sm text-text-muted">Combina tipos de negocio con grupos. Por ejemplo: Oxxo y Medellín incluye únicamente los equipos de establecimientos Oxxo que pertenecen al grupo Medellín.</p>
         <p class="text-xs text-text-muted">Entre tipos o entre grupos se admite cualquiera de los marcados; entre ambas categorías deben cumplirse las dos. El tipo de negocio se toma del establecimiento vinculado al equipo.</p>
@@ -83,8 +85,8 @@
     </div>
     <section aria-label="Dispositivos seleccionados" class="rounded-lg border border-border bg-surface p-3">
         <h3 class="text-sm font-semibold text-text" aria-live="polite">Destinatarios (<span x-text="recipients.length">0</span>)</h3>
-        <p x-show="recipients.length === 0" class="mt-2 text-sm text-text-muted" x-text="mode === 'manual' ? 'Ningún dispositivo seleccionado.' : 'No hay dispositivos que coincidan. Selecciona o ajusta los criterios.'"></p>
-        <p x-show="mode !== 'manual'" class="mt-2 text-xs text-text-muted">Al guardar se fija esta audiencia con los equipos que coincidan en ese momento. Los cambios posteriores en grupos o establecimientos no agregan destinatarios automáticamente; vuelve a editar y guardar para recalcular.</p>
+        <p x-show="recipients.length === 0" class="mt-2 text-sm text-text-muted" x-text="mode === 'manual' ? 'Ningún dispositivo seleccionado.' : (mode === 'all' ? 'No hay dispositivos disponibles. Registra o sincroniza equipos antes de guardar.' : 'No hay dispositivos que coincidan. Selecciona o ajusta los criterios.')"></p>
+        <p x-show="mode !== 'manual'" class="mt-2 text-xs text-text-muted">Al guardar se fija esta audiencia con los equipos que coincidan en ese momento. Los equipos nuevos y los cambios posteriores en grupos o establecimientos no agregan destinatarios automáticamente; vuelve a editar y guardar para recalcular.</p>
         <ul class="mt-2 max-h-64 space-y-2 overflow-y-auto">
             <template x-for="key in recipients" :key="key">
                 <li class="flex items-center gap-2 text-sm"><span class="min-w-0 flex-1 break-words" x-text="label(key)"></span><button x-show="mode === 'manual'" type="button" @click="remove(key)" :aria-label="'Quitar ' + label(key)" class="shrink-0 rounded px-2 py-1 text-danger hover:bg-danger/10">Quitar</button></li>
