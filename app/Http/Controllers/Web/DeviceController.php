@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\BulkAssignMediaRequest;
 use App\Http\Requests\BulkDeviceOperationRequest;
 use App\Http\Requests\ChangeDeviceGroupRequest;
-use App\Http\Requests\ChangeDeviceLocationRequest;
 use App\Http\Requests\StoreDeviceRequest;
 use App\Http\Requests\UpdateDeviceRequest;
 use App\Models\Campaign;
@@ -362,7 +361,6 @@ class DeviceController extends Controller
                     'disable' => (bool) $device->update(['status' => 'disabled']),
                     'enable' => (bool) $device->update(['status' => 'active']),
                     'change_group' => $this->bulkChangeGroup($device, $data),
-                    'change_location' => (bool) $device->update(['location_id' => $data['target_location_id'] ?? null]),
                     'unbind' => $this->z2DeviceService->unbindDevice($device->mac_address ?? ''),
                     default => false,
                 };
@@ -728,25 +726,6 @@ class DeviceController extends Controller
             Log::error('Error al cambiar grupo del dispositivo: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al cambiar el grupo del dispositivo.');
-        }
-    }
-
-    /**
-     * Change the device's location.
-     */
-    public function changeLocation(ChangeDeviceLocationRequest $request, Device $device): RedirectResponse
-    {
-        $this->authorize('update', $device);
-
-        try {
-            $device->update(['location_id' => $request->validated()['location_id']]);
-            Log::info('Ubicación del dispositivo actualizada', ['device_id' => $device->id]);
-
-            return back()->with('success', 'Ubicación del dispositivo actualizada exitosamente.');
-        } catch (\Exception $e) {
-            Log::error('Error al cambiar ubicación del dispositivo: '.$e->getMessage());
-
-            return back()->with('error', 'Ocurrió un error al cambiar la ubicación del dispositivo.');
         }
     }
 

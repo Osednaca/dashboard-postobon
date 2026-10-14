@@ -11,8 +11,6 @@ class SubscriptionService extends BaseService
 {
     /**
      * SubscriptionService constructor.
-     *
-     * @param SubscriptionRepositoryInterface $subscriptionRepository
      */
     public function __construct(SubscriptionRepositoryInterface $subscriptionRepository)
     {
@@ -51,19 +49,10 @@ class SubscriptionService extends BaseService
 
     /**
      * Send expiration alerts.
-     *
-     * @return int
      */
     public function sendExpirationAlerts(): int
     {
-        $expiring = $this->getExpiringSoon();
-        $count = 0;
-
-        foreach ($expiring as $subscription) {
-            // Send alert logic here (e.g., dispatch notification job)
-            $count++;
-        }
-
-        return $count;
+        // Retained for old callers; subscription alerts have been retired.
+        return 0;
     }
 }

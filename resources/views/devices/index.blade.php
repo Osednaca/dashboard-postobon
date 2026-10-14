@@ -69,7 +69,7 @@
     selectedIds: {{ Js::from($initialLocalIds) }},
     selectedFleetKeys: {{ Js::from($initialFleetKeys) }},
     filtersExpanded: false,
-    bulkGroupId: '', bulkLocationId: '',
+    bulkGroupId: '',
     init() {
         this.watchDialogs();
         const uploadId = window.localStorage.getItem('fleet-upload-id');
@@ -418,7 +418,6 @@
         if (!this.selectedIds.length) return;
         document.getElementById('bulk-operation-action').value = action;
         document.getElementById('bulk-operation-group').value = this.bulkGroupId;
-        document.getElementById('bulk-operation-location').value = this.bulkLocationId;
         document.getElementById('bulk-operation-form').submit();
     },
     async submitFleet(command, value) {
@@ -506,7 +505,6 @@
                     <button type="button" @click="open=false; submitBulk('power_off')" class="block w-full px-4 py-2 text-left text-sm hover:bg-surface">Apagar Z2 directamente</button>
                     <button type="button" @click="open=false; showBulkAssignMediaModal=true" class="block w-full px-4 py-2 text-left text-sm font-medium text-primary hover:bg-surface">Asignar medio Z2</button>
                     <button type="button" @click="open=false; submitBulk('change_group')" class="block w-full px-4 py-2 text-left text-sm hover:bg-surface">Cambiar grupo</button>
-                    <button type="button" @click="open=false; submitBulk('change_location')" class="block w-full px-4 py-2 text-left text-sm hover:bg-surface">Cambiar ubicación</button>
                     <button type="button" @click="open=false; submitBulk('enable')" class="block w-full px-4 py-2 text-left text-sm hover:bg-surface">Habilitar</button>
                     <button type="button" @click="open=false; submitBulk('disable')" class="block w-full px-4 py-2 text-left text-sm hover:bg-surface">Deshabilitar</button>
                     <div class="my-1 border-t border-border"></div>
@@ -516,13 +514,12 @@
 
             <div class="flex w-full flex-wrap items-center gap-2 xl:ml-auto xl:w-auto">
                 <select x-model="bulkGroupId" aria-label="Grupo para los Z2 seleccionados" class="min-w-0 flex-1 rounded-lg border border-border px-2 py-2 text-xs xl:w-36 xl:flex-none"><option value="">Grupo Z2</option>@foreach(App\Models\Group::orderBy('name')->get() as $group)<option value="{{ $group->id }}">{{ $group->name }}</option>@endforeach</select>
-                <select x-model="bulkLocationId" aria-label="Ubicación para los Z2 seleccionados" class="min-w-0 flex-1 rounded-lg border border-border px-2 py-2 text-xs xl:w-36 xl:flex-none"><option value="">Ubicación Z2</option>@foreach(App\Models\Location::orderBy('name')->get() as $location)<option value="{{ $location->id }}">{{ $location->name }}</option>@endforeach</select>
                 <button type="button" @click="selectedIds=[]; selectedFleetKeys=[]" class="rounded-lg px-3 py-2 text-xs font-semibold text-text-muted hover:bg-surface">Limpiar</button>
             </div>
         </div>
 
         <form x-ref="fleetCommand" action="{{ route('fleet.command') }}" method="POST" class="hidden">@csrf<input type="hidden" name="command"><input type="hidden" name="value"><template x-for="key in selectedFleetKeys" :key="'command-'+key"><input type="hidden" name="targets[]" :value="key"></template></form>
-        <form id="bulk-operation-form" action="{{ route('devices.bulk-operation') }}" method="POST" class="hidden">@csrf<input id="bulk-operation-action" type="hidden" name="action"><input id="bulk-operation-group" type="hidden" name="target_group_id"><input id="bulk-operation-location" type="hidden" name="target_location_id"><template x-for="id in selectedIds" :key="'legacy-'+id"><input type="hidden" name="device_ids[]" :value="id"></template></form>
+        <form id="bulk-operation-form" action="{{ route('devices.bulk-operation') }}" method="POST" class="hidden">@csrf<input id="bulk-operation-action" type="hidden" name="action"><input id="bulk-operation-group" type="hidden" name="target_group_id"><template x-for="id in selectedIds" :key="'legacy-'+id"><input type="hidden" name="device_ids[]" :value="id"></template></form>
     </section>
 
     @include('devices.partials.device-list-table')

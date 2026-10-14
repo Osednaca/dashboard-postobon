@@ -317,9 +317,6 @@
                             Ver en el mapa
                         </a>
                     @endif
-                    @if($device->location)
-                        <p class="text-xs text-text-muted mt-1">Ubicación: {{ $device->location->name }}</p>
-                    @endif
                 </div>
                 <div class="p-4 rounded-lg bg-surface">
                     <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1">Contacto</p>
