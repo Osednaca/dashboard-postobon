@@ -19,7 +19,7 @@ export function createCampaignTargetSelector(catalog = [], initial = []) {
         remove(key) { this.selected = this.selected.filter((value) => value !== key); },
         label(key) {
             const device = entries.get(key);
-            return device ? `${device.name} · ${device.type.toUpperCase()} · ${device.city || 'Sin ciudad'}` : `Dispositivo no disponible (${key})`;
+            return device ? `${device.name} · ${device.type === 'wl35' ? '35' : '42'} · ${device.city || 'Sin ciudad'}` : `Dispositivo no disponible (${key})`;
         },
     };
 }

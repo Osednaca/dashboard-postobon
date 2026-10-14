@@ -29,7 +29,7 @@
                 <div class="flex items-center justify-between gap-3 px-4 py-3">
                     <div class="min-w-0">
                         <h3 class="truncate text-sm font-semibold text-text" x-text="device.name"></h3>
-                        <p class="mt-0.5 text-xs text-text-muted" x-text="device.type.toUpperCase()"></p>
+                        <p class="mt-0.5 text-xs text-text-muted" x-text="device.type === 'wl35' ? '35' : '42'"></p>
                     </div>
                     <span class="h-2 w-2 shrink-0 rounded-full" :class="device.status === 'ready' && !error ? 'bg-success' : 'bg-text-muted'" aria-hidden="true"></span>
                 </div>

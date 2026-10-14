@@ -33,7 +33,7 @@
                         @if($canOperateDevices)
                             <td class="device-cell-select"><input type="checkbox" data-fleet-selector data-local-id="{{ $row['localId'] }}" value="{{ $row['key'] }}" :checked="selectedFleetKeys.includes({{ Js::from($row['key']) }})" @change="toggleDevice({{ Js::from($row['key']) }}, {{ Js::from($row['localId']) }}, $event.target.checked)" aria-label="Seleccionar {{ $row['name'] }}"></td>
                         @endif
-                        <td class="device-cell-name"><div class="device-identity"><span class="device-identity-icon"><x-device-action-icon name="monitor" /></span><div class="min-w-0"><a href="{{ $row['detailsUrl'] }}" class="device-name">{{ $row['name'] }}</a><span class="device-identifier" title="{{ $row['identifier'] }}">{{ strtoupper($row['type']) }} · {{ $row['identifier'] }}</span></div></div></td>
+                        <td class="device-cell-name"><div class="device-identity"><span class="device-identity-icon"><x-device-action-icon name="monitor" /></span><div class="min-w-0"><a href="{{ $row['detailsUrl'] }}" class="device-name">{{ $row['name'] }}</a><span class="device-identifier" title="{{ $row['identifier'] }}">{{ $row['type'] === 'wl35' ? '35' : '42' }} · {{ $row['identifier'] }}</span></div></div></td>
                         <td class="device-cell-status"><x-device-live-status :row="'rows['.$index.']'" /></td>
                         <td class="device-cell-establishment"><span class="block font-medium text-text">{{ $row['establishment'] }}</span><span class="device-address">{{ $row['address'] }}</span></td>
                         <td class="device-cell-seen" x-text="rows[{{ $index }}].lastSeen">{{ $row['lastSeen'] }}</td>
@@ -51,7 +51,7 @@
         <div class="px-6 py-16 text-center">
             <x-device-action-icon name="monitor" class="mx-auto mb-3 text-primary" /><p class="font-semibold">No hay dispositivos</p>
             @if($canOperateDevices)
-                <p class="mt-1 text-sm text-text-light">Agrega un Z2 o conecta un WL35 para empezar.</p><a href="{{ route('devices.create') }}" class="device-list-button mx-auto mt-4">Nuevo dispositivo Z2</a>
+                <p class="mt-1 text-sm text-text-light">Agrega un 42 o conecta un 35 para empezar.</p><a href="{{ route('devices.create') }}" class="device-list-button mx-auto mt-4">Nuevo dispositivo 42</a>
             @else
                 <p class="mt-1 text-sm text-text-light">Los equipos registrados aparecerán aquí para consultar su información.</p>
             @endif

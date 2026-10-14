@@ -93,7 +93,7 @@ class Wl35DeviceController extends Controller
             $request->validated(),
         );
 
-        return back()->with('success', 'Información administrativa del WL35 actualizada.');
+        return back()->with('success', 'Información administrativa del 35 actualizada.');
     }
 
     public function deleteVideo(
@@ -116,7 +116,7 @@ class Wl35DeviceController extends Controller
                     ->each(fn (Wl35DeviceMedia $mapping) => $mapping->decrement('video_index'));
             });
 
-            return back()->with('success', "Video {$index} eliminado del WL35.");
+            return back()->with('success', "Video {$index} eliminado del 35.");
         } catch (Throwable $exception) {
             Log::error('No fue posible eliminar un video WL35.', [
                 'device_id' => $deviceId,
@@ -138,7 +138,7 @@ class Wl35DeviceController extends Controller
         try {
             $this->fleetClient->setWl35Volume($deviceId, $volume);
 
-            return back()->with('success', "Volumen del WL35 actualizado a {$volume}.");
+            return back()->with('success', "Volumen del 35 actualizado a {$volume}.");
         } catch (Throwable $exception) {
             Log::error('No fue posible actualizar el volumen WL35.', [
                 'device_id' => $deviceId,

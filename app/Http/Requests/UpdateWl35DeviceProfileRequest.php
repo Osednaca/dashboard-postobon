@@ -23,9 +23,9 @@ class UpdateWl35DeviceProfileRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'name.required' => 'El nombre del WL35 es obligatorio.',
+            'name.required' => 'El nombre del 35 es obligatorio.',
             'name.max' => 'El nombre no puede superar 255 caracteres.',
-            'establishment_id.required' => 'Selecciona el establecimiento del WL35.',
+            'establishment_id.required' => 'Selecciona el establecimiento del 35.',
             'establishment_id.exists' => 'El establecimiento seleccionado no existe.',
             'notes.max' => 'Las notas no pueden superar 2000 caracteres.',
         ];

@@ -31,13 +31,20 @@ class DeviceListLayoutTest extends TestCase
             'fleetMedia' => collect(), 'establishments' => collect(), 'gatewayError' => null, 'gatewayConfigured' => true,
         ];
         $view = $this->view('devices.index', $data);
-        $view->assertSee('Dispositivos')->assertSee('21 Z2 registrados y 2 WL35')
+        $view->assertSee('Dispositivos')->assertSee('21 42 registrados y 2 35')
             ->assertSee('Resumen de los equipos visibles en esta página')->assertSee('real-file.mp4')
             ->assertSee('Apagar Bluetooth')->assertSee('Encender Bluetooth')->assertSee('Formatear tarjeta SD')
-            ->assertSee('Esta acción no se puede deshacer.')->assertSee('Administrar Z2')->assertSee('Subir video')
+            ->assertSee('Esta acción no se puede deshacer.')->assertSee('Administrar 42')->assertSee('Subir video')
             ->assertDontSee('Emparejar Bluetooth')->assertDontSee('Ajustar brillo')->assertDontSee('Mantenimiento')
             ->assertSee('x-for="key in playbackTargets"', false)->assertSee('x-for="key in selectedFleetKeys"', false)
             ->assertSee('data-device-row="z2:AABB"', false)->assertSee('data-device-row="wl35:wl35-a"', false);
+        $view->assertSee('Z2 recepción')->assertSee('WL35 entrada')
+            ->assertSee('<option value="z2">42</option>', false)
+            ->assertSee('<option value="wl35">35</option>', false)
+            ->assertSee('42 · AA:BB')->assertSee('35 · wl35-a')
+            ->assertSee('name="wl35_video_index"', false)->assertSee('name="z2_filename"', false)
+            ->assertSee('El 35 no confirmó el inicio de carga.')
+            ->assertSee('timeout waiting for WL35 upload ACK');
         foreach (['devices.power-on', 'devices.power-off', 'devices.edit', 'devices.show'] as $route) {
             $view->assertSee(route($route, $device), false);
         }
@@ -66,7 +73,7 @@ class DeviceListLayoutTest extends TestCase
             'devices' => new LengthAwarePaginator(collect(), 0, 15), 'wl35Devices' => collect(),
             'fleetZ2Devices' => collect(), 'fleetMedia' => collect(), 'establishments' => collect(),
             'gatewayError' => 'Gateway no disponible', 'gatewayConfigured' => true,
-        ])->assertSee('No hay dispositivos')->assertSee('Nuevo dispositivo Z2')->assertSee('Gateway no disponible');
+        ])->assertSee('No hay dispositivos')->assertSee('Nuevo dispositivo 42')->assertSee('Gateway no disponible');
         Http::assertNothingSent();
     }
 }

@@ -40,9 +40,9 @@ class FleetCommandRequest extends FormRequest
             'targets.min' => 'Selecciona al menos un ventilador.',
             'targets.*.regex' => 'Uno de los identificadores seleccionados no es válido.',
             'value.required' => 'Debes indicar el estado de la orden.',
-            'wl35_video_index.required' => 'Indica el número de video que reproducirán los WL35.',
-            'wl35_video_index.max' => 'El índice de video WL35 debe estar entre 1 y 255.',
-            'z2_filename.required' => 'Selecciona el archivo que reproducirán los Z2.',
+            'wl35_video_index.required' => 'Indica el número de video que reproducirán los 35.',
+            'wl35_video_index.max' => 'El índice de video 35 debe estar entre 1 y 255.',
+            'z2_filename.required' => 'Selecciona el archivo que reproducirán los 42.',
         ];
     }
 }

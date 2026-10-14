@@ -46,11 +46,11 @@ test('popup renders assigned device names as text and links only same origin add
     assert.equal(items[0].children[0].tag, 'a');
     assert.equal(items[0].children[0].href, 'https://panel.test/devices/1');
     assert.equal(items[0].children[0].textContent, malicious);
-    assert.equal(items[0].children[1].textContent, ' · Z2 · En línea');
+    assert.equal(items[0].children[1].textContent, ' · 42 · En línea');
     assert.equal(items[1].children[0].tag, 'span');
-    assert.equal(items[1].children[1].textContent, ' · WL35 · Sin conexión');
+    assert.equal(items[1].children[1].textContent, ' · 35 · Sin conexión');
     assert.equal(items[2].children[0].tag, 'span');
-    assert.equal(items[2].children[1].textContent, ' · WL35 · Sin confirmar');
+    assert.equal(items[2].children[1].textContent, ' · 35 · Sin confirmar');
     const empty = createEstablishmentPopup({ name: 'Vacío', devices: [] }, documentFixture());
     assert.equal(empty.children[2].textContent, 'Sin dispositivos asignados');
 });

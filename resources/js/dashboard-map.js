@@ -42,7 +42,7 @@ export function createEstablishmentPopup(place, document) {
         }
         name.textContent = device.name;
         const status = document.createElement('span');
-        status.textContent = ` · ${device.type.toUpperCase()} · ${labels[device.status] || labels.unknown}`;
+        status.textContent = ` · ${device.type === 'wl35' ? '35' : '42'} · ${labels[device.status] || labels.unknown}`;
         item.append(name, status);
         list.append(item);
     }

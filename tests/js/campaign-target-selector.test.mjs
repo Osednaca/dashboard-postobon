@@ -8,6 +8,20 @@ const catalog = [
     { key: 'wl35:fan-none', name: 'Sin ciudad', type: 'wl35', city: '', group_id: null, group_name: null },
 ];
 
+test('displayed model labels change while original identities and user names remain intact', () => {
+    const selector = createCampaignTargetSelector([
+        { ...catalog[0], name: 'Z2 recepción' },
+        { ...catalog[1], name: 'WL35 entrada' },
+    ]);
+    assert.equal(selector.label('z2:AABB'), 'Z2 recepción · 42 · Bogotá');
+    assert.equal(selector.label('wl35:fan-cali'), 'WL35 entrada · 35 · Cali');
+    selector.toggle('z2:AABB');
+    selector.toggle('wl35:fan-cali');
+    assert.deepEqual(selector.selected, ['z2:AABB', 'wl35:fan-cali']);
+    assert.equal(selector.visible[0].type, 'z2');
+    assert.equal(selector.visible[1].type, 'wl35');
+});
+
 test('city and group filters preserve recipients from multiple cities without selecting others', () => {
     const selector = createCampaignTargetSelector(catalog);
     selector.city = 'Bogotá';

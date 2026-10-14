@@ -1,12 +1,12 @@
 @extends('layouts.app')
 
-@section('title', 'Nuevo dispositivo Z2')
+@section('title', 'Nuevo dispositivo 42')
 
 @section('content')
 <div class="mx-auto max-w-3xl space-y-6">
     <div>
         <a href="{{ route('devices.index') }}" class="text-sm font-medium text-primary hover:underline">← Dispositivos</a>
-        <h1 class="mt-3 text-2xl font-bold text-text">Nuevo dispositivo Z2</h1>
+        <h1 class="mt-3 text-2xl font-bold text-text">Nuevo dispositivo 42</h1>
         <p class="mt-1 text-sm text-text-light">Registra la identidad del equipo y asígnalo a un establecimiento existente.</p>
     </div>
 

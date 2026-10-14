@@ -359,7 +359,7 @@ class DeviceController extends Controller
             }
 
             return response()->json([
-                'message' => 'Error al formatear la tarjeta SD en la nube Z2.',
+                'message' => 'Error al formatear la tarjeta SD en la nube 42.',
             ], 500);
         } catch (\Exception $e) {
             return response()->json([
@@ -394,7 +394,7 @@ class DeviceController extends Controller
             }
 
             return response()->json([
-                'message' => 'Error al consultar los ajustes del dispositivo en la nube Z2.',
+                'message' => 'Error al consultar los ajustes del dispositivo en la nube 42.',
             ], 500);
         } catch (\Exception $e) {
             return response()->json([
@@ -433,7 +433,7 @@ class DeviceController extends Controller
             }
 
             return response()->json([
-                'message' => 'Error al actualizar el volumen en la nube Z2.',
+                'message' => 'Error al actualizar el volumen en la nube 42.',
             ], 500);
         } catch (\Exception $e) {
             return response()->json([

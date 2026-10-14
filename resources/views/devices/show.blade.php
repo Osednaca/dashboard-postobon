@@ -429,7 +429,7 @@
                 </div>
             </div>
             <p class="text-sm text-text-light mb-2">Se borrarán <strong>todos los videos almacenados</strong> en la tarjeta SD del dispositivo.</p>
-            <p class="text-xs text-text-muted mb-6"><strong>Nota:</strong> El dispositivo permanecerá vinculado a tu cuenta Z2 Cloud y podrás volver a asignarle videos en cualquier momento.</p>
+            <p class="text-xs text-text-muted mb-6"><strong>Nota:</strong> El dispositivo permanecerá vinculado a tu cuenta 42 Cloud y podrás volver a asignarle videos en cualquier momento.</p>
             <div class="flex justify-end gap-3">
                 <button @click="showFormatSdModal = false" class="px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-text hover:bg-surface transition-colors">Cancelar</button>
                 <form action="{{ route('devices.format-sd', $device) }}" method="POST" class="inline">
