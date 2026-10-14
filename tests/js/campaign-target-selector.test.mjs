@@ -58,3 +58,41 @@ test('devices without a city stay selectable and group options are unique', () =
     assert.match(selector.label('wl35:fan-none'), /Sin ciudad/);
     assert.deepEqual(selector.groups.map(group => group.id), ['1', '2']);
 });
+
+const audienceCatalog = [
+    { ...catalog[0], group_id: 1, business_type_id: 10, establishment_id: 100 },
+    { ...catalog[1], group_id: 1, business_type_id: 10, establishment_id: 100 },
+    { ...catalog[0], key: 'z2:OTHER-CITY', group_id: 2, business_type_id: 10, establishment_id: 101 },
+    { ...catalog[0], key: 'z2:EXITO-80', group_id: 1, business_type_id: 20, establishment_id: 200 },
+    { ...catalog[0], key: 'z2:EXITO-OTHER', group_id: 1, business_type_id: 20, establishment_id: 201 },
+    { ...catalog[2], group_id: 1, business_type_id: null, establishment_id: null },
+];
+
+test('structured preview intersects business type and group and deduplicates identities', () => {
+    const selector = createCampaignTargetSelector([...audienceCatalog, audienceCatalog[0]], [], {
+        mode: 'segment', businessTypes: [10], groups: [1],
+    });
+    assert.deepEqual(selector.recipients, ['z2:AABB', 'wl35:fan-cali']);
+    selector.businessTypes = ['10', '20'];
+    assert.deepEqual(selector.recipients, ['z2:AABB', 'wl35:fan-cali', 'z2:EXITO-80', 'z2:EXITO-OTHER']);
+    selector.segmentGroups = ['1', '2'];
+    assert.equal(selector.recipients.length, 5);
+    selector.segmentGroups = [];
+    selector.businessTypes = [];
+    assert.deepEqual(selector.recipients, []);
+});
+
+test('exact establishment preview ignores other criteria and excludes other same-type stores', () => {
+    const selector = createCampaignTargetSelector(audienceCatalog, ['wl35:fan-none'], {
+        mode: 'establishment', establishment: 200, businessTypes: [10], groups: [2],
+    });
+    assert.deepEqual(selector.recipients, ['z2:EXITO-80']);
+    selector.establishment = '999';
+    assert.deepEqual(selector.recipients, []);
+    selector.establishment = '';
+    assert.deepEqual(selector.recipients, []);
+    selector.mode = 'manual';
+    assert.deepEqual(selector.recipients, ['wl35:fan-none']);
+    selector.city = 'Bogotá';
+    assert.deepEqual(selector.recipients, ['wl35:fan-none']);
+});

@@ -11,6 +11,7 @@ use App\Services\Z2\Z2CampaignSyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class CampaignController extends Controller
 {
@@ -61,6 +62,8 @@ class CampaignController extends Controller
             $campaign = $this->campaignService->create($request->validated());
 
             return response()->json($campaign, 201);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Error al crear la campaña.',
@@ -96,6 +99,8 @@ class CampaignController extends Controller
             $updated = $this->campaignService->update($campaign->id, $request->validated());
 
             return response()->json($updated);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Error al actualizar la campaña.',

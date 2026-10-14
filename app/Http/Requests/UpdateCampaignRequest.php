@@ -47,6 +47,7 @@ class UpdateCampaignRequest extends FormRequest
 
     public function withValidator(Validator $validator): void
     {
+        $validator->after(fn (Validator $validator) => $this->validateCampaignAudience($validator));
         $validator->after(function (Validator $validator): void {
             if ($validator->errors()->has('start_date') || $validator->errors()->has('end_date')) {
                 return;

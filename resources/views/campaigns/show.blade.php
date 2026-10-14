@@ -114,6 +114,17 @@
                 {{-- Details --}}
                 <div x-show="tab === 'details'" x-transition class="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     <div class="space-y-4">
+                        @if(in_array($campaign->audience_mode, ['segment', 'establishment']))
+                            <div class="rounded-lg border border-border p-3 text-sm">
+                                <p class="font-medium text-text">{{ $campaign->audience_mode === 'segment' ? 'Audiencia por tipo de negocio y grupo' : 'Audiencia de un establecimiento' }}</p>
+                                @if($campaign->audience_mode === 'segment')
+                                    <p class="mt-1 text-text-muted">Tipos de negocio: {{ \App\Models\BusinessType::whereIn('id', $campaign->audience_business_type_ids ?? [])->pluck('name')->join(', ') ?: 'Todos' }}</p>
+                                @else
+                                    <p class="mt-1 text-text-muted">{{ \App\Models\Establishment::find($campaign->audience_establishment_id)?->name ?? 'Establecimiento no disponible' }}</p>
+                                @endif
+                                <p class="mt-2 text-xs text-text-muted">Destinatarios fijados al guardar. Edita y guarda la campaña para recalcular la audiencia con los criterios actuales.</p>
+                            </div>
+                        @endif
                         <div class="flex justify-between py-3 border-b border-border">
                             <span class="text-sm text-text-muted">Nombre</span>
                             <span class="text-sm font-medium text-text">{{ $campaign->name }}</span>

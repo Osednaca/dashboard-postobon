@@ -11,6 +11,7 @@ use App\Services\CampaignService;
 use App\Services\Z2\Z2CampaignSyncService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class CampaignController extends Controller
@@ -69,6 +70,8 @@ class CampaignController extends Controller
 
             return redirect()->route('campaigns.index')
                 ->with('success', 'Campaña creada exitosamente.');
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error('Error al crear campaña: '.$e->getMessage());
 
@@ -116,6 +119,8 @@ class CampaignController extends Controller
 
             return redirect()->route('campaigns.index')
                 ->with('success', 'Campaña actualizada exitosamente.');
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error('Error al actualizar campaña: '.$e->getMessage());
 
