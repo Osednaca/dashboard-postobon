@@ -19,6 +19,7 @@ use App\Services\Fleet\UnifiedFleetClient;
 use App\Services\Z2\Z2DeviceService;
 use App\Services\Z2\Z2PlaylistService;
 use App\Services\Z2\Z2VideoService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -530,7 +531,7 @@ class DeviceController extends Controller
     /**
      * Power on the device.
      */
-    public function powerOn(Device $device): RedirectResponse
+    public function powerOn(Device $device): JsonResponse|RedirectResponse
     {
         $this->authorize('update', $device);
 
@@ -543,7 +544,7 @@ class DeviceController extends Controller
             if (! $device->mac_address) {
                 Log::warning('[DeviceController] powerOn - no mac address');
 
-                return back()->with('error', 'El dispositivo no tiene una dirección MAC asignada.');
+                return $this->operatingCommandResponse(false, 'El dispositivo no tiene una dirección MAC asignada.');
             }
 
             Log::info('[DeviceController] Calling z2DeviceService->powerOn', ['mac' => $device->mac_address]);
@@ -551,27 +552,27 @@ class DeviceController extends Controller
             Log::info('[DeviceController] powerOn result', ['result' => $result ? 'true' : 'false']);
 
             if ($result) {
-                // Re-sync device to get updated status after command
-                Log::info('[DeviceController] Syncing devices after powerOn');
-                $this->z2DeviceService->syncDevices();
+                if (! request()->expectsJson()) {
+                    $this->z2DeviceService->syncDevices();
+                }
 
-                return back()->with('success', 'Comando de encendido enviado a la nube. El estado se actualizará en breve.');
+                return $this->operatingCommandResponse(true, 'Comando de encendido enviado a la nube. El estado se actualizará en breve.');
             }
 
             Log::warning('[DeviceController] powerOn failed - z2DeviceService returned false');
 
-            return back()->with('error', 'No se pudo enviar el comando de encendido al dispositivo.');
+            return $this->operatingCommandResponse(false, 'No se pudo enviar el comando de encendido al dispositivo.');
         } catch (\Exception $e) {
             Log::error('[DeviceController] Error al encender dispositivo: '.$e->getMessage());
 
-            return back()->with('error', 'Ocurrió un error al encender el dispositivo.');
+            return $this->operatingCommandResponse(false, 'Ocurrió un error al encender el dispositivo.');
         }
     }
 
     /**
      * Power off the device.
      */
-    public function powerOff(Device $device): RedirectResponse
+    public function powerOff(Device $device): JsonResponse|RedirectResponse
     {
         $this->authorize('update', $device);
 
@@ -584,7 +585,7 @@ class DeviceController extends Controller
             if (! $device->mac_address) {
                 Log::warning('[DeviceController] powerOff - no mac address');
 
-                return back()->with('error', 'El dispositivo no tiene una dirección MAC asignada.');
+                return $this->operatingCommandResponse(false, 'El dispositivo no tiene una dirección MAC asignada.');
             }
 
             Log::info('[DeviceController] Calling z2DeviceService->powerOff', ['mac' => $device->mac_address]);
@@ -592,77 +593,82 @@ class DeviceController extends Controller
             Log::info('[DeviceController] powerOff result', ['result' => $result ? 'true' : 'false']);
 
             if ($result) {
-                // Re-sync device to get updated status after command
-                Log::info('[DeviceController] Syncing devices after powerOff');
-                $this->z2DeviceService->syncDevices();
+                if (! request()->expectsJson()) {
+                    $this->z2DeviceService->syncDevices();
+                }
 
-                return back()->with('success', 'Comando de apagado enviado a la nube. El estado se actualizará en breve.');
+                return $this->operatingCommandResponse(true, 'Comando de apagado enviado a la nube. El estado se actualizará en breve.');
             }
 
             Log::warning('[DeviceController] powerOff failed - z2DeviceService returned false');
 
-            return back()->with('error', 'No se pudo enviar el comando de apagado al dispositivo.');
+            return $this->operatingCommandResponse(false, 'No se pudo enviar el comando de apagado al dispositivo.');
         } catch (\Exception $e) {
             Log::error('[DeviceController] Error al apagar dispositivo: '.$e->getMessage());
 
-            return back()->with('error', 'Ocurrió un error al apagar el dispositivo.');
+            return $this->operatingCommandResponse(false, 'Ocurrió un error al apagar el dispositivo.');
         }
     }
 
     /**
      * Turn the device's Bluetooth on.
      */
-    public function bluetoothOn(Device $device): RedirectResponse
+    public function bluetoothOn(Device $device): JsonResponse|RedirectResponse
     {
         $this->authorize('update', $device);
 
         try {
             if (! $device->mac_address) {
-                return back()->with('error', 'El dispositivo no tiene una dirección MAC asignada.');
+                return $this->operatingCommandResponse(false, 'El dispositivo no tiene una dirección MAC asignada.');
             }
 
             $response = $this->z2DeviceService->bluetoothOn($device->mac_address);
 
             if ($response && ($response['result'] ?? -1) === 0) {
-                $device->update(['bluetooth_status' => 'on']);
-
-                return back()->with('success', 'Comando de Bluetooth enviado. El estado se actualizará en breve.');
+                return $this->operatingCommandResponse(true, 'Comando de Bluetooth enviado. El estado se actualizará en breve.');
             }
 
-            return back()->with('error', 'No se pudo enviar el comando de Bluetooth al dispositivo. '.$this->z2ErrorDetail($response));
+            return $this->operatingCommandResponse(false, 'No se pudo enviar el comando de Bluetooth al dispositivo. '.$this->z2ErrorDetail($response));
         } catch (\Exception $e) {
             Log::error('[DeviceController] Error al activar Bluetooth: '.$e->getMessage());
 
-            return back()->with('error', 'Ocurrió un error al activar el Bluetooth del dispositivo.');
+            return $this->operatingCommandResponse(false, 'Ocurrió un error al activar el Bluetooth del dispositivo.');
         }
     }
 
     /**
      * Turn the device's Bluetooth off.
      */
-    public function bluetoothOff(Device $device): RedirectResponse
+    public function bluetoothOff(Device $device): JsonResponse|RedirectResponse
     {
         $this->authorize('update', $device);
 
         try {
             if (! $device->mac_address) {
-                return back()->with('error', 'El dispositivo no tiene una dirección MAC asignada.');
+                return $this->operatingCommandResponse(false, 'El dispositivo no tiene una dirección MAC asignada.');
             }
 
             $response = $this->z2DeviceService->bluetoothOff($device->mac_address);
 
             if ($response && ($response['result'] ?? -1) === 0) {
-                $device->update(['bluetooth_status' => 'off']);
-
-                return back()->with('success', 'Comando de Bluetooth enviado. El estado se actualizará en breve.');
+                return $this->operatingCommandResponse(true, 'Comando de Bluetooth enviado. El estado se actualizará en breve.');
             }
 
-            return back()->with('error', 'No se pudo enviar el comando de Bluetooth al dispositivo. '.$this->z2ErrorDetail($response));
+            return $this->operatingCommandResponse(false, 'No se pudo enviar el comando de Bluetooth al dispositivo. '.$this->z2ErrorDetail($response));
         } catch (\Exception $e) {
             Log::error('[DeviceController] Error al desactivar Bluetooth: '.$e->getMessage());
 
-            return back()->with('error', 'Ocurrió un error al desactivar el Bluetooth del dispositivo.');
+            return $this->operatingCommandResponse(false, 'Ocurrió un error al desactivar el Bluetooth del dispositivo.');
         }
+    }
+
+    private function operatingCommandResponse(bool $success, string $message): JsonResponse|RedirectResponse
+    {
+        if (request()->expectsJson()) {
+            return response()->json(['success' => $success, 'message' => $message], $success ? 202 : 502);
+        }
+
+        return back()->with($success ? 'success' : 'error', $message);
     }
 
     /**

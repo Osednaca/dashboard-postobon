@@ -22,14 +22,17 @@
 
 <div
     x-data="{
+        ...deviceLive([{ key: {{ Js::from($fleetKey) }}, type: 'wl35', status: 'unavailable', online: null, connected: null, powered: null, bluetooth: null, sessionReady: null, uploading: null, videoCount: null }]),
         showFormatModal: false,
         showDeleteModal: false,
         deleteIndex: null,
         volume: {{ $volume }},
         submitting: false
     }"
+    @device-snapshot="applySnapshot($event.detail)"
     class="space-y-6"
 >
+    <x-device-live-feedback />
     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
             <nav class="mb-2 flex items-center gap-2 text-xs text-text-muted" aria-label="Ruta de navegación">
@@ -40,40 +43,40 @@
             <div class="flex flex-wrap items-center gap-3">
                 <h1 class="text-2xl font-bold text-text">{{ $displayName }}</h1>
                 <span class="rounded-md bg-sky-100 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-sky-700">WL35</span>
-                <span class="rounded-full px-2.5 py-1 text-xs font-semibold {{ $statusClass }}">{{ $statusLabel }}</span>
+                <x-device-live-status row="rows[0]" />
             </div>
             <p class="mt-1 font-mono text-xs text-text-muted">{{ $deviceId }}</p>
         </div>
 
         <div class="flex flex-wrap gap-2">
-            <form action="{{ route('fleet.command') }}" method="POST">
+            <form action="{{ route('fleet.command') }}" method="POST" @submit.prevent="sendDeviceCommand($event.currentTarget, $event.submitter)">
                 @csrf
                 <input type="hidden" name="command" value="power">
                 <input type="hidden" name="targets[]" value="{{ $fleetKey }}">
-                <button name="value" value="1" @disabled(!$online || $powered)
+                <button name="value" value="1" :disabled="!canControl(rows[0]) || rows[0].powered === true"
                     class="inline-flex items-center gap-2 rounded-lg border border-success/30 bg-success/5 px-3.5 py-2.5 text-sm font-semibold text-success transition hover:bg-success/10 disabled:cursor-not-allowed disabled:opacity-40">
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                     Encender
                 </button>
             </form>
-            <form action="{{ route('fleet.command') }}" method="POST">
+            <form action="{{ route('fleet.command') }}" method="POST" @submit.prevent="sendDeviceCommand($event.currentTarget, $event.submitter)">
                 @csrf
                 <input type="hidden" name="command" value="power">
                 <input type="hidden" name="targets[]" value="{{ $fleetKey }}">
-                <button name="value" value="0" @disabled(!$online || !$powered)
+                <button name="value" value="0" :disabled="!canControl(rows[0]) || rows[0].powered === false"
                     class="inline-flex items-center gap-2 rounded-lg border border-danger/25 bg-danger/5 px-3.5 py-2.5 text-sm font-semibold text-danger transition hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-40">
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
                     Apagar
                 </button>
             </form>
-            <form action="{{ route('fleet.command') }}" method="POST">
+            <form action="{{ route('fleet.command') }}" method="POST" @submit.prevent="sendDeviceCommand($event.currentTarget, $event.submitter)">
                 @csrf
                 <input type="hidden" name="command" value="bluetooth">
                 <input type="hidden" name="targets[]" value="{{ $fleetKey }}">
-                <button name="value" value="{{ $bluetooth ? 0 : 1 }}" @disabled(!$online || !$sessionReady || $uploading)
-                    class="inline-flex items-center gap-2 rounded-lg border border-primary/25 px-3.5 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 {{ $bluetooth ? 'bg-primary text-white' : 'bg-white text-primary hover:bg-primary/5' }}">
+                <button name="value" :value="rows[0].bluetooth ? 0 : 1" :disabled="!canControl(rows[0], 'bluetooth')"
+                    class="inline-flex items-center gap-2 rounded-lg border border-primary/25 px-3.5 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 " :class="rows[0].bluetooth ? 'bg-primary text-white' : 'bg-white text-primary hover:bg-primary/5'">
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6.5 7.5L12 12l-5.5 4.5V7.5zM17.5 7.5L12 12l5.5 4.5V7.5zM12 12v6"/></svg>
-                    Bluetooth {{ $bluetooth ? 'OFF' : 'ON' }}
+                    <span x-text="rows[0].bluetooth ? 'Apagar Bluetooth' : 'Encender Bluetooth'"></span>
                 </button>
             </form>
         </div>
@@ -101,32 +104,34 @@
     <div class="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(21rem,0.8fr)]">
         <div class="space-y-6">
             <x-device-previews :device-key="$fleetKey" title="Contenido actual" />
+            @can('viewAny', App\Models\Campaign::class)
             <section class="rounded-xl border border-border bg-white p-5 sm:p-6">
                 <h2 class="mb-4 text-lg font-semibold text-text">Campañas Asignadas</h2>
                 <x-device-target-campaigns :target-key="$fleetKey" />
             </section>
+            @endcan
             <section class="rounded-xl border border-border bg-white p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] sm:p-6">
                 <div class="flex flex-wrap items-center justify-between gap-3">
                     <div>
                         <h2 class="text-lg font-semibold text-text">Estado del dispositivo</h2>
                         <p class="mt-1 text-sm text-text-light">Telemetría reportada por el agente WL35.</p>
                     </div>
-                    <a href="{{ route('devices.wl35.show', ['deviceId' => $deviceId]) }}" class="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-text-light transition hover:bg-surface">
+                    <button type="button" @click="$dispatch('refresh-devices')" class="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-text-light transition hover:bg-surface">
                         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                         Actualizar estado
-                    </a>
+                    </button>
                 </div>
 
                 <dl class="mt-5 grid gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-3">
                     <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Dirección IP</dt><dd class="mt-1 font-mono text-sm font-semibold text-text">{{ $device['ip'] ?? '—' }}</dd></div>
                     <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Firmware</dt><dd class="mt-1 truncate font-mono text-xs font-semibold text-text" title="{{ $device['firmware_version'] ?? '' }}">{{ $device['firmware_version'] ?? '—' }}</dd></div>
-                    <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Último reporte</dt><dd class="mt-1 text-sm font-semibold text-text">{{ $lastSeen }}</dd></div>
-                    <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Energía</dt><dd class="mt-1 text-sm font-semibold {{ $powered ? 'text-success' : 'text-text-light' }}">{{ $powered ? 'Encendido' : 'Apagado' }}</dd></div>
-                    <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Bluetooth</dt><dd class="mt-1 text-sm font-semibold {{ $bluetooth ? 'text-primary' : 'text-text-light' }}">{{ $bluetooth ? 'Activo' : 'Inactivo' }}</dd></div>
-                    <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Sesión con el fan</dt><dd class="mt-1 text-sm font-semibold {{ $sessionReady ? 'text-success' : 'text-warning' }}">{{ $sessionReady ? 'Lista' : 'No disponible' }}</dd></div>
+                    <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Último reporte</dt><dd x-text="rows[0].lastSeen" class="mt-1 text-sm font-semibold text-text">{{ $lastSeen }}</dd></div>
+                    <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Energía</dt><dd x-text="rows[0].powered === null ? 'Sin confirmar' : (rows[0].powered ? 'Encendido' : 'Apagado')" class="mt-1 text-sm font-semibold {{ $powered ? 'text-success' : 'text-text-light' }}">{{ $powered ? 'Encendido' : 'Apagado' }}</dd></div>
+                    <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Bluetooth</dt><dd x-text="rows[0].bluetooth === null ? 'Sin confirmar' : (rows[0].bluetooth ? 'Activo' : 'Inactivo')" class="mt-1 text-sm font-semibold {{ $bluetooth ? 'text-primary' : 'text-text-light' }}">{{ $bluetooth ? 'Activo' : 'Inactivo' }}</dd></div>
+                    <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Sesión con el fan</dt><dd x-text="rows[0].sessionReady === true ? 'Lista' : 'No disponible'" class="mt-1 text-sm font-semibold {{ $sessionReady ? 'text-success' : 'text-warning' }}">{{ $sessionReady ? 'Lista' : 'No disponible' }}</dd></div>
                     <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Video actual</dt><dd class="mt-1 break-words text-sm font-semibold text-text">{{ $currentVideo !== null ? ($videoNames->get((int) $currentVideo) ?? 'Nombre de archivo no identificado').' · índice '.$currentVideo : '—' }}</dd></div>
-                    <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Videos en SD</dt><dd class="mt-1 text-sm font-semibold tabular-nums text-text">{{ $videoCount }}</dd></div>
-                    <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Transferencia</dt><dd class="mt-1 text-sm font-semibold {{ $uploading ? 'text-warning' : 'text-text' }}">{{ $uploading ? 'En curso' : 'Disponible' }}</dd></div>
+                    <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Videos en SD</dt><dd x-text="rows[0].videoCount ?? 'Sin confirmar'" class="mt-1 text-sm font-semibold tabular-nums text-text">{{ $videoCount }}</dd></div>
+                    <div class="bg-white p-4"><dt class="text-xs font-medium text-text-muted">Transferencia</dt><dd x-text="rows[0].uploading === null ? 'Sin confirmar' : (rows[0].uploading ? 'En curso' : 'Disponible')" class="mt-1 text-sm font-semibold {{ $uploading ? 'text-warning' : 'text-text' }}">{{ $uploading ? 'En curso' : 'Disponible' }}</dd></div>
                 </dl>
             </section>
 
@@ -146,7 +151,7 @@
                         <div class="mt-4 flex gap-2">
                             <input id="wl35_video_index" name="wl35_video_index" type="number" min="1" max="{{ max(1, $videoCount) }}" value="{{ min(max(1, (int) ($currentVideo ?? 1)), max(1, $videoCount)) }}" required
                                 class="min-w-0 flex-1 rounded-lg border border-border bg-white px-3 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
-                            <button @disabled(!$online || !$sessionReady || $uploading || $videoCount === 0) class="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40">Reproducir</button>
+                            <button :disabled="!canControl(rows[0]) || !rows[0].videoCount" class="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40">Reproducir</button>
                         </div>
                     </form>
 
@@ -156,9 +161,9 @@
                             <label for="volume" class="text-sm font-semibold text-text">Volumen</label>
                             <output for="volume" class="rounded-md bg-white px-2.5 py-1 font-mono text-sm font-bold text-primary" x-text="volume"></output>
                         </div>
-                        <input id="volume" name="volume" type="range" min="1" max="10" step="1" x-model="volume" class="mt-5 w-full accent-primary" @disabled(!$online || !$sessionReady || $uploading)>
+                        <input id="volume" name="volume" type="range" min="1" max="10" step="1" x-model="volume" class="mt-5 w-full accent-primary" :disabled="!canControl(rows[0])">
                         <div class="mt-1 flex justify-between text-[10px] text-text-muted" aria-hidden="true"><span>1</span><span>5</span><span>10</span></div>
-                        <button @disabled(!$online || !$sessionReady || $uploading) class="mt-4 w-full rounded-lg border border-primary/25 bg-white px-4 py-2.5 text-sm font-semibold text-primary transition hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-40">Aplicar volumen</button>
+                        <button :disabled="!canControl(rows[0])" class="mt-4 w-full rounded-lg border border-primary/25 bg-white px-4 py-2.5 text-sm font-semibold text-primary transition hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-40">Aplicar volumen</button>
                     </form>
                 </div>
 
@@ -181,7 +186,7 @@
                                 <option value="{{ $mediaItem->id }}" @selected((string) old('media_id') === (string) $mediaItem->id)>{{ $mediaItem->original_name ?: $mediaItem->name }}</option>
                             @endforeach
                         </select>
-                        <button @disabled(!$online || !$sessionReady || $uploading) class="rounded-lg bg-secondary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-secondary/90 disabled:cursor-not-allowed disabled:opacity-40">Subir y distribuir</button>
+                        <button :disabled="!canControl(rows[0])" class="rounded-lg bg-secondary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-secondary/90 disabled:cursor-not-allowed disabled:opacity-40">Subir y distribuir</button>
                     </div>
                 </form>
             </section>
@@ -192,7 +197,7 @@
                         <h2 class="text-lg font-semibold text-text">Videos en la tarjeta SD</h2>
                         <p class="mt-1 text-sm text-text-light">Reproduce o elimina un archivo individual por su índice.</p>
                     </div>
-                    <button type="button" @click="showFormatModal = true" @disabled(!$online || !$sessionReady || $uploading || $videoCount === 0)
+                    <button type="button" @click="showFormatModal = true" :disabled="!canControl(rows[0]) || !rows[0].videoCount"
                         class="inline-flex items-center gap-2 rounded-lg border border-danger/25 px-3 py-2 text-xs font-semibold text-danger transition hover:bg-danger/5 disabled:cursor-not-allowed disabled:opacity-40">
                         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 7h14M9 11v6m6-6v6M8 7l1-3h6l1 3m1 0-1 13H8L7 7"/></svg>
                         Formatear SD
@@ -213,16 +218,16 @@
                                     </div>
                                 </div>
                                 <div class="flex shrink-0 items-center gap-1">
-                                    <form action="{{ route('fleet.command') }}" method="POST">
+                                    <form action="{{ route('fleet.command') }}" method="POST" @submit.prevent="sendDeviceCommand($event.currentTarget, $event.submitter)">
                                         @csrf
                                         <input type="hidden" name="command" value="play">
                                         <input type="hidden" name="targets[]" value="{{ $fleetKey }}">
                                         <input type="hidden" name="wl35_video_index" value="{{ $index }}">
-                                        <button @disabled(!$online || !$sessionReady || $uploading) class="rounded-lg p-2 text-text-light transition hover:bg-primary/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40" title="Reproducir video {{ $index }}" aria-label="Reproducir video {{ $index }}">
+                                        <button :disabled="!canControl(rows[0])" class="rounded-lg p-2 text-text-light transition hover:bg-primary/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40" title="Reproducir video {{ $index }}" aria-label="Reproducir video {{ $index }}">
                                             <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
                                         </button>
                                     </form>
-                                    <button type="button" @click="deleteIndex = {{ $index }}; showDeleteModal = true" @disabled(!$online || !$sessionReady || $uploading)
+                                    <button type="button" @click="deleteIndex = {{ $index }}; showDeleteModal = true" :disabled="!canControl(rows[0])"
                                         class="rounded-lg p-2 text-text-light transition hover:bg-danger/10 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40" title="Eliminar video {{ $index }}" aria-label="Eliminar video {{ $index }}">
                                         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                                     </button>

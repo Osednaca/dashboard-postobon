@@ -30,7 +30,7 @@
             'lastSeen' => $device->last_heartbeat_at?->diffForHumans() ?? 'Sin reporte',
             'detailsUrl' => route('devices.show', $device), 'editUrl' => route('devices.edit', $device),
             'powerOnUrl' => route('devices.power-on', $device), 'powerOffUrl' => route('devices.power-off', $device),
-            'bluetoothUrl' => route($device->bluetooth_status === 'on' ? 'devices.bluetooth-off' : 'devices.bluetooth-on', $device),
+            'bluetoothOnUrl' => route('devices.bluetooth-on', $device), 'bluetoothOffUrl' => route('devices.bluetooth-off', $device),
         ];
     })->concat($wl35Devices->map(function ($device) {
         $online = (bool) (($device['online'] ?? false) && ($device['connected'] ?? false));
@@ -45,9 +45,10 @@
             'address' => $device['profile_address'] ?? 'Sin dirección', 'content' => $device['current_video'] ?? null,
             'lastSeen' => isset($device['last_seen']) ? \Illuminate\Support\Carbon::parse($device['last_seen'])->diffForHumans() : 'Sin reporte',
             'detailsUrl' => route('devices.wl35.show', ['deviceId' => $device['id']]), 'editUrl' => null,
-            'powerOnUrl' => route('fleet.command'), 'powerOffUrl' => route('fleet.command'), 'bluetoothUrl' => route('fleet.command'),
+            'powerOnUrl' => route('fleet.command'), 'powerOffUrl' => route('fleet.command'), 'bluetoothOnUrl' => route('fleet.command'), 'bluetoothOffUrl' => route('fleet.command'),
         ];
     }))->map(function ($row) {
+        $row = array_merge($row, ['status' => 'unavailable', 'online' => null, 'connected' => null, 'powered' => null, 'bluetooth' => null, 'sessionReady' => null, 'uploading' => null]);
         $row['searchable'] = implode(' ', [$row['name'], $row['identifier'], $row['ip'] ?? '', $row['establishment'], $row['address']]);
         return $row;
     })->values();
@@ -183,6 +184,7 @@
 
             if (payload.status === 'completed' || payload.status === 'failed') {
                 this.stopFleetUploadPolling();
+                this.$dispatch('refresh-devices');
             }
         } catch (_) {
             this.fleetUpload.error = 'No se pudo actualizar el progreso. El trabajo continúa en el servidor; se intentará consultar nuevamente.';
@@ -340,7 +342,7 @@
             if (payload.started_at && this.fleetFormat.elapsed === 0) {
                 this.fleetFormat.elapsed = Math.max(0, Math.floor((Date.now() - new Date(payload.started_at).getTime()) / 1000));
             }
-            if (['completed', 'failed'].includes(payload.status)) this.stopFleetFormatPolling();
+            if (['completed', 'failed'].includes(payload.status)) { this.stopFleetFormatPolling(); this.$dispatch('refresh-devices'); }
         } catch (_) {
             this.fleetFormat.error = 'No se pudo actualizar el progreso. El formateo continúa en el servidor y se consultará nuevamente.';
         }
@@ -419,19 +421,20 @@
         document.getElementById('bulk-operation-location').value = this.bulkLocationId;
         document.getElementById('bulk-operation-form').submit();
     },
-    submitFleet(command, value) {
+    async submitFleet(command, value) {
         if (!this.selectedFleetKeys.length || this.fleetSubmitting) return;
         const form = this.$refs.fleetCommand;
         form.querySelector('[name=command]').value = command;
         form.querySelector('[name=value]').value = value;
-        this.fleetSubmitting = true;
-        form.submit();
+        await this.sendDeviceCommand(form);
     }
-}" class="device-list space-y-5" @keydown="dialogKeydown($event)">
+}" class="device-list space-y-5" @keydown="dialogKeydown($event)" @device-snapshot="applySnapshot($event.detail)">
+    <x-device-live-feedback />
+    <div x-data="devicePreviews(@js(route('devices.previews')))" @refresh-devices.window="refresh(true)" hidden></div>
     <header class="device-list-heading">
         <div><h1 class="text-2xl font-bold tracking-tight text-text">Dispositivos</h1><p class="mt-1 text-sm text-text-light">Administra tus dispositivos Z2 y WL35 desde un solo lugar.</p></div>
         <div class="device-list-header-actions">
-            <a href="{{ route('devices.index') }}" class="device-list-button"><x-device-action-icon name="refresh" />Actualizar</a>
+            <button type="button" @click="$dispatch('refresh-devices')" class="device-list-button"><x-device-action-icon name="refresh" />Actualizar</button>
             <a href="{{ route('devices.create') }}" class="device-list-button device-list-button-primary"><x-device-action-icon name="plus" />Nuevo dispositivo <span class="sr-only">Z2</span></a>
         </div>
     </header>
@@ -478,7 +481,7 @@
                 <option value="">Todos los tipos</option><option value="z2">Z2</option><option value="wl35">WL35</option>
             </select>
             <select x-model="statusFilter" aria-label="Estado" class="min-w-0 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
-                <option value="">Todos los estados</option><option value="online">En línea</option><option value="powered_off">Apagados</option><option value="offline">Fuera de línea</option>
+                <option value="">Todos los estados</option><option value="online">En línea</option><option value="powered_off">Apagados</option><option value="offline">Fuera de línea</option><option value="unknown">Energía sin confirmar</option><option value="unavailable">Estado no disponible</option>
             </select>
             <select x-model="establishmentFilter" aria-label="Establecimiento" class="min-w-0 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
                 <option value="">Todos los establecimientos</option>
@@ -488,10 +491,10 @@
 
         <div x-show="selectedFleetKeys.length > 0" x-transition class="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4">
             <div class="mr-2 flex items-center gap-2"><span class="flex h-8 min-w-8 items-center justify-center rounded-lg bg-primary/10 px-2 text-sm font-bold text-primary" x-text="selectedFleetKeys.length"></span><span class="text-xs font-semibold text-text-light">seleccionados</span></div>
-            <button type="button" @click="submitFleet('power', '1')" :disabled="fleetSubmitting" class="rounded-lg bg-success px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Encender</button>
-            <button type="button" @click="submitFleet('power', '0')" :disabled="fleetSubmitting" class="rounded-lg bg-danger px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Apagar</button>
-            <button type="button" @click="submitFleet('bluetooth', '1')" :disabled="fleetSubmitting" class="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs font-semibold text-primary disabled:opacity-50">Encender Bluetooth</button>
-            <button type="button" @click="submitFleet('bluetooth', '0')" :disabled="fleetSubmitting" class="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-text-light disabled:opacity-50">Apagar Bluetooth</button>
+            <button type="button" @click="submitFleet('power', '1')" :disabled="fleetSubmitting || commandBusy" class="rounded-lg bg-success px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Encender</button>
+            <button type="button" @click="submitFleet('power', '0')" :disabled="fleetSubmitting || commandBusy" class="rounded-lg bg-danger px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Apagar</button>
+            <button type="button" @click="submitFleet('bluetooth', '1')" :disabled="fleetSubmitting || commandBusy" class="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs font-semibold text-primary disabled:opacity-50">Encender Bluetooth</button>
+            <button type="button" @click="submitFleet('bluetooth', '0')" :disabled="fleetSubmitting || commandBusy" class="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-text-light disabled:opacity-50">Apagar Bluetooth</button>
             <button type="button" @click="openPlayback()" class="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white">Reproducir</button>
             <button type="button" @click="openFleetUpload()" class="rounded-lg bg-secondary px-3 py-2 text-xs font-semibold text-white">Subir video</button>
             <button type="button" @click="openFleetFormat()" class="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-xs font-semibold text-danger transition hover:bg-danger/10">Formatear SD</button>
@@ -550,7 +553,7 @@
                             </select>
                         </label>
                     </div>
-                    <button :disabled="fleetSubmitting" class="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">Reproducir almacenado</button>
+                    <button :disabled="fleetSubmitting || commandBusy" class="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">Reproducir almacenado</button>
                 </form>
             </details>
             <div class="mt-5 flex justify-end"><button type="button" @click="showFleetPlayModal=false" class="rounded-lg border border-border px-4 py-2.5 text-sm">Cerrar</button></div>
