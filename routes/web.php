@@ -89,7 +89,8 @@ Route::middleware(['auth', 'role:superadmin,admin,tecnico,campanas'])->group(fun
     Route::post('devices/{device}/set-volume', [DeviceController::class, 'setVolume'])->name('devices.set-volume')->middleware('role:superadmin');
 
     Route::resource('groups', GroupController::class)->only(['create', 'store'])->middleware('role:superadmin,admin,campanas');
-    Route::resource('groups', GroupController::class)->except(['create', 'store'])->middleware('role:superadmin,admin');
+    Route::resource('groups', GroupController::class)->only(['edit', 'update', 'destroy'])->middleware('role:superadmin,admin');
+    Route::resource('groups', GroupController::class)->only(['index', 'show'])->middleware('role:superadmin,admin,campanas');
     Route::post('groups/{group}/power-on', [GroupController::class, 'powerOnGroup'])->name('groups.power-on')->middleware('role:superadmin,admin');
     Route::post('groups/{group}/power-off', [GroupController::class, 'powerOffGroup'])->name('groups.power-off')->middleware('role:superadmin,admin');
     Route::post('groups/{group}/change-content', [GroupController::class, 'changeContent'])->name('groups.change-content')->middleware('role:superadmin,admin');

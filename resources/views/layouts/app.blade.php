@@ -64,9 +64,6 @@
                             'users.index', 'audit.index', 'analytics.index', 'notifications.index' => $user->isSuperadmin(),
                             default => $user->managesOperations(),
                         };
-                        if ($item['route'] === 'groups.index' && ! $user->managesGroups()) {
-                            $item['route'] = 'groups.create';
-                        }
                         $isActive = request()->routeIs(explode('.', $item['route'])[0].'.*');
                     @endphp
                     @continue(! $allowed)

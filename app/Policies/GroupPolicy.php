@@ -9,12 +9,12 @@ class GroupPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->managesGroups();
+        return $user->createsGroups();
     }
 
     public function view(User $user, Group $group): bool
     {
-        return $user->managesGroups();
+        return $user->createsGroups();
     }
 
     public function create(User $user): bool

@@ -6,12 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\BulkGroupOperationRequest;
 use App\Http\Requests\StoreGroupRequest;
 use App\Http\Requests\UpdateGroupRequest;
+use App\Models\BusinessType;
 use App\Models\Campaign;
 use App\Models\Group;
+use App\Services\GroupCreationService;
 use App\Services\GroupService;
 use App\Services\Z2\Z2GroupService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class GroupController extends Controller
@@ -23,7 +26,7 @@ class GroupController extends Controller
     /**
      * GroupController constructor.
      */
-    public function __construct(GroupService $groupService, Z2GroupService $z2GroupService)
+    public function __construct(GroupService $groupService, Z2GroupService $z2GroupService, private readonly GroupCreationService $groupCreation)
     {
         $this->groupService = $groupService;
         $this->z2GroupService = $z2GroupService;
@@ -37,7 +40,7 @@ class GroupController extends Controller
         $this->authorize('viewAny', Group::class);
 
         try {
-            $groups = Group::paginate(15);
+            $groups = Group::with('businessType')->withCount(['devices', 'wl35Devices'])->paginate(15);
 
             return view('groups.index', compact('groups'));
         } catch (\Exception $e) {
@@ -55,7 +58,10 @@ class GroupController extends Controller
     {
         $this->authorize('create', Group::class);
 
-        return view('groups.create');
+        return view('groups.create', [
+            'businessTypes' => BusinessType::orderBy('name')->get(),
+            'groupDevices' => $this->groupCreation->devices(),
+        ]);
     }
 
     /**
@@ -66,18 +72,20 @@ class GroupController extends Controller
         $this->authorize('create', Group::class);
 
         try {
-            $group = $this->z2GroupService->createGroup($request->validated()['name']);
+            $group = $this->groupCreation->create($request->validated(), $request->user()->id);
 
             if ($group) {
-                return redirect()->route($request->user()->managesGroups() ? 'groups.index' : 'campaigns.index')
+                return redirect()->route('groups.show', $group)
                     ->with('success', 'Grupo creado exitosamente.');
             }
 
             return back()->with('error', 'Ocurrió un error al crear el grupo en la nube.');
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error('Error al crear grupo: '.$e->getMessage());
 
-            return back()->with('error', 'Ocurrió un error al crear el grupo. Por favor intente nuevamente.');
+            return back()->withInput()->with('error', 'Ocurrió un error al crear el grupo. Por favor intente nuevamente.');
         }
     }
 
@@ -89,6 +97,8 @@ class GroupController extends Controller
         $this->authorize('view', $group);
 
         try {
+            $group->load(['businessType', 'devices.establishmentProfile.businessType', 'wl35Devices.establishmentProfile.businessType']);
+
             return view('groups.show', compact('group'));
         } catch (\Exception $e) {
             Log::error('Error al mostrar grupo: '.$e->getMessage());
@@ -157,7 +167,7 @@ class GroupController extends Controller
 
         try {
             if ($this->z2GroupService->powerOnGroup($group->id)) {
-                return back()->with('success', 'Todos los dispositivos del grupo han sido encendidos.');
+                return back()->with('success', 'Los equipos 42 del grupo han sido encendidos.');
             }
 
             return back()->with('error', 'Ocurrió un error al encender los dispositivos del grupo en la nube.');
@@ -177,7 +187,7 @@ class GroupController extends Controller
 
         try {
             if ($this->z2GroupService->powerOffGroup($group->id)) {
-                return back()->with('success', 'Todos los dispositivos del grupo han sido apagados.');
+                return back()->with('success', 'Los equipos 42 del grupo han sido apagados.');
             }
 
             return back()->with('error', 'Ocurrió un error al apagar los dispositivos del grupo en la nube.');
@@ -212,7 +222,7 @@ class GroupController extends Controller
             }
 
             if ($this->z2GroupService->changeGroupContent($group->id, $media->file_path)) {
-                return back()->with('success', 'Contenido cambiado para todos los dispositivos del grupo.');
+                return back()->with('success', 'Contenido cambiado para los equipos 42 del grupo.');
             }
 
             return back()->with('error', 'Ocurrió un error al cambiar el contenido del grupo en la nube.');
@@ -247,7 +257,7 @@ class GroupController extends Controller
             }
 
             if ($this->z2GroupService->changeGroupContent($group->id, $media->file_path)) {
-                return back()->with('success', 'Campaña publicada en todos los dispositivos del grupo.');
+                return back()->with('success', 'Campaña publicada en los equipos 42 del grupo.');
             }
 
             return back()->with('error', 'Ocurrió un error al publicar la campaña en el grupo en la nube.');

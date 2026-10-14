@@ -68,7 +68,7 @@ Required `.env` variables:
 
 - **superadmin**: Full access and management of all user accounts.
 - **admin**: Dashboard, campaigns, reproduction, schedules, groups and media. No devices, users, audit, notifications, analytics or establishments modules.
-- **campanas** (Campañas): Admin operations with read-only device information and group creation only. No group list/detail/edit/delete/control.
+- **campanas** (Campañas): Admin operations with read-only device information and group list/detail/creation, including initial membership of existing devices. No group edit/delete/control.
 - **tecnico**: Establishments and read-only device information. May link existing devices to an establishment through the dedicated assignment endpoint, accepting only establishment_id; cannot register, configure or control devices.
 - The role migration preserves accounts: existing `admin` becomes `superadmin`, and `operator` becomes `tecnico`. Subscriptions and locations are retired; establishments and historical records remain.
 - The later Campañas migration adds the role without remapping existing accounts; rollback maps Campañas to admin and preserves accounts. Only superadmin manages users. Technician login lands in establishments.

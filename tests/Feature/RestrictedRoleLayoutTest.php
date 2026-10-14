@@ -82,7 +82,7 @@ class RestrictedRoleLayoutTest extends TestCase
         Http::assertNotSent(fn ($request) => $request->method() !== 'GET');
     }
 
-    public function test_navigation_hides_removed_modules_and_campaigns_groups_link_opens_creation(): void
+    public function test_navigation_hides_removed_modules_and_campaigns_groups_link_opens_list(): void
     {
         foreach (['admin', 'tecnico', 'campanas'] as $role) {
             $this->actingAs(User::factory()->create(['role' => $role]));
@@ -101,8 +101,7 @@ class RestrictedRoleLayoutTest extends TestCase
                     $this->assertStringNotContainsString('href="'.route('establishments.index').'"', $html);
                     $this->assertStringContainsString('href="'.route('campaigns.index').'"', $html);
                     if ($role === 'campanas') {
-                        $this->assertStringContainsString('href="'.route('groups.create').'"', $html);
-                        $this->assertStringNotContainsString('href="'.route('groups.index').'"', $html);
+                        $this->assertStringContainsString('href="'.route('groups.index').'"', $html);
                     } else {
                         $this->assertStringNotContainsString('href="'.route('devices.index').'"', $html);
                     }

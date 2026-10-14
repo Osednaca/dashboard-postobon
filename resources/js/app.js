@@ -9,6 +9,7 @@ import { setupPwa } from './pwa';
 import { setupDashboardMap } from './dashboard-map';
 import { createCampaignMediaSelector } from './campaign-media-selector';
 import { createCampaignTargetSelector } from './campaign-target-selector';
+import { createGroupDeviceSelector } from './group-device-selector';
 
 window.Alpine = Alpine;
 Alpine.data('devicePreviews', createDevicePreviews);
@@ -19,6 +20,7 @@ Alpine.data('deviceList', createDeviceList);
 Alpine.data('deviceLive', createDeviceLive);
 Alpine.data('campaignMediaSelector', createCampaignMediaSelector);
 Alpine.data('campaignTargetSelector', createCampaignTargetSelector);
+Alpine.data('groupDeviceSelector', createGroupDeviceSelector);
 Alpine.store('mediaDurations', createMediaDurationStore());
 
 Alpine.start();

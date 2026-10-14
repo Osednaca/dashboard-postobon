@@ -8,7 +8,6 @@ use App\Models\Group;
 use App\Models\User;
 use App\Services\UserService;
 use App\Services\Z2\Z2CampaignSyncService;
-use App\Services\Z2\Z2GroupService;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
@@ -235,20 +234,18 @@ class UserRoleAccessTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_campaign_role_can_create_groups_but_cannot_read_manage_or_command_them(): void
+    public function test_campaign_role_can_create_and_read_groups_but_cannot_manage_or_command_them(): void
     {
         $group = Group::factory()->create();
         $this->actingAs(User::factory()->create(['role' => 'campanas']));
-        $this->get('/groups/create')->assertOk()->assertDontSee('href="'.route('groups.index').'"', false);
-        $this->mock(Z2GroupService::class)->shouldReceive('createGroup')->twice()->with('Nuevo grupo')->andReturn($group);
+        $this->get('/groups/create')->assertOk()->assertSee('href="'.route('groups.index').'"', false);
         $response = $this->post('/groups', ['name' => 'Nuevo grupo'])->assertRedirect()->assertSessionHas('success');
-        $this->assertNotSame(route('groups.index'), $response->headers->get('Location'));
         $this->get($response->headers->get('Location'))->assertOk();
-        $this->postJson('/api/groups', ['name' => 'Nuevo grupo'])->assertCreated()->assertJsonPath('id', $group->id);
-        foreach (['/groups', '/groups/'.$group->id, '/groups/'.$group->id.'/edit',
-            '/api/groups', '/api/groups/'.$group->id] as $url) {
-            $this->getJson($url)->assertForbidden();
+        $this->postJson('/api/groups', ['name' => 'Nuevo grupo API'])->assertCreated()->assertJsonPath('name', 'Nuevo grupo API');
+        foreach (['/groups', '/groups/'.$group->id, '/api/groups', '/api/groups/'.$group->id] as $url) {
+            $this->getJson($url)->assertOk();
         }
+        $this->get('/groups/'.$group->id.'/edit')->assertForbidden();
         foreach (['/groups', '/api/groups'] as $url) {
             $this->putJson($url.'/'.$group->id, ['name' => 'Intrusión'])->assertForbidden();
             $this->deleteJson($url.'/'.$group->id)->assertForbidden();

@@ -35,8 +35,8 @@ Route::middleware(['auth:sanctum', 'role:superadmin,admin,tecnico,campanas'])->g
     Route::post('devices/{device}/format-sd', [DeviceController::class, 'formatSd'])->name('api.devices.format-sd')->middleware('role:superadmin');
     Route::get('devices/{device}/settings', [DeviceController::class, 'getSettings'])->name('api.devices.settings')->middleware('role:superadmin');
     Route::post('devices/{device}/volume', [DeviceController::class, 'setVolume'])->name('api.devices.set-volume')->middleware('role:superadmin');
-    Route::apiResource('groups', GroupController::class)->only(['create', 'store'])->names('api.groups')->middleware('role:superadmin,admin,campanas');
-    Route::apiResource('groups', GroupController::class)->except(['create', 'store'])->names('api.groups')->middleware('role:superadmin,admin');
+    Route::apiResource('groups', GroupController::class)->only(['index', 'show', 'store'])->names('api.groups')->middleware('role:superadmin,admin,campanas');
+    Route::apiResource('groups', GroupController::class)->only(['update', 'destroy'])->names('api.groups')->middleware('role:superadmin,admin');
     Route::post('media/bulk-delete', [MediaController::class, 'bulkDestroy'])->name('api.media.bulk-delete')->middleware('role:superadmin,admin,campanas');
     Route::apiResource('media', MediaController::class)->parameters(['media' => 'media'])->names('api.media')->middleware('role:superadmin,admin,campanas');
     Route::apiResource('campaigns', CampaignController::class)->names('api.campaigns')->middleware('role:superadmin,admin,campanas');
