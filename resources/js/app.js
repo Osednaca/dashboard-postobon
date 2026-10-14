@@ -14,6 +14,7 @@ Alpine.data('devicePreviews', createDevicePreviews);
 Alpine.data('previewPlayer', createPreviewPlayer);
 Alpine.data('mediaPreview', createMediaPreview);
 Alpine.data('libraryPlayback', createLibraryPlayback);
+Alpine.data('deviceList', createDeviceList);
 Alpine.data('campaignMediaSelector', createCampaignMediaSelector);
 Alpine.data('campaignTargetSelector', createCampaignTargetSelector);
 Alpine.store('mediaDurations', createMediaDurationStore());
