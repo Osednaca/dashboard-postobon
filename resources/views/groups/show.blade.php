@@ -38,12 +38,14 @@
                     Apagar Grupo
                 </button>
             </form>
+            @can('viewAny', App\Models\Campaign::class)
             <button @click="showCampaignModal = true" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 text-primary text-sm font-medium hover:bg-primary/20 transition-colors">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/>
                 </svg>
                 Publicar Campaña
             </button>
+            @endcan
         </div>
     </div>
 
@@ -104,7 +106,7 @@
                                     <th class="px-4 py-3 font-semibold text-text">Nombre</th>
                                     <th class="px-4 py-3 font-semibold text-text">MAC</th>
                                     <th class="px-4 py-3 font-semibold text-text">Estado</th>
-                                    <th class="px-4 py-3 font-semibold text-text">Ubicación</th>
+                                    <th class="px-4 py-3 font-semibold text-text">Establecimiento</th>
                                     <th class="px-4 py-3 font-semibold text-text text-right">Acciones</th>
                                 </tr>
                             </thead>
@@ -129,7 +131,7 @@
                                                 {{ $device->status === 'active' ? 'Activo' : ($device->status === 'inactive' ? 'Inactivo' : ($device->status === 'error' ? 'Error' : 'Deshabilitado')) }}
                                             </span>
                                         </td>
-                                        <td class="px-4 py-3 text-text-light">{{ $device->location->name ?? '-' }}</td>
+                                        <td class="px-4 py-3 text-text-light">{{ $device->establishmentProfile?->name ?? $device->establishment ?? '-' }}</td>
                                         <td class="px-4 py-3 text-right">
                                             <a href="{{ route('devices.show', $device) }}" class="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80 font-medium transition-colors">
                                                 Ver
@@ -157,6 +159,7 @@
         </div>
     </div>
 
+    @can('viewAny', App\Models\Campaign::class)
     <!-- Campaign Assignment Modal -->
     <div x-show="showCampaignModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" style="display: none;">
         <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showCampaignModal = false"></div>
@@ -190,5 +193,6 @@
             </form>
         </div>
     </div>
+    @endcan
 </div>
 @endsection

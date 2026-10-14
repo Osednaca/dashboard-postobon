@@ -6,47 +6,25 @@ use App\Models\Campaign;
 use App\Models\Device;
 use App\Repositories\Contracts\CampaignRepositoryInterface;
 use App\Repositories\Contracts\DeviceRepositoryInterface;
-use App\Repositories\Contracts\LocationRepositoryInterface;
 
 class DashboardService
 {
-    /**
-     * @var DeviceRepositoryInterface
-     */
     protected DeviceRepositoryInterface $deviceRepository;
 
-    /**
-     * @var CampaignRepositoryInterface
-     */
     protected CampaignRepositoryInterface $campaignRepository;
 
-    /**
-     * @var LocationRepositoryInterface
-     */
-    protected LocationRepositoryInterface $locationRepository;
-
-    /**
-     * @var AnalyticsService
-     */
     protected AnalyticsService $analyticsService;
 
     /**
      * DashboardService constructor.
-     *
-     * @param DeviceRepositoryInterface $deviceRepository
-     * @param CampaignRepositoryInterface $campaignRepository
-     * @param LocationRepositoryInterface $locationRepository
-     * @param AnalyticsService $analyticsService
      */
     public function __construct(
         DeviceRepositoryInterface $deviceRepository,
         CampaignRepositoryInterface $campaignRepository,
-        LocationRepositoryInterface $locationRepository,
         AnalyticsService $analyticsService
     ) {
         $this->deviceRepository = $deviceRepository;
         $this->campaignRepository = $campaignRepository;
-        $this->locationRepository = $locationRepository;
         $this->analyticsService = $analyticsService;
     }
 
@@ -96,35 +74,43 @@ class DashboardService
     }
 
     /**
-     * Get map data for device locations.
+     * Get device map data from establishments, retaining historical coordinates.
      *
      * @return array<int, array<string, mixed>>
      */
     public function getMapData(): array
     {
-        return Device::with('location')
-            ->whereNotNull('location_id')
+        return Device::with(['establishmentProfile', 'location'])
             ->get()
             ->map(function (Device $device) {
-                $location = $device->location;
+                $source = collect([$device->establishmentProfile, $device, $device->location])
+                    ->first(fn ($candidate): bool => $candidate !== null
+                        && is_numeric($candidate->latitude) && is_numeric($candidate->longitude)
+                        && is_finite((float) $candidate->latitude) && is_finite((float) $candidate->longitude)
+                        && abs((float) $candidate->latitude) <= 90 && abs((float) $candidate->longitude) <= 180);
+
+                if ($source === null) {
+                    return null;
+                }
 
                 return [
                     'device_id' => $device->id,
                     'device_name' => $device->name,
                     'status' => $device->status,
-                    'latitude' => $location?->latitude,
-                    'longitude' => $location?->longitude,
-                    'city' => $location?->city,
-                    'address' => $location?->address,
+                    'latitude' => $source->latitude,
+                    'longitude' => $source->longitude,
+                    'city' => $device->city ?: $device->location?->city,
+                    'address' => $source->address,
                 ];
             })
+            ->filter()
+            ->values()
             ->toArray();
     }
 
     /**
      * Get recent active campaigns.
      *
-     * @param int $limit
      * @return array<int, array<string, mixed>>
      */
     public function getRecentCampaigns(int $limit = 5): array

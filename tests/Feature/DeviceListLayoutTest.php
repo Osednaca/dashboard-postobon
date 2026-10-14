@@ -32,25 +32,28 @@ class DeviceListLayoutTest extends TestCase
         ];
         $view = $this->view('devices.index', $data);
         $view->assertSee('Dispositivos')->assertSee('21 Z2 registrados y 2 WL35')
-            ->assertSee('Resumen de los equipos visibles en esta página')->assertSee('Video 3')->assertSee('real-file.mp4')
+            ->assertSee('Resumen de los equipos visibles en esta página')->assertSee('real-file.mp4')
             ->assertSee('Apagar Bluetooth')->assertSee('Encender Bluetooth')->assertSee('Formatear tarjeta SD')
             ->assertSee('Esta acción no se puede deshacer.')->assertSee('Administrar Z2')->assertSee('Subir video')
             ->assertDontSee('Emparejar Bluetooth')->assertDontSee('Ajustar brillo')->assertDontSee('Mantenimiento')
             ->assertSee('x-for="key in playbackTargets"', false)->assertSee('x-for="key in selectedFleetKeys"', false)
             ->assertSee('data-device-row="z2:AABB"', false)->assertSee('data-device-row="wl35:wl35-a"', false);
-        foreach (['devices.power-on', 'devices.power-off', 'devices.bluetooth-off', 'devices.edit', 'devices.show'] as $route) {
+        foreach (['devices.power-on', 'devices.power-off', 'devices.edit', 'devices.show'] as $route) {
             $view->assertSee(route($route, $device), false);
         }
         $html = (string) $view;
+        $this->assertStringContainsString('bluetooth-off', $html);
         $document = new \DOMDocument;
         @$document->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
         $xpath = new \DOMXPath($document);
         $this->assertSame(7, $xpath->query('//table[contains(@class,"device-list-table")]/thead/tr/th')->length);
         $this->assertSame(3, $xpath->query('//input[@data-fleet-selector]')->length);
-        $this->assertSame(1, $xpath->query('//tr[@data-device-row="z2:AABB"]/td[contains(@class,"device-status-online")]')->length);
-        $this->assertSame(1, $xpath->query('//tr[@data-device-row="wl35:wl35-a"]/td[contains(@class,"device-status-powered_off")]')->length);
-        $this->assertSame(1, $xpath->query('//tr[@data-device-row="wl35:wl35-b"]/td[contains(@class,"device-status-offline")]')->length);
-        $this->assertSame(2, $xpath->query('//form[input[@name="command" and @value="bluetooth"] and input[@name="targets[]" and @value="wl35:wl35-a"] and input[@name="value" and @value="1"]]')->length);
+        $this->assertSame(3, $xpath->query('//tr[@data-device-row]/td[contains(@class,"device-cell-status")]//span[@role="status"]')->length);
+        $this->assertSame(2, $xpath->query('//form[input[@name="command" and @value="bluetooth"] and input[@name="targets[]" and @value="wl35:wl35-a"] and input[@name="value"]]')->length);
+        $this->assertStringContainsString('operatingLabels[rows[0].status]', $html);
+        $this->assertStringContainsString('applySnapshot($event.detail)', $html);
+        $this->assertStringContainsString('sendDeviceCommand($event.currentTarget, $event.submitter)', $html);
+        $this->assertSame(1, $xpath->query('//div[@hidden and contains(@x-data,"devicePreviews")]')->length);
         $this->assertSame(3, $xpath->query('//section[@data-device-menu and @role="dialog" and @aria-modal="true"]')->length);
         Http::assertNothingSent();
     }

@@ -156,6 +156,7 @@ class InstantPlayController extends Controller
 
         // Get active campaigns with media
         $campaigns = Campaign::whereIn('status', ['active', 'scheduled', 'draft'])
+            ->when(! auth()->user()->managesOperations(), fn ($query) => $query->whereRaw('1 = 0'))
             ->with('media')
             ->orderBy('name')
             ->get();

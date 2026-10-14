@@ -16,8 +16,13 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'password' => Hash::make('password'),
             'remember_token' => Str::random(10),
-            'role' => fake()->randomElement(['admin', 'operator']),
+            'role' => 'tecnico',
         ];
+    }
+
+    public function superadmin(): static
+    {
+        return $this->state(fn (array $attributes) => ['role' => 'superadmin']);
     }
 
     public function admin(): static
@@ -27,11 +32,16 @@ class UserFactory extends Factory
         ]);
     }
 
-    public function operator(): static
+    public function tecnico(): static
     {
         return $this->state(fn (array $attributes) => [
-            'role' => 'operator',
+            'role' => 'tecnico',
         ]);
+    }
+
+    public function operator(): static
+    {
+        return $this->tecnico();
     }
 
     public function unverified(): static

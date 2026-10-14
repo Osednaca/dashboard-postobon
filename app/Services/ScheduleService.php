@@ -7,13 +7,12 @@ use App\Repositories\Contracts\ScheduleRepositoryInterface;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Artisan;
 
 class ScheduleService extends BaseService
 {
     /**
      * ScheduleService constructor.
-     *
-     * @param ScheduleRepositoryInterface $scheduleRepository
      */
     public function __construct(
         ScheduleRepositoryInterface $scheduleRepository,
@@ -23,7 +22,7 @@ class ScheduleService extends BaseService
     }
 
     /**
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     public function create(array $data): Model
     {
@@ -37,7 +36,7 @@ class ScheduleService extends BaseService
     }
 
     /**
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     public function update(int|string $id, array $data): ?Model
     {
@@ -69,7 +68,6 @@ class ScheduleService extends BaseService
     /**
      * Get schedules by device.
      *
-     * @param int|string $deviceId
      * @return Collection<int, Schedule>
      */
     public function getByDevice(int|string $deviceId): Collection
@@ -80,7 +78,6 @@ class ScheduleService extends BaseService
     /**
      * Get schedules by group.
      *
-     * @param int|string $groupId
      * @return Collection<int, Schedule>
      */
     public function getByGroup(int|string $groupId): Collection
@@ -90,9 +87,6 @@ class ScheduleService extends BaseService
 
     /**
      * Execute a pending schedule by running the schedules:process command for it.
-     *
-     * @param int|string $id
-     * @return Schedule|null
      */
     public function execute(int|string $id): ?Schedule
     {
@@ -115,7 +109,7 @@ class ScheduleService extends BaseService
         ]);
 
         // Run the process command which handles all Z2 API calls
-        \Illuminate\Support\Facades\Artisan::call('schedules:process');
+        Artisan::call('schedules:process', ['--schedule' => $schedule->id]);
 
         // Refresh and return the updated schedule
         /** @var Schedule|null */
@@ -124,9 +118,6 @@ class ScheduleService extends BaseService
 
     /**
      * Cancel a schedule.
-     *
-     * @param int|string $id
-     * @return Schedule|null
      */
     public function cancel(int|string $id): ?Schedule
     {
@@ -142,10 +133,6 @@ class ScheduleService extends BaseService
 
     /**
      * Reschedule an existing schedule.
-     *
-     * @param int|string $id
-     * @param string $scheduledAt
-     * @return Schedule|null
      */
     public function reschedule(int|string $id, string $scheduledAt): ?Schedule
     {

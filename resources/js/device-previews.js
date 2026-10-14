@@ -94,8 +94,10 @@ export function createDevicePreviews(endpoint, deviceKey = null, dependencies = 
     const doc = dependencies.document || globalThis.document;
     const schedule = dependencies.setInterval || globalThis.setInterval;
     const cancel = dependencies.clearInterval || globalThis.clearInterval;
+    const timeout = dependencies.setTimeout || globalThis.setTimeout;
+    const clearTimeout = dependencies.clearTimeout || globalThis.clearTimeout;
     let timer, visibilityListener, controller;
-    let stopped = false;
+    let stopped = false, refreshPending = false;
 
     return {
         devices: [],
@@ -116,10 +118,15 @@ export function createDevicePreviews(endpoint, deviceKey = null, dependencies = 
             };
             doc.addEventListener('visibilitychange', visibilityListener);
         },
-        async refresh() {
-            if (stopped || doc.hidden || this.updating) return;
+        async refresh(force = false) {
+            if (stopped || doc.hidden) return;
+            if (this.updating) {
+                refreshPending ||= force;
+                return;
+            }
             this.updating = true;
             controller = new AbortController();
+            const deadline = timeout(() => controller.abort(), 15000);
             try {
                 const response = await fetchSnapshot(endpoint, {
                     headers: { Accept: 'application/json' }, credentials: 'same-origin',
@@ -131,15 +138,22 @@ export function createDevicePreviews(endpoint, deviceKey = null, dependencies = 
                 if (!stopped) {
                     this.devices = snapshot.devices.filter(device => !deviceKey || device.key === deviceKey);
                     this.failed = false;
+                    this.$dispatch?.('device-snapshot', { devices: this.devices, failed: false });
                 }
             } catch {
                 if (!stopped) {
                     this.failed = true;
                     this.devices = this.devices.map(device => ({ ...device, status: 'unavailable', url: null }));
+                    this.$dispatch?.('device-snapshot', { devices: [], failed: true });
                 }
             } finally {
+                clearTimeout(deadline);
                 this.updating = false;
                 this.loading = false;
+                if (refreshPending && !stopped) {
+                    refreshPending = false;
+                    await this.refresh();
+                }
             }
         },
         destroy() {

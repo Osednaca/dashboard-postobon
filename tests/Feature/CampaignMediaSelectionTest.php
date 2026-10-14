@@ -40,6 +40,8 @@ class CampaignMediaSelectionTest extends TestCase
             $response->assertSee(Js::from(route('media.content', $video))->toHtml(), false)
                 ->assertSee(Js::from(route('media.content', $image))->toHtml(), false);
             $this->assertMatchesRegularExpression('/<video\b[^>]*\bcontrols\b/', $response->getContent());
+            $response->assertSee(Js::from('video')->toHtml().', 3661, true)', false)
+                ->assertSee(Js::from('image')->toHtml().', 0, false)', false);
         }
         $this->get(route('campaigns.edit', $campaign))
             ->assertSee(Js::from([$image->id, $video->id])->toHtml(), false);

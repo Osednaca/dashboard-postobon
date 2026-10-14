@@ -3,7 +3,8 @@
 @section('title', $device->name)
 
 @section('content')
-<div class="max-w-5xl mx-auto" x-data="{ showUnbindModal: false, showRemoveVideoModal: false, showFormatSdModal: false, removeVideoCode: '', removeVideoName: '' }">
+<div class="max-w-5xl mx-auto" x-data="{ ...deviceLive([{ key: {{ Js::from('z2:'.strtoupper(str_replace(':', '', $device->mac_address ?? ''))) }}, type: 'z2', status: 'unavailable', online: null, connected: null, powered: null, bluetooth: null }]), showUnbindModal: false, showRemoveVideoModal: false, showFormatSdModal: false, removeVideoCode: '', removeVideoName: '' }" @device-snapshot="applySnapshot($event.detail)">
+    <x-device-live-feedback />
     <!-- Page Header -->
     <div class="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -16,31 +17,22 @@
             </div>
             <div class="flex items-center gap-3">
                 <h1 class="text-2xl font-bold text-text">{{ $device->name }}</h1>
-                @php
-                    $indicatorStatus = match($device->status) {
-                        'online', 'active' => ($device->power_status === 'off' ? 'powered_off' : 'online'),
-                        'offline', 'inactive', 'error' => ($device->power_status === 'off' ? 'powered_off' : 'offline'),
-                        'disabled' => 'disabled',
-                        'maintenance' => 'maintenance',
-                        default => 'offline',
-                    };
-                @endphp
-                <x-device-status-indicator :status="$indicatorStatus" />
+                <x-device-live-status row="rows[0]" />
             </div>
         </div>
         <div class="flex items-center gap-2">
-            <form action="{{ route('devices.power-on', $device) }}" method="POST" class="inline">
+            <form action="{{ route('devices.power-on', $device) }}" method="POST" class="inline" @submit.prevent="sendDeviceCommand($event.currentTarget, $event.submitter)" x-show="rows[0].powered !== true">
                 @csrf
-                <button type="submit" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-success/10 text-success text-sm font-medium hover:bg-success/20 transition-colors">
+                <button type="submit" :disabled="!canControl(rows[0])" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-success/10 text-success text-sm font-medium hover:bg-success/20 transition-colors">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                     </svg>
                     Encender
                 </button>
             </form>
-            <form action="{{ route('devices.power-off', $device) }}" method="POST" class="inline">
+            <form action="{{ route('devices.power-off', $device) }}" method="POST" class="inline" @submit.prevent="sendDeviceCommand($event.currentTarget, $event.submitter)" x-show="rows[0].powered === true">
                 @csrf
-                <button type="submit" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-warning/10 text-warning text-sm font-medium hover:bg-warning/20 transition-colors">
+                <button type="submit" :disabled="!canControl(rows[0])" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-warning/10 text-warning text-sm font-medium hover:bg-warning/20 transition-colors">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
                     </svg>
@@ -87,6 +79,7 @@
     <div class="space-y-6">
         <x-device-previews :device-key="'z2:'.strtoupper(str_replace(':', '', $device->mac_address ?? ''))" title="Contenido actual" />
 
+        @can('viewAny', App\Models\Campaign::class)
         <!-- Campaign Info -->
         <div class="bg-white rounded-xl border border-border shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-6">
             <h2 class="text-lg font-semibold text-text mb-4 flex items-center gap-2">
@@ -132,6 +125,8 @@
                 </div>
             @endif
         </div>
+
+        @endcan
 
         <!-- Current Device Playlist -->
         <div class="bg-white rounded-xl border border-border shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-6">
@@ -271,7 +266,7 @@
                         </div>
                     </form>
                 </div>
-                <div class="p-4 rounded-lg bg-surface sm:col-span-2" x-data="{ bt: '{{ $deviceBluetooth ?? $device->bluetooth_status ?? 'off' }}' }">
+                <div class="p-4 rounded-lg bg-surface sm:col-span-2">
                     <div class="flex items-center justify-between">
                         <p class="text-xs font-medium text-text-muted uppercase tracking-wider flex items-center gap-1.5">
                             <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -279,13 +274,13 @@
                             </svg>
                             Bluetooth
                         </p>
-                        <form :action="bt === 'on' ? '{{ route('devices.bluetooth-off', $device) }}' : '{{ route('devices.bluetooth-on', $device) }}'" method="POST" class="inline">
+                        <form :action="rows[0].bluetooth === true ? '{{ route('devices.bluetooth-off', $device) }}' : '{{ route('devices.bluetooth-on', $device) }}'" method="POST" class="inline" @submit.prevent="sendDeviceCommand($event.currentTarget, $event.submitter)">
                             @csrf
-                            <button type="submit" role="switch" :aria-checked="bt === 'on'" title="Bluetooth"
+                            <button type="submit" :disabled="!canControl(rows[0], 'bluetooth')" role="switch" :aria-checked="rows[0].bluetooth === true" title="Bluetooth"
                                 class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                :class="bt === 'on' ? 'bg-primary' : 'bg-border'">
+                                :class="rows[0].bluetooth === true ? 'bg-primary' : 'bg-border'">
                                 <span class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform"
-                                    :class="bt === 'on' ? 'translate-x-5' : 'translate-x-0.5'"></span>
+                                    :class="rows[0].bluetooth === true ? 'translate-x-5' : 'translate-x-0.5'"></span>
                             </button>
                         </form>
                     </div>
@@ -321,9 +316,6 @@
                             </svg>
                             Ver en el mapa
                         </a>
-                    @endif
-                    @if($device->location)
-                        <p class="text-xs text-text-muted mt-1">Ubicación: {{ $device->location->name }}</p>
                     @endif
                 </div>
                 <div class="p-4 rounded-lg bg-surface">

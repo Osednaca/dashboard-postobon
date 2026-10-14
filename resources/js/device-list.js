@@ -1,6 +1,8 @@
+import { createDeviceLive } from './device-live.js';
+
 export function createDeviceList(rows = []) {
     return {
-        rows,
+        ...createDeviceLive(rows),
         statusFilter: '', protocolFilter: '', establishmentFilter: '', search: '',
         actionKey: null, actionPosition: {}, actionTrigger: null,
         playbackTargets: [], playbackName: '', dialogTrigger: null,
