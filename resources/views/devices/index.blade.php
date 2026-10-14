@@ -13,10 +13,48 @@
     $initialFleetKeys = collect(old('targets', []))
         ->merge($initialLocalIds->map(fn ($id) => $localFleetKeys->get($id))->filter())
         ->map(fn ($key) => (string) $key)->unique()->values();
+    $deviceRows = $devices->getCollection()->map(function ($device) use ($fleetZ2Devices) {
+        $mac = strtoupper(str_replace(':', '', (string) $device->mac_address));
+        $live = $fleetZ2Devices->get($mac, []);
+        $online = (bool) ($live['online'] ?? in_array($device->status, ['online', 'active'], true));
+        $powered = (bool) ($live['power'] ?? ($device->power_status !== 'off'));
+        return [
+            'key' => 'z2:'.$mac, 'localId' => (string) $device->id, 'type' => 'z2',
+            'name' => $device->name, 'identifier' => $device->mac_address,
+            'status' => !$online ? 'offline' : ($powered ? 'online' : 'powered_off'),
+            'powered' => $powered, 'bluetooth' => $device->bluetooth_status === 'on',
+            'establishmentId' => (string) $device->establishment_id,
+            'establishment' => $device->establishmentProfile?->name ?? $device->establishment ?? 'Sin establecimiento',
+            'address' => $device->establishmentProfile?->address ?? $device->address ?? 'Sin dirección',
+            'content' => $live['current_video'] ?? null,
+            'lastSeen' => $device->last_heartbeat_at?->diffForHumans() ?? 'Sin reporte',
+            'detailsUrl' => route('devices.show', $device), 'editUrl' => route('devices.edit', $device),
+            'powerOnUrl' => route('devices.power-on', $device), 'powerOffUrl' => route('devices.power-off', $device),
+            'bluetoothUrl' => route($device->bluetooth_status === 'on' ? 'devices.bluetooth-off' : 'devices.bluetooth-on', $device),
+        ];
+    })->concat($wl35Devices->map(function ($device) {
+        $online = (bool) (($device['online'] ?? false) && ($device['connected'] ?? false));
+        $powered = (bool) ($device['power'] ?? false);
+        return [
+            'key' => (string) ($device['key'] ?? 'wl35:'.$device['id']), 'localId' => null, 'type' => 'wl35',
+            'name' => $device['name'] ?? $device['id'], 'identifier' => $device['id'], 'ip' => $device['ip'] ?? '',
+            'status' => !$online ? 'offline' : ($powered ? 'online' : 'powered_off'),
+            'powered' => $powered, 'bluetooth' => (bool) ($device['bluetooth'] ?? false),
+            'establishmentId' => (string) ($device['profile_establishment_id'] ?? ''),
+            'establishment' => $device['profile_establishment'] ?? 'Sin establecimiento',
+            'address' => $device['profile_address'] ?? 'Sin dirección', 'content' => $device['current_video'] ?? null,
+            'lastSeen' => isset($device['last_seen']) ? \Illuminate\Support\Carbon::parse($device['last_seen'])->diffForHumans() : 'Sin reporte',
+            'detailsUrl' => route('devices.wl35.show', ['deviceId' => $device['id']]), 'editUrl' => null,
+            'powerOnUrl' => route('fleet.command'), 'powerOffUrl' => route('fleet.command'), 'bluetoothUrl' => route('fleet.command'),
+        ];
+    }))->map(function ($row) {
+        $row['searchable'] = implode(' ', [$row['name'], $row['identifier'], $row['ip'] ?? '', $row['establishment'], $row['address']]);
+        return $row;
+    })->values();
 @endphp
 
 <div x-data="{
-    statusFilter: '', protocolFilter: '', establishmentFilter: '', search: '',
+    ...deviceList({{ Js::from($deviceRows) }}),
     showDeleteModal: false, showBulkAssignMediaModal: false,
     showFleetPlayModal: false, showFleetUploadModal: false, showFleetFormatModal: false,
     bulkAssigningMedia: false, fleetSubmitting: false,
@@ -29,8 +67,10 @@
     deleteId: null, deleteName: '',
     selectedIds: {{ Js::from($initialLocalIds) }},
     selectedFleetKeys: {{ Js::from($initialFleetKeys) }},
+    filtersExpanded: false,
     bulkGroupId: '', bulkLocationId: '',
     init() {
+        this.watchDialogs();
         const uploadId = window.localStorage.getItem('fleet-upload-id');
         if (uploadId) {
             this.fleetUpload.id = uploadId;
@@ -387,27 +427,20 @@
         this.fleetSubmitting = true;
         form.submit();
     }
-}" class="space-y-6">
-    <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-            <div class="mb-2 flex flex-wrap items-center gap-2">
-                <span class="rounded-md bg-amber-100 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-700">Z2 {{ $devices->total() }}</span>
-                <span class="rounded-md bg-sky-100 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-sky-700">WL35 {{ $wl35Devices->count() }}</span>
-            </div>
-            <h1 class="text-2xl font-bold text-text">Todos los dispositivos</h1>
-            <p class="mt-1 text-sm text-text-light">Administra Z2 y WL35 desde una sola lista y una misma selección.</p>
+}" class="device-list space-y-5" @keydown="dialogKeydown($event)">
+    <header class="device-list-heading">
+        <div><h1 class="text-2xl font-bold tracking-tight text-text">Dispositivos</h1><p class="mt-1 text-sm text-text-light">Administra tus dispositivos Z2 y WL35 desde un solo lugar.</p></div>
+        <div class="device-list-header-actions">
+            <a href="{{ route('devices.index') }}" class="device-list-button"><x-device-action-icon name="refresh" />Actualizar</a>
+            <a href="{{ route('devices.create') }}" class="device-list-button device-list-button-primary"><x-device-action-icon name="plus" />Nuevo dispositivo <span class="sr-only">Z2</span></a>
         </div>
-        <div class="flex gap-2">
-            <a href="{{ route('devices.index') }}" class="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-medium text-text-light transition hover:bg-surface-dark">
-                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                Actualizar
-            </a>
-            <a href="{{ route('devices.create') }}" class="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white shadow-sm shadow-primary/20 transition hover:bg-primary/90">
-                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                Nuevo Z2
-            </a>
-        </div>
-    </div>
+    </header>
+    <section aria-label="Resumen de dispositivos" class="device-list-stats">
+        @foreach([['', 'Total', 'monitor', 'blue'], ['online', 'En línea', 'dot', 'green'], ['offline', 'Fuera de línea', 'dot', 'red'], ['powered_off', 'Apagados', 'power', 'amber']] as [$filter, $label, $icon, $tone])
+            <div class="device-list-stat"><span class="device-list-stat-icon device-list-tone-{{ $tone }}"><x-device-action-icon :name="$icon" /></span><div><strong class="block text-xl font-bold tabular-nums" x-text="{{ $filter === '' ? 'visibleRows().length' : "countStatus('".$filter."')" }}">{{ $filter === '' ? $deviceRows->count() : $deviceRows->where('status', $filter)->count() }}</strong><span class="text-xs text-text-light">{{ $label }}</span></div></div>
+        @endforeach
+    </section>
+    <p class="!mt-2 text-xs text-text-light"><span class="hidden sm:inline">Resumen de los equipos visibles en esta página · {{ $devices->total() }} Z2 registrados y {{ $wl35Devices->count() }} WL35 en la lista. </span>Resumen y filtros de esta página.</p>
 
     @if($gatewayError)
         <div class="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-amber-900">
@@ -435,18 +468,19 @@
     @endif
 
     <section class="rounded-xl border border-border bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-        <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <div class="device-filter-grid grid gap-3 md:grid-cols-2 xl:grid-cols-5" :class="filtersExpanded ? 'device-filters-expanded' : ''">
             <label class="relative xl:col-span-2">
                 <svg class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                <input type="search" x-model="search" placeholder="Buscar nombre, MAC o identificador…" class="w-full rounded-lg border border-border py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
+                <input type="search" x-model="search" aria-label="Buscar dispositivos" placeholder="Buscar nombre, MAC o identificador…" class="w-full rounded-lg border border-border py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
             </label>
-            <select x-model="protocolFilter" class="rounded-lg border border-border bg-white px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
+            <button type="button" @click="filtersExpanded = !filtersExpanded" :aria-expanded="filtersExpanded" class="device-filter-toggle"><span x-text="filtersExpanded ? 'Ocultar filtros' : 'Filtros'"></span><span x-show="[protocolFilter, statusFilter, establishmentFilter].filter(Boolean).length" class="rounded bg-primary/10 px-2 text-primary" x-text="[protocolFilter, statusFilter, establishmentFilter].filter(Boolean).length"></span><span aria-hidden="true" x-text="filtersExpanded ? '−' : '+'"></span></button>
+            <select x-model="protocolFilter" aria-label="Tipo de dispositivo" class="min-w-0 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
                 <option value="">Todos los tipos</option><option value="z2">Z2</option><option value="wl35">WL35</option>
             </select>
-            <select x-model="statusFilter" class="rounded-lg border border-border bg-white px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
+            <select x-model="statusFilter" aria-label="Estado" class="min-w-0 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
                 <option value="">Todos los estados</option><option value="online">En línea</option><option value="powered_off">Apagados</option><option value="offline">Fuera de línea</option>
             </select>
-            <select x-model="establishmentFilter" class="rounded-lg border border-border bg-white px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
+            <select x-model="establishmentFilter" aria-label="Establecimiento" class="min-w-0 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
                 <option value="">Todos los establecimientos</option>
                 @foreach($establishments as $establishment)<option value="{{ $establishment->id }}">{{ $establishment->name }}</option>@endforeach
             </select>
@@ -456,15 +490,15 @@
             <div class="mr-2 flex items-center gap-2"><span class="flex h-8 min-w-8 items-center justify-center rounded-lg bg-primary/10 px-2 text-sm font-bold text-primary" x-text="selectedFleetKeys.length"></span><span class="text-xs font-semibold text-text-light">seleccionados</span></div>
             <button type="button" @click="submitFleet('power', '1')" :disabled="fleetSubmitting" class="rounded-lg bg-success px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Encender</button>
             <button type="button" @click="submitFleet('power', '0')" :disabled="fleetSubmitting" class="rounded-lg bg-danger px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Apagar</button>
-            <button type="button" @click="submitFleet('bluetooth', '1')" :disabled="fleetSubmitting" class="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs font-semibold text-primary disabled:opacity-50">BT ON</button>
-            <button type="button" @click="submitFleet('bluetooth', '0')" :disabled="fleetSubmitting" class="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-text-light disabled:opacity-50">BT OFF</button>
-            <button type="button" @click="showFleetPlayModal=true" class="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white">Reproducir</button>
+            <button type="button" @click="submitFleet('bluetooth', '1')" :disabled="fleetSubmitting" class="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs font-semibold text-primary disabled:opacity-50">Encender Bluetooth</button>
+            <button type="button" @click="submitFleet('bluetooth', '0')" :disabled="fleetSubmitting" class="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-text-light disabled:opacity-50">Apagar Bluetooth</button>
+            <button type="button" @click="openPlayback()" class="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white">Reproducir</button>
             <button type="button" @click="openFleetUpload()" class="rounded-lg bg-secondary px-3 py-2 text-xs font-semibold text-white">Subir video</button>
             <button type="button" @click="openFleetFormat()" class="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-xs font-semibold text-danger transition hover:bg-danger/10">Formatear SD</button>
 
             <div class="relative" x-data="{ open: false }">
                 <button type="button" @click="open=!open" :disabled="!selectedIds.length" class="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-text-light disabled:cursor-not-allowed disabled:opacity-40">Administrar Z2<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></button>
-                <div x-show="open" x-cloak @click.away="open=false" class="absolute right-0 z-40 mt-2 w-56 rounded-lg border border-border bg-white py-1 shadow-xl">
+                <div x-show="open" x-cloak @click.away="open=false" class="absolute left-0 z-40 mt-2 w-56 rounded-lg border border-border bg-white py-1 shadow-xl">
                     <button type="button" @click="open=false; submitBulk('power_on')" class="block w-full px-4 py-2 text-left text-sm hover:bg-surface">Encender Z2 directamente</button>
                     <button type="button" @click="open=false; submitBulk('power_off')" class="block w-full px-4 py-2 text-left text-sm hover:bg-surface">Apagar Z2 directamente</button>
                     <button type="button" @click="open=false; showBulkAssignMediaModal=true" class="block w-full px-4 py-2 text-left text-sm font-medium text-primary hover:bg-surface">Asignar medio Z2</button>
@@ -477,9 +511,9 @@
                 </div>
             </div>
 
-            <div class="ml-auto flex items-center gap-2">
-                <select x-model="bulkGroupId" class="w-36 rounded-lg border border-border px-2 py-2 text-xs"><option value="">Grupo Z2</option>@foreach(App\Models\Group::orderBy('name')->get() as $group)<option value="{{ $group->id }}">{{ $group->name }}</option>@endforeach</select>
-                <select x-model="bulkLocationId" class="w-36 rounded-lg border border-border px-2 py-2 text-xs"><option value="">Ubicación Z2</option>@foreach(App\Models\Location::orderBy('name')->get() as $location)<option value="{{ $location->id }}">{{ $location->name }}</option>@endforeach</select>
+            <div class="flex w-full flex-wrap items-center gap-2 xl:ml-auto xl:w-auto">
+                <select x-model="bulkGroupId" aria-label="Grupo para los Z2 seleccionados" class="min-w-0 flex-1 rounded-lg border border-border px-2 py-2 text-xs xl:w-36 xl:flex-none"><option value="">Grupo Z2</option>@foreach(App\Models\Group::orderBy('name')->get() as $group)<option value="{{ $group->id }}">{{ $group->name }}</option>@endforeach</select>
+                <select x-model="bulkLocationId" aria-label="Ubicación para los Z2 seleccionados" class="min-w-0 flex-1 rounded-lg border border-border px-2 py-2 text-xs xl:w-36 xl:flex-none"><option value="">Ubicación Z2</option>@foreach(App\Models\Location::orderBy('name')->get() as $location)<option value="{{ $location->id }}">{{ $location->name }}</option>@endforeach</select>
                 <button type="button" @click="selectedIds=[]; selectedFleetKeys=[]" class="rounded-lg px-3 py-2 text-xs font-semibold text-text-muted hover:bg-surface">Limpiar</button>
             </div>
         </div>
@@ -488,97 +522,24 @@
         <form id="bulk-operation-form" action="{{ route('devices.bulk-operation') }}" method="POST" class="hidden">@csrf<input id="bulk-operation-action" type="hidden" name="action"><input id="bulk-operation-group" type="hidden" name="target_group_id"><input id="bulk-operation-location" type="hidden" name="target_location_id"><template x-for="id in selectedIds" :key="'legacy-'+id"><input type="hidden" name="device_ids[]" :value="id"></template></form>
     </section>
 
-    <section class="overflow-hidden rounded-xl border border-border bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-        @if($devices->count() > 0 || $wl35Devices->isNotEmpty())
-            <div class="overflow-x-auto">
-                <table class="w-full min-w-[1050px] text-left text-sm">
-                    <thead><tr class="border-b border-border bg-surface"><th class="px-4 py-4"><input type="checkbox" @click="toggleAll()" class="rounded border-border text-primary focus:ring-primary/20"></th><th class="px-4 py-4 font-semibold text-text">Nombre</th><th class="px-4 py-4 font-semibold text-text">Tipo</th><th class="px-4 py-4 font-semibold text-text">Identificador</th><th class="px-4 py-4 font-semibold text-text">Estado</th><th class="px-4 py-4 font-semibold text-text">Establecimiento</th><th class="px-4 py-4 font-semibold text-text">Video actual</th><th class="px-4 py-4 font-semibold text-text">Último reporte</th><th class="px-4 py-4 text-right font-semibold text-text">Acciones</th></tr></thead>
-                    <tbody class="divide-y divide-border">
-                        @foreach($devices as $device)
-                            @php
-                                $mac = strtoupper(str_replace(':', '', (string) $device->mac_address));
-                                $fleetKey = 'z2:'.$mac;
-                                $live = $fleetZ2Devices->get($mac, []);
-                                $isOnline = (bool) ($live['online'] ?? in_array($device->status, ['online', 'active'], true));
-                                $isPowered = (bool) ($live['power'] ?? ($device->power_status !== 'off'));
-                                $indicatorStatus = !$isOnline ? 'offline' : ($isPowered ? 'online' : 'powered_off');
-                                $searchable = strtolower($device->name.' '.$device->mac_address.' '.($device->establishmentProfile?->name ?? '').' '.($device->establishmentProfile?->address ?? ''));
-                            @endphp
-                            <tr class="transition hover:bg-surface/50" x-show="(!search || {{ Js::from($searchable) }}.includes(search.toLowerCase())) && (!protocolFilter || protocolFilter === 'z2') && (!statusFilter || statusFilter === '{{ $indicatorStatus }}') && (!establishmentFilter || establishmentFilter === '{{ $device->establishment_id }}')">
-                                <td class="px-4 py-4"><input type="checkbox" data-fleet-selector data-local-id="{{ $device->id }}" value="{{ $fleetKey }}" :checked="selectedFleetKeys.includes({{ Js::from($fleetKey) }})" @change="toggleDevice({{ Js::from($fleetKey) }}, '{{ $device->id }}', $event.target.checked)" class="rounded border-border text-primary focus:ring-primary/20"></td>
-                                <td class="px-4 py-4"><div class="flex items-center gap-3"><div class="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-700"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg></div><span class="font-medium text-text">{{ $device->name }}</span></div></td>
-                                <td class="px-4 py-4"><span class="rounded-md bg-amber-100 px-2 py-1 text-[10px] font-bold tracking-widest text-amber-700">Z2</span></td>
-                                <td class="px-4 py-4 font-mono text-xs text-text-light">{{ $device->mac_address }}</td>
-                                <td class="px-4 py-4"><x-device-status-indicator :status="$indicatorStatus" /></td>
-                                <td class="px-4 py-4 text-xs text-text-light"><div class="max-w-48 break-words font-medium text-text">{{ $device->establishmentProfile?->name ?? $device->establishment ?? 'Sin establecimiento' }}</div><div class="mt-1 max-w-56 break-words text-text-muted">{{ $device->establishmentProfile?->address ?? $device->address ?? 'Sin dirección' }}</div></td>
-                                <td class="max-w-40 truncate px-4 py-4 text-xs text-text-light" title="{{ $live['current_video'] ?? '' }}">{{ $live['current_video'] ?? '—' }}</td>
-                                <td class="px-4 py-4 text-xs text-text-light">{{ $device->last_heartbeat_at ? $device->last_heartbeat_at->diffForHumans() : 'Nunca' }}</td>
-                                <td class="px-4 py-4"><div class="flex items-center justify-end gap-1">
-                                    <a href="{{ route('devices.show', $device) }}" class="rounded-lg p-1.5 text-text-light hover:bg-info/10 hover:text-info" title="Detalles"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></a>
-                                    <form action="{{ route('devices.power-on', $device) }}" method="POST">@csrf<button class="rounded-lg p-1.5 text-text-light hover:bg-success/10 hover:text-success" title="Encender"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg></button></form>
-                                    <form action="{{ route('devices.power-off', $device) }}" method="POST">@csrf<button class="rounded-lg p-1.5 text-text-light hover:bg-danger/10 hover:text-danger" title="Apagar"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg></button></form>
-                                    <form action="{{ $device->bluetooth_status === 'on' ? route('devices.bluetooth-off', $device) : route('devices.bluetooth-on', $device) }}" method="POST">@csrf<button class="rounded-lg p-1.5 text-text-light hover:bg-primary/10 hover:text-primary" title="Bluetooth"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6.5 7.5L12 12l-5.5 4.5V7.5zM17.5 7.5L12 12l5.5 4.5V7.5zM12 12v6"/></svg></button></form>
-                                    <button type="button" @click="openFleetFormat([{{ Js::from($fleetKey) }}])" class="rounded-lg p-1.5 text-text-light hover:bg-danger/10 hover:text-danger" title="Formatear SD"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 7h14M9 11v6m6-6v6M8 7l1-3h6l1 3m1 0-1 13H8L7 7"/></svg></button>
-                                    <a href="{{ route('devices.edit', $device) }}" class="rounded-lg p-1.5 text-text-light hover:bg-primary/10 hover:text-primary" title="Editar"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></a>
-                                    <button type="button" @click="showDeleteModal=true; deleteId={{ $device->id }}; deleteName={{ Js::from($device->name) }}" class="rounded-lg p-1.5 text-text-light hover:bg-danger/10 hover:text-danger" title="Eliminar"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
-                                </div></td>
-                            </tr>
-                        @endforeach
+    @include('devices.partials.device-list-table')
 
-                        @foreach($wl35Devices as $device)
-                            @php
-                                $key = (string) ($device['key'] ?? 'wl35:'.($device['id'] ?? ''));
-                                $isOnline = (bool) (($device['online'] ?? false) && ($device['connected'] ?? false));
-                                $isPowered = (bool) ($device['power'] ?? false);
-                                $indicatorStatus = !$isOnline ? 'offline' : ($isPowered ? 'online' : 'powered_off');
-                                $searchable = strtolower(($device['name'] ?? '').' '.($device['id'] ?? '').' '.($device['ip'] ?? '').' '.($device['profile_establishment'] ?? '').' '.($device['profile_address'] ?? ''));
-                            @endphp
-                            <tr class="transition hover:bg-sky-50/40" x-show="(!search || {{ Js::from($searchable) }}.includes(search.toLowerCase())) && (!protocolFilter || protocolFilter === 'wl35') && (!statusFilter || statusFilter === '{{ $indicatorStatus }}') && (!establishmentFilter || establishmentFilter === {{ Js::from((string) ($device['profile_establishment_id'] ?? '')) }})">
-                                <td class="px-4 py-4"><input type="checkbox" data-fleet-selector value="{{ $key }}" :checked="selectedFleetKeys.includes({{ Js::from($key) }})" @change="toggleDevice({{ Js::from($key) }}, null, $event.target.checked)" class="rounded border-border text-primary focus:ring-primary/20"></td>
-                                <td class="px-4 py-4"><div class="flex items-center gap-3"><div class="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-100 text-sky-700"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18.5A6.5 6.5 0 1012 5a6.5 6.5 0 000 13.5zm0 0V22m-3 0h6M12 5V2"/></svg></div><span class="font-medium text-text">{{ $device['name'] ?? $device['id'] ?? 'WL35' }}</span></div></td>
-                                <td class="px-4 py-4"><span class="rounded-md bg-sky-100 px-2 py-1 text-[10px] font-bold tracking-widest text-sky-700">WL35</span></td>
-                                <td class="px-4 py-4"><div class="font-mono text-xs text-text-light">{{ $device['id'] ?? '—' }}</div><div class="mt-1 text-[10px] text-text-muted">{{ $device['ip'] ?? '' }}</div></td>
-                                <td class="px-4 py-4"><x-device-status-indicator :status="$indicatorStatus" /></td>
-                                <td class="px-4 py-4 text-xs text-text-light">
-                                    <div class="max-w-48 break-words font-medium text-text">{{ $device['profile_establishment'] ?? 'Sin establecimiento' }}</div>
-                                    <div class="mt-1 max-w-56 break-words text-text-muted">{{ $device['profile_address'] ?? 'Sin dirección' }}</div>
-                                </td>
-                                <td class="max-w-40 truncate px-4 py-4 text-xs text-text-light">{{ $device['current_video'] ?? '—' }}</td>
-                                <td class="px-4 py-4 text-xs text-text-light">{{ isset($device['last_seen']) ? \Illuminate\Support\Carbon::parse($device['last_seen'])->diffForHumans() : 'Nunca' }}</td>
-                                <td class="px-4 py-4"><div class="flex items-center justify-end gap-1">
-                                    <a href="{{ route('devices.wl35.show', ['deviceId' => $device['id']]) }}" class="rounded-lg p-1.5 text-text-light hover:bg-info/10 hover:text-info" title="Detalles"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></a>
-                                    <form action="{{ route('fleet.command') }}" method="POST" class="flex gap-1">@csrf<input type="hidden" name="command" value="power"><input type="hidden" name="targets[]" value="{{ $key }}"><button name="value" value="1" class="rounded-lg p-1.5 text-text-light hover:bg-success/10 hover:text-success" title="Encender"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg></button><button name="value" value="0" class="rounded-lg p-1.5 text-text-light hover:bg-danger/10 hover:text-danger" title="Apagar"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg></button></form>
-                                    <form action="{{ route('fleet.command') }}" method="POST">@csrf<input type="hidden" name="command" value="bluetooth"><input type="hidden" name="targets[]" value="{{ $key }}"><button name="value" value="{{ ($device['bluetooth'] ?? false) ? 0 : 1 }}" class="rounded-lg p-1.5 {{ ($device['bluetooth'] ?? false) ? 'bg-primary/10 text-primary' : 'text-text-light hover:bg-primary/10 hover:text-primary' }}" title="Bluetooth"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6.5 7.5L12 12l-5.5 4.5V7.5zM17.5 7.5L12 12l5.5 4.5V7.5zM12 12v6"/></svg></button></form>
-                                    <form action="{{ route('fleet.command') }}" method="POST" class="flex items-center gap-1">@csrf<input type="hidden" name="command" value="play"><input type="hidden" name="targets[]" value="{{ $key }}"><input type="number" name="wl35_video_index" min="1" max="255" value="1" class="w-12 rounded border border-border px-1.5 py-1 text-xs" title="Índice de video"><button class="rounded-lg bg-slate-900 px-2 py-1.5 text-[10px] font-semibold text-white">Play</button></form>
-                                    <button type="button" @click="openFleetFormat([{{ Js::from($key) }}])" class="rounded-lg p-1.5 text-text-light hover:bg-danger/10 hover:text-danger" title="Formatear SD"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 7h14M9 11v6m6-6v6M8 7l1-3h6l1 3m1 0-1 13H8L7 7"/></svg></button>
-                                </div></td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-            @if($devices->hasPages())<div class="border-t border-border px-6 py-4">{{ $devices->links() }}</div>@endif
-        @else
-            <div class="px-6 py-16 text-center"><div class="font-semibold text-text">No hay dispositivos</div><div class="mt-1 text-sm text-text-muted">No se encontraron Z2 locales ni WL35 conectados.</div></div>
-        @endif
-    </section>
+    <div x-show="showDeleteModal" data-dialog="showDeleteModal" role="dialog" aria-modal="true" aria-label="Eliminar dispositivo" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"><div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showDeleteModal=false"></div><div class="relative w-full max-w-md rounded-xl border border-border bg-white p-6 shadow-xl"><h3 class="text-lg font-semibold text-text">¿Eliminar dispositivo Z2?</h3><p class="mt-2 text-sm text-text-light">Se eliminará <strong x-text="deleteName"></strong> del registro local.</p><div class="mt-6 flex justify-end gap-3"><button type="button" @click="showDeleteModal=false" class="rounded-lg border border-border px-4 py-2.5 text-sm">Cancelar</button><form :action="'/devices/'+deleteId" method="POST">@csrf @method('DELETE')<button class="rounded-lg bg-danger px-4 py-2.5 text-sm font-medium text-white">Eliminar</button></form></div></div></div>
 
-    <div x-show="showDeleteModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"><div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showDeleteModal=false"></div><div class="relative w-full max-w-md rounded-xl border border-border bg-white p-6 shadow-xl"><h3 class="text-lg font-semibold text-text">¿Eliminar dispositivo Z2?</h3><p class="mt-2 text-sm text-text-light">Se eliminará <strong x-text="deleteName"></strong> del registro local.</p><div class="mt-6 flex justify-end gap-3"><button type="button" @click="showDeleteModal=false" class="rounded-lg border border-border px-4 py-2.5 text-sm">Cancelar</button><form :action="'/devices/'+deleteId" method="POST">@csrf @method('DELETE')<button class="rounded-lg bg-danger px-4 py-2.5 text-sm font-medium text-white">Eliminar</button></form></div></div></div>
+    <div x-show="showBulkAssignMediaModal" data-dialog="showBulkAssignMediaModal" role="dialog" aria-modal="true" aria-label="Asignar medio a Z2" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"><div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showBulkAssignMediaModal=false"></div><div class="relative w-full max-w-md rounded-xl border border-border bg-white p-6 shadow-xl"><h3 class="text-lg font-semibold text-text">Asignar medio a Z2</h3><p class="mt-2 text-sm text-text-light">El mismo archivo se asignará a <strong x-text="selectedIds.length"></strong> dispositivos Z2.</p><form action="{{ route('devices.bulk-assign-media') }}" method="POST" class="mt-5 space-y-4" @submit="bulkAssigningMedia=true">@csrf<template x-for="id in selectedIds" :key="'media-'+id"><input type="hidden" name="device_ids[]" :value="id"></template><select name="media_id" required class="w-full rounded-lg border border-border bg-white px-4 py-2.5 text-sm"><option value="">Seleccionar medio</option>@foreach(App\Models\Media::orderBy('name')->get() as $media)<option value="{{ $media->id }}" @selected((string) old('media_id') === (string) $media->id)>{{ $media->name }}</option>@endforeach</select><div class="flex justify-end gap-3"><button type="button" @click="showBulkAssignMediaModal=false" class="rounded-lg border border-border px-4 py-2.5 text-sm">Cancelar</button><button :disabled="bulkAssigningMedia" class="rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50" x-text="bulkAssigningMedia ? 'Asignando…' : 'Asignar medio'"></button></div></form></div></div>
 
-    <div x-show="showBulkAssignMediaModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"><div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showBulkAssignMediaModal=false"></div><div class="relative w-full max-w-md rounded-xl border border-border bg-white p-6 shadow-xl"><h3 class="text-lg font-semibold text-text">Asignar medio a Z2</h3><p class="mt-2 text-sm text-text-light">El mismo archivo se asignará a <strong x-text="selectedIds.length"></strong> dispositivos Z2.</p><form action="{{ route('devices.bulk-assign-media') }}" method="POST" class="mt-5 space-y-4" @submit="bulkAssigningMedia=true">@csrf<template x-for="id in selectedIds" :key="'media-'+id"><input type="hidden" name="device_ids[]" :value="id"></template><select name="media_id" required class="w-full rounded-lg border border-border bg-white px-4 py-2.5 text-sm"><option value="">Seleccionar medio</option>@foreach(App\Models\Media::orderBy('name')->get() as $media)<option value="{{ $media->id }}" @selected((string) old('media_id') === (string) $media->id)>{{ $media->name }}</option>@endforeach</select><div class="flex justify-end gap-3"><button type="button" @click="showBulkAssignMediaModal=false" class="rounded-lg border border-border px-4 py-2.5 text-sm">Cancelar</button><button :disabled="bulkAssigningMedia" class="rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50" x-text="bulkAssigningMedia ? 'Asignando…' : 'Asignar medio'"></button></div></form></div></div>
-
-    <div x-show="showFleetPlayModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div x-show="showFleetPlayModal" data-dialog="showFleetPlayModal" role="dialog" aria-modal="true" aria-label="Reproducir contenido" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showFleetPlayModal=false"></div>
         <div class="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-white p-6 shadow-xl">
-            <h3 class="mb-5 text-lg font-semibold text-text">Reproducir en la selección</h3>
-            <x-library-playback :media="$libraryVideos" />
+            <h3 class="mb-5 text-lg font-semibold text-text">Reproducir en <span x-text="playbackName"></span></h3>
+            <x-library-playback :media="$libraryVideos" targets-expression="playbackTargets" />
             <details class="mt-5 border-t border-border pt-4">
                 <summary class="cursor-pointer text-sm font-semibold text-text-light">Reproducir contenido ya almacenado</summary>
                 <p class="mt-2 text-xs text-text-light">Usa el índice WL35 o el archivo Z2 disponible en el dispositivo.</p>
                 <form action="{{ route('fleet.command') }}" method="POST" class="mt-4 space-y-4" @submit="fleetSubmitting=true">
                     @csrf
                     <input type="hidden" name="command" value="play">
-                    <template x-for="key in selectedFleetKeys" :key="'play-'+key"><input type="hidden" name="targets[]" :value="key"></template>
+                    <template x-for="key in playbackTargets" :key="'play-'+key"><input type="hidden" name="targets[]" :value="key"></template>
                     <div class="grid gap-4 sm:grid-cols-2">
                         <label><span class="mb-1.5 block text-xs font-semibold text-text-light">Índice WL35</span><input type="number" name="wl35_video_index" min="1" max="255" value="{{ old('wl35_video_index', 1) }}" class="w-full rounded-lg border border-border px-3 py-2.5 text-sm"></label>
                         <label>
@@ -607,7 +568,7 @@
         </button>
     </div>
 
-    <div x-show="showFleetFormatModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+    <div x-show="showFleetFormatModal" data-dialog="showFleetFormatModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
          role="dialog" aria-modal="true" aria-labelledby="fleet-format-title">
         <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="if (!['queued', 'processing'].includes(fleetFormat.status)) dismissFleetFormat()"></div>
         <div class="relative w-full max-w-lg overflow-hidden rounded-xl bg-white shadow-[0_24px_70px_rgba(15,23,42,0.28)]">
@@ -678,7 +639,7 @@
         </button>
     </div>
 
-    <div x-show="showFleetUploadModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+    <div x-show="showFleetUploadModal" data-dialog="showFleetUploadModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
          role="dialog" aria-modal="true" aria-labelledby="fleet-upload-title">
         <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="if (!['receiving', 'queued', 'processing'].includes(fleetUpload.status)) dismissFleetUpload()"></div>
         <div class="relative w-full max-w-lg overflow-hidden rounded-xl bg-white shadow-[0_24px_70px_rgba(15,23,42,0.28)]">
