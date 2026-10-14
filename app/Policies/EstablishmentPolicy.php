@@ -9,26 +9,26 @@ class EstablishmentPolicy
 {
     public function viewAny(User $user): bool
     {
-        return in_array($user->role, ['admin', 'operator'], true);
+        return $user->operatesDevices();
     }
 
     public function create(User $user): bool
     {
-        return in_array($user->role, ['admin', 'operator'], true);
+        return $user->operatesDevices();
     }
 
     public function view(User $user, Establishment $establishment): bool
     {
-        return in_array($user->role, ['admin', 'operator'], true);
+        return $user->operatesDevices();
     }
 
     public function update(User $user, Establishment $establishment): bool
     {
-        return in_array($user->role, ['admin', 'operator'], true);
+        return $user->operatesDevices();
     }
 
     public function delete(User $user, Establishment $establishment): bool
     {
-        return in_array($user->role, ['admin', 'operator'], true);
+        return $user->operatesDevices();
     }
 }

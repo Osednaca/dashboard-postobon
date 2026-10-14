@@ -18,9 +18,6 @@ use Illuminate\View\View;
 
 class ScheduleController extends Controller
 {
-    /**
-     * @var ScheduleService
-     */
     protected ScheduleService $scheduleService;
 
     /**
@@ -40,13 +37,15 @@ class ScheduleController extends Controller
 
         try {
             $schedules = Schedule::with(['device', 'group', 'campaign'])
+                ->when(! auth()->user()->managesOperations(), fn ($query) => $query
+                    ->where('type', '!=', 'activate_campaign')->whereNull('campaign_id'))
                 ->orderByRaw("CASE WHEN status = 'pending' THEN 0 ELSE 1 END")
                 ->orderBy('scheduled_at')
                 ->paginate(15);
 
             return view('schedules.index', compact('schedules'));
         } catch (\Exception $e) {
-            Log::error('Error al listar programaciones: ' . $e->getMessage());
+            Log::error('Error al listar programaciones: '.$e->getMessage());
 
             return redirect()->route('dashboard.index')
                 ->with('error', 'Ocurrió un error al cargar las programaciones.');
@@ -62,7 +61,9 @@ class ScheduleController extends Controller
 
         $devices = Device::orderBy('name')->get();
         $groups = Group::orderBy('name')->get();
-        $campaigns = Campaign::where('status', 'active')->orderBy('name')->get();
+        $campaigns = auth()->user()->managesOperations()
+            ? Campaign::where('status', 'active')->orderBy('name')->get()
+            : collect();
         $media = Media::orderBy('name')->get();
 
         return view('schedules.create', compact('devices', 'groups', 'campaigns', 'media'));
@@ -86,7 +87,7 @@ class ScheduleController extends Controller
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Exception $e) {
-            Log::error('Error al crear programación: ' . $e->getMessage());
+            Log::error('Error al crear programación: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al crear la programación. Por favor intente nuevamente.');
         }
@@ -102,7 +103,7 @@ class ScheduleController extends Controller
         try {
             return view('schedules.show', compact('schedule'));
         } catch (\Exception $e) {
-            Log::error('Error al mostrar programación: ' . $e->getMessage());
+            Log::error('Error al mostrar programación: '.$e->getMessage());
 
             return redirect()->route('schedules.index')
                 ->with('error', 'Ocurrió un error al cargar la programación.');
@@ -118,7 +119,9 @@ class ScheduleController extends Controller
 
         $devices = Device::orderBy('name')->get();
         $groups = Group::orderBy('name')->get();
-        $campaigns = Campaign::where('status', 'active')->orderBy('name')->get();
+        $campaigns = auth()->user()->managesOperations()
+            ? Campaign::where('status', 'active')->orderBy('name')->get()
+            : collect();
         $media = Media::orderBy('name')->get();
 
         return view('schedules.edit', compact('schedule', 'devices', 'groups', 'campaigns', 'media'));
@@ -139,7 +142,7 @@ class ScheduleController extends Controller
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Exception $e) {
-            Log::error('Error al actualizar programación: ' . $e->getMessage());
+            Log::error('Error al actualizar programación: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al actualizar la programación. Por favor intente nuevamente.');
         }
@@ -157,7 +160,7 @@ class ScheduleController extends Controller
 
             return back()->with('success', 'Programación ejecutada exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al ejecutar programación: ' . $e->getMessage());
+            Log::error('Error al ejecutar programación: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al ejecutar la programación.');
         }
@@ -176,7 +179,7 @@ class ScheduleController extends Controller
             return redirect()->route('schedules.index')
                 ->with('success', 'Programación eliminada exitosamente.');
         } catch (\Exception $e) {
-            Log::error('Error al eliminar programación: ' . $e->getMessage());
+            Log::error('Error al eliminar programación: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al eliminar la programación. Por favor intente nuevamente.');
         }

@@ -71,7 +71,7 @@ class DeviceLocationMapTest extends TestCase
         $this->assertStringContainsString('Selecciona un establecimiento', $html);
     }
 
-    public function test_offline_wl35_detail_keeps_establishment_map(): void
+    public function test_unavailable_wl35_telemetry_keeps_establishment_map_and_guards_controls(): void
     {
         $establishment = Establishment::create([
             'business_type_id' => BusinessType::firstOrCreate(['name' => 'Tienda'])->id,
@@ -81,7 +81,9 @@ class DeviceLocationMapTest extends TestCase
         Http::fake(['gateway.test/*' => Http::response([], 503)]);
 
         $this->actingAs(User::factory()->admin()->create())->get(route('devices.wl35.show', 'fan-a'))
-            ->assertOk()->assertSee('Fuera de línea')->assertSee('Mapa de Entrada')
+            ->assertOk()->assertSee('El estado en vivo no está disponible.')
+            ->assertSee(':disabled="!canControl(rows[0])', false)
+            ->assertSee('Mapa de Entrada')
             ->assertSee('https://www.google.com/maps?q=4.6,-74.1&amp;output=embed', false);
         Http::assertNotSent(fn ($request) => $request->method() !== 'GET');
     }

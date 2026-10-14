@@ -6,9 +6,10 @@ use App\Models\Campaign;
 use App\Models\CampaignStatistic;
 use App\Models\Device;
 use App\Models\Notification;
+use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
 
 class GenerateAnalytics extends Command
 {
@@ -37,7 +38,7 @@ class GenerateAnalytics extends Command
         $this->info('--- Device Analytics ---');
         $this->info("Total devices: {$totalDevices}");
         $this->info("Online: {$onlineDevices}, Offline: {$offlineDevices}, Maintenance: {$maintenanceDevices}, Disabled: {$disabledDevices}");
-        $this->info(sprintf("Average working hours: %.2f", $avgWorkingHours));
+        $this->info(sprintf('Average working hours: %.2f', $avgWorkingHours));
 
         // Campaign analytics
         $totalCampaigns = Campaign::count();
@@ -60,11 +61,11 @@ class GenerateAnalytics extends Command
         $this->info('--- Daily Statistics ---');
         $this->info("Total impressions: {$totalImpressions}");
         $this->info("Total plays: {$totalPlays}");
-        $this->info(sprintf("Total duration: %.2f seconds", $totalDuration));
+        $this->info(sprintf('Total duration: %.2f seconds', $totalDuration));
 
         if ($totalImpressions > 0) {
             $playRate = ($totalPlays / $totalImpressions) * 100;
-            $this->info(sprintf("Play rate: %.2f%%", $playRate));
+            $this->info(sprintf('Play rate: %.2f%%', $playRate));
         }
 
         // Top campaigns by impressions
@@ -134,7 +135,7 @@ class GenerateAnalytics extends Command
         ];
 
         // Notify admins
-        $adminUsers = \App\Models\User::where('role', 'admin')->get();
+        $adminUsers = User::whereIn('role', ['superadmin', 'admin'])->get();
         foreach ($adminUsers as $admin) {
             Notification::create([
                 'user_id' => $admin->id,

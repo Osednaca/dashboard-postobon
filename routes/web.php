@@ -11,12 +11,10 @@ use App\Http\Controllers\Web\DevicePreviewController;
 use App\Http\Controllers\Web\EstablishmentController;
 use App\Http\Controllers\Web\GroupController;
 use App\Http\Controllers\Web\InstantPlayController;
-use App\Http\Controllers\Web\LocationController;
 use App\Http\Controllers\Web\MediaContentController;
 use App\Http\Controllers\Web\MediaController;
 use App\Http\Controllers\Web\NotificationController;
 use App\Http\Controllers\Web\ScheduleController;
-use App\Http\Controllers\Web\SubscriptionController;
 use App\Http\Controllers\Web\UnifiedFleetController;
 use App\Http\Controllers\Web\UserController;
 use App\Http\Controllers\Web\Wl35DeviceController;
@@ -35,7 +33,7 @@ Route::middleware('guest')->group(function () {
     Route::post('/reset-password', [AuthController::class, 'resetPassword'])->name('password.update');
 });
 
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', 'role:superadmin,admin,tecnico'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard.index');
@@ -48,7 +46,6 @@ Route::middleware('auth')->group(function () {
     Route::get('/fleet/uploads/{fleetUpload}', [UnifiedFleetController::class, 'uploadStatus'])->name('fleet.upload.status');
     Route::get('/fleet/operations/{fleetOperation}', [UnifiedFleetController::class, 'operationStatus'])->name('fleet.operation.status');
 
-    Route::resource('locations', LocationController::class);
     Route::resource('business-types', BusinessTypeController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::resource('establishments', EstablishmentController::class);
 
@@ -73,8 +70,7 @@ Route::middleware('auth')->group(function () {
     Route::post('devices/{device}/disable', [DeviceController::class, 'disable'])->name('devices.disable');
     Route::post('devices/{device}/enable', [DeviceController::class, 'enable'])->name('devices.enable');
     Route::post('devices/{device}/change-group', [DeviceController::class, 'changeGroup'])->name('devices.change-group');
-    Route::post('devices/{device}/change-location', [DeviceController::class, 'changeLocation'])->name('devices.change-location');
-    Route::post('devices/{device}/assign-content', [DeviceController::class, 'assignContent'])->name('devices.assign-content');
+    Route::post('devices/{device}/assign-content', [DeviceController::class, 'assignContent'])->name('devices.assign-content')->middleware('role:superadmin,admin');
     Route::post('devices/{device}/unbind', [DeviceController::class, 'unbind'])->name('devices.unbind');
     Route::post('devices/{device}/assign-media', [DeviceController::class, 'assignMedia'])->name('devices.assign-media');
     Route::post('devices/{device}/remove-media', [DeviceController::class, 'removeMedia'])->name('devices.remove-media');
@@ -87,38 +83,37 @@ Route::middleware('auth')->group(function () {
     Route::resource('groups', GroupController::class);
     Route::post('groups/{group}/power-on', [GroupController::class, 'powerOnGroup'])->name('groups.power-on');
     Route::post('groups/{group}/power-off', [GroupController::class, 'powerOffGroup'])->name('groups.power-off');
-    Route::post('groups/{group}/change-content', [GroupController::class, 'changeContent'])->name('groups.change-content');
-    Route::post('groups/{group}/publish-campaign', [GroupController::class, 'publishCampaign'])->name('groups.publish-campaign');
+    Route::post('groups/{group}/change-content', [GroupController::class, 'changeContent'])->name('groups.change-content')->middleware('role:superadmin,admin');
+    Route::post('groups/{group}/publish-campaign', [GroupController::class, 'publishCampaign'])->name('groups.publish-campaign')->middleware('role:superadmin,admin');
 
     Route::post('media/bulk-delete', [MediaController::class, 'bulkDestroy'])->name('media.bulk-delete');
     Route::resource('media', MediaController::class)->parameters(['media' => 'media']);
 
-    Route::resource('campaigns', CampaignController::class);
-    Route::post('campaigns/{campaign}/activate', [CampaignController::class, 'activate'])->name('campaigns.activate');
-    Route::post('campaigns/{campaign}/pause', [CampaignController::class, 'pause'])->name('campaigns.pause');
-    Route::post('campaigns/{campaign}/finish', [CampaignController::class, 'finish'])->name('campaigns.finish');
-    Route::post('campaigns/{campaign}/schedule', [CampaignController::class, 'schedule'])->name('campaigns.schedule');
-    Route::post('campaigns/{campaign}/add-media', [CampaignController::class, 'addMedia'])->name('campaigns.add-media');
-    Route::post('campaigns/{campaign}/remove-media/{media}', [CampaignController::class, 'removeMedia'])->name('campaigns.remove-media');
+    Route::resource('campaigns', CampaignController::class)->middleware('role:superadmin,admin');
+    Route::post('campaigns/{campaign}/activate', [CampaignController::class, 'activate'])->name('campaigns.activate')->middleware('role:superadmin,admin');
+    Route::post('campaigns/{campaign}/pause', [CampaignController::class, 'pause'])->name('campaigns.pause')->middleware('role:superadmin,admin');
+    Route::post('campaigns/{campaign}/finish', [CampaignController::class, 'finish'])->name('campaigns.finish')->middleware('role:superadmin,admin');
+    Route::post('campaigns/{campaign}/schedule', [CampaignController::class, 'schedule'])->name('campaigns.schedule')->middleware('role:superadmin,admin');
+    Route::post('campaigns/{campaign}/add-media', [CampaignController::class, 'addMedia'])->name('campaigns.add-media')->middleware('role:superadmin,admin');
+    Route::post('campaigns/{campaign}/remove-media/{media}', [CampaignController::class, 'removeMedia'])->name('campaigns.remove-media')->middleware('role:superadmin,admin');
 
     Route::resource('schedules', ScheduleController::class);
     Route::post('schedules/{schedule}/execute', [ScheduleController::class, 'execute'])->name('schedules.execute');
-    Route::resource('subscriptions', SubscriptionController::class);
     Route::resource('notifications', NotificationController::class);
     Route::post('notifications/{notification}/read', [NotificationController::class, 'markAsRead'])->name('notifications.read');
     Route::post('notifications/read-all', [NotificationController::class, 'markAllAsRead'])->name('notifications.read-all');
-    Route::get('/audit', [AuditController::class, 'index'])->name('audit.index');
-    Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics.index');
-    Route::get('/analytics/devices', [AnalyticsController::class, 'devices'])->name('analytics.devices');
-    Route::get('/analytics/campaigns', [AnalyticsController::class, 'campaigns'])->name('analytics.campaigns');
-    Route::get('/analytics/groups', [AnalyticsController::class, 'groups'])->name('analytics.groups');
-    Route::get('/analytics/cities', [AnalyticsController::class, 'cities'])->name('analytics.cities');
+    Route::get('/audit', [AuditController::class, 'index'])->name('audit.index')->middleware('role:superadmin,admin');
+    Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics.index')->middleware('role:superadmin,admin');
+    Route::get('/analytics/devices', [AnalyticsController::class, 'devices'])->name('analytics.devices')->middleware('role:superadmin,admin');
+    Route::get('/analytics/campaigns', [AnalyticsController::class, 'campaigns'])->name('analytics.campaigns')->middleware('role:superadmin,admin');
+    Route::get('/analytics/groups', [AnalyticsController::class, 'groups'])->name('analytics.groups')->middleware('role:superadmin,admin');
+    Route::get('/analytics/cities', [AnalyticsController::class, 'cities'])->name('analytics.cities')->middleware('role:superadmin,admin');
 
     Route::resource('users', UserController::class);
 
     Route::get('/instant-play', [InstantPlayController::class, 'index'])->name('instant-play.index');
     Route::post('/instant-play/media', [InstantPlayController::class, 'playMedia'])->name('instant-play.media');
     Route::post('/instant-play/play', [InstantPlayController::class, 'play'])->name('instant-play.play');
-    Route::post('/instant-play/play-campaign', [InstantPlayController::class, 'playCampaign'])->name('instant-play.play-campaign');
+    Route::post('/instant-play/play-campaign', [InstantPlayController::class, 'playCampaign'])->name('instant-play.play-campaign')->middleware('role:superadmin,admin');
     Route::post('/instant-play/play-bulk', [InstantPlayController::class, 'playBulk'])->name('instant-play.play-bulk');
 });

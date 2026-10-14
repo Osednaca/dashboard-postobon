@@ -16,6 +16,10 @@ class MediaContentController extends Controller
     public function __invoke(Request $request, Media $media, MediaPreviewSource $sources, CompressedMediaPreview $previews): Response
     {
         $this->authorize('view', $media);
+        if ($request->boolean('preview_status')) {
+            return response()->json($previews->status($media))
+                ->header('Cache-Control', 'private, no-store');
+        }
         if ($request->has('preview')) {
             $variant = $request->query('preview');
             abort_unless(is_string($variant), 404, 'Vista previa no disponible.');

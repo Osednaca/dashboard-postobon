@@ -58,6 +58,48 @@ class CompressedMediaPreview
         return $absolute;
     }
 
+    public function status(Media $media): array
+    {
+        if (! config('mediapreview.enabled')) {
+            return ['status' => 'unavailable', 'url' => null, 'message' => 'La vista previa comprimida está desactivada.'];
+        }
+        $identity = $this->identity($media);
+        if ($identity === null) {
+            return ['status' => 'unavailable', 'url' => null, 'message' => 'Este archivo no admite vista previa comprimida.'];
+        }
+        // Reuse generation, freshness checks and deduplication without exposing the fallback URL.
+        $url = $this->url($media);
+        $entry = Cache::get($this->key($identity), []);
+        $state = $entry['state'] ?? null;
+        $fresh = ($entry['checked_at'] ?? 0) > now()->timestamp - config('mediapreview.remote_refresh_seconds');
+        if ($fresh && ($state === 'original' || ($state === 'ready' && str_contains($url, '?preview=')))) {
+            // An original is usable only after conversion proved that it is already smaller.
+            return ['status' => 'ready', 'url' => $url, 'message' => null];
+        }
+        if ($this->hasPendingGeneration($identity)) {
+            return ['status' => 'pending', 'url' => null, 'message' => 'Preparando vista previa comprimida…'];
+        }
+        if ($state === 'failed') {
+            return ['status' => 'error', 'url' => null, 'message' => 'No se pudo generar la vista previa comprimida. Inténtalo más tarde.'];
+        }
+
+        return ['status' => 'unavailable', 'url' => null, 'message' => 'La vista previa comprimida no está disponible.'];
+    }
+
+    private function hasPendingGeneration(string $identity): bool
+    {
+        if (Cache::has($this->key($identity).':pending')) {
+            return true;
+        }
+        $pending = Cache::lock($this->key($identity).':pending-lock', 600);
+        if (! $pending->get()) {
+            return true;
+        }
+        $pending->release();
+
+        return false;
+    }
+
     public function identity(Media $media): ?string
     {
         if ($media->mime_type !== 'video/mp4') {
@@ -89,10 +131,11 @@ class CompressedMediaPreview
         $driver = config('queue.connections.'.$connection.'.driver');
         // Never run conversion inside the polling request, including sync/deferred drivers.
         if (! in_array($driver, ['database', 'redis'], true)
-            || (int) config('queue.connections.'.$connection.'.retry_after', 0) <= 360) {
+            || (int) config('queue.connections.'.$connection.'.retry_after', 0) <= 360
+            || Cache::has($this->key($identity).':pending')) {
             return;
         }
-        $pending = Cache::lock($this->key($identity).':pending', 600);
+        $pending = Cache::lock($this->key($identity).':pending-lock', 600);
         if (! $pending->get()) {
             return;
         }
@@ -111,7 +154,7 @@ class CompressedMediaPreview
         $execution = Cache::lock($this->key($identity).':generating', 600);
         if (! $execution->get()) {
             if ($pendingOwner !== null) {
-                Cache::restoreLock($this->key($identity).':pending', $pendingOwner)->release();
+                Cache::restoreLock($this->key($identity).':pending-lock', $pendingOwner)->release();
             }
 
             return;
@@ -195,7 +238,7 @@ class CompressedMediaPreview
                     $execution->release();
                 } finally {
                     if ($pendingOwner !== null) {
-                        Cache::restoreLock($this->key($identity).':pending', $pendingOwner)->release();
+                        Cache::restoreLock($this->key($identity).':pending-lock', $pendingOwner)->release();
                     }
                 }
             }

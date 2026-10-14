@@ -40,7 +40,9 @@
                 <option value="power_on">Encender</option>
                 <option value="power_off">Apagar</option>
                 <option value="change_content">Reproducir contenido</option>
-                <option value="activate_campaign">Activar campaña</option>
+                @can('create', \App\Models\Campaign::class)
+                    <option value="activate_campaign">Activar campaña</option>
+                @endcan
                 <option value="format_sd">Formatear tarjeta SD</option>
             </select>
             @error('type')<p class="mt-1.5 text-xs text-danger">{{ $message }}</p>@enderror
@@ -49,6 +51,7 @@
             </p>
         </div>
 
+        @can('create', \App\Models\Campaign::class)
         <div x-show="type === 'activate_campaign'" x-cloak>
             <label for="campaign_id" class="block text-sm font-medium text-text mb-1.5">Campaña <span class="text-danger">*</span></label>
             <select name="campaign_id" id="campaign_id" :disabled="type !== 'activate_campaign'"
@@ -60,6 +63,7 @@
             </select>
             @error('campaign_id')<p class="mt-1.5 text-xs text-danger">{{ $message }}</p>@enderror
         </div>
+        @endcan
 
         <div x-show="type === 'change_content'" x-cloak>
             <label for="content_id" class="block text-sm font-medium text-text mb-1.5">Contenido <span class="text-danger">*</span></label>

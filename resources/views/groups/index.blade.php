@@ -58,7 +58,9 @@
                     <button type="button" class="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface">Apagar Grupo</button>
                     <div class="border-t border-border my-1"></div>
                     <button type="button" class="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface">Cambiar Contenido</button>
+                    @can('viewAny', App\Models\Campaign::class)
                     <button type="button" class="block w-full text-left px-4 py-2 text-sm text-text hover:bg-surface">Publicar Campaña</button>
+                    @endcan
                 </div>
             </div>
         </div>

@@ -2,6 +2,7 @@
 
 namespace App\Services\Fleet;
 
+use App\DTOs\DeviceOperatingState;
 use App\Models\Device;
 use App\Models\Media;
 use App\Models\Wl35DeviceMedia;
@@ -43,6 +44,7 @@ class DevicePreviewService
                     'type' => 'z2', 'id' => $device['deviceId'], 'name' => $device['name'] ?? $device['deviceId'],
                     'online' => $device['online'] ?? false,
                     'power' => isset($device['power']) ? (int) $device['power'] === 1 : null,
+                    'bluetooth' => $device['btSwitch'] ?? null,
                     'current_video' => $device['displayImageId'] ?? null,
                     'last_seen' => $device['lastSeenIso'] ?? null,
                 ];
@@ -106,6 +108,7 @@ class DevicePreviewService
             return [
                 'key' => $device['type'].':'.$device['id'], 'type' => $device['type'], 'id' => (string) $device['id'],
                 'name' => $device['name'] ?? $device['id'], 'status' => $status,
+                'operating' => DeviceOperatingState::fromTelemetry($device),
                 'current_video' => $current, 'media_name' => $knownFilename ?? $source?->name,
                 'url' => $status === 'ready' ? ($device['type'] === 'z2'
                     ? $this->compressed->url($source) : route('media.content', $source)) : null,

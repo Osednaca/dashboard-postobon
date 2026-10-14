@@ -2,6 +2,7 @@
 
 <section
     x-data="devicePreviews(@js(route('devices.previews')), @js($deviceKey))"
+    @refresh-devices.window="refresh(true)"
     class="device-previews rounded-xl border border-border bg-white p-5 shadow-sm sm:p-6"
     aria-label="Vista previa del contenido"
 >

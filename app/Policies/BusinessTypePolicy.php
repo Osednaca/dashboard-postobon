@@ -9,21 +9,21 @@ class BusinessTypePolicy
 {
     public function viewAny(User $user): bool
     {
-        return in_array($user->role, ['admin', 'operator'], true);
+        return $user->operatesDevices();
     }
 
     public function create(User $user): bool
     {
-        return in_array($user->role, ['admin', 'operator'], true);
+        return $user->operatesDevices();
     }
 
     public function update(User $user, BusinessType $businessType): bool
     {
-        return in_array($user->role, ['admin', 'operator'], true);
+        return $user->operatesDevices();
     }
 
     public function delete(User $user, BusinessType $businessType): bool
     {
-        return in_array($user->role, ['admin', 'operator'], true);
+        return $user->operatesDevices();
     }
 }

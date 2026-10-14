@@ -28,9 +28,6 @@ Schedule::job(new HeartbeatJob)->everyFiveMinutes();
 // Analytics generation daily
 Schedule::command('analytics:generate')->dailyAt('00:00');
 
-// Subscription check daily
-Schedule::command('subscriptions:check')->dailyAt('08:00');
-
 // Process scheduled tasks every minute
 Schedule::command('schedules:process')->everyMinute()->withoutOverlapping();
 

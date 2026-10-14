@@ -123,6 +123,37 @@ function polling(fetch) {
     return { state, doc, listeners, tick: () => scheduled(), cancelled: () => cancelled };
 }
 
+test('a command refresh arriving during a poll queues exactly one fresh snapshot', async () => {
+    let resolveFirst, calls = 0; const events = [];
+    const fixture = polling(() => {
+        calls++;
+        return calls === 1 ? new Promise(resolve => resolveFirst = resolve)
+            : Promise.resolve({ ok: true, json: async () => ({ devices: [{ ...ready(), operating: { powered: false } }] }) });
+    });
+    fixture.state.$dispatch = (name, payload) => events.push([name, payload]);
+    const first = fixture.state.refresh();
+    await fixture.state.refresh(true); await fixture.state.refresh(true);
+    assert.equal(calls, 1);
+    resolveFirst({ ok: true, json: async () => ({ devices: [ready()] }) }); await first;
+    assert.equal(calls, 2); assert.equal(fixture.state.updating, false);
+    assert.equal(events.at(-1)[1].devices[0].operating.powered, false);
+    fixture.state.destroy();
+});
+
+test('a stalled telemetry request times out, reports unavailable and can recover', async () => {
+    let deadline, calls = 0;
+    const state = createDevicePreviews('/device-previews', null, {
+        document: { hidden: false }, setTimeout: callback => { deadline = callback; return 1; }, clearTimeout: () => {},
+        fetch: async (_, { signal }) => {
+            if (++calls > 1) return { ok: true, json: async () => ({ devices: [ready()] }) };
+            return new Promise((_, reject) => signal.addEventListener('abort', () => reject(new Error('Timeout'))));
+        },
+    });
+    const first = state.refresh(); deadline(); await first;
+    assert.equal(state.failed, true); assert.equal(state.updating, false);
+    await state.refresh(); assert.equal(state.failed, false); assert.equal(state.devices[0].status, 'ready');
+});
+
 test('one polling loop filters a detail, skips hidden tabs, and cleans up on removal', async () => {
     let requests = 0;
     const fixture = polling(async () => {
