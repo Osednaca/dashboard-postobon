@@ -87,12 +87,12 @@ class PermanentCampaignTest extends TestCase
             ->assertSee(':disabled="permanent"', false)->assertSee('name="start_date"', false);
         $this->get(route('campaigns.edit', $permanent))->assertOk()->assertSee('Campaña permanente')
             ->assertSee('x-model="permanent" checked', false)->assertSee('disabled', false);
-        $this->get(route('campaigns.edit', $finite))->assertOk()->assertSee('value="2026-11-01"', false)
+        $this->get(route('campaigns.edit', $finite))->assertOk()->assertSee('value="2026-11-01T00:00"', false)
             ->assertDontSee('x-model="permanent" checked', false);
         $this->get(route('campaigns.index'))->assertOk()->assertSee('Permanente · Sin fecha de fin')->assertSee('2026-11-01');
         $this->get(route('campaigns.show', $permanent))->assertOk()->assertSee('Permanente · Sin fecha de fin');
         $this->withSession(['_old_input' => ['is_permanent' => '0', 'end_date' => '2026-12-02']])
-            ->get(route('campaigns.edit', $permanent))->assertOk()->assertSee('value="2026-12-02"', false)
+            ->get(route('campaigns.edit', $permanent))->assertOk()->assertSee('value="2026-12-02T00:00"', false)
             ->assertDontSee('x-model="permanent" checked', false);
         Http::assertNothingSent();
     }

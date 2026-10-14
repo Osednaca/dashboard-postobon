@@ -61,11 +61,12 @@
                             </div>
                             <div>
                                 <label for="start_date" class="block text-sm font-medium text-text mb-1.5">Fecha de inicio <span class="text-danger">*</span></label>
-                                <input type="date" name="start_date" id="start_date" required value="{{ old('start_date') }}" class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors">
+                                <x-campaign-date-time-input name="start_date" :value="old('start_date')" required />
                                 @error('start_date')<p class="mt-1 text-xs text-danger">{{ $message }}</p>@enderror
                             </div>
                             <x-campaign-end-date />
                         </div>
+                        <p class="text-xs text-text-muted">Fecha y hora en {{ config('app.timezone') }}.</p>
                     </div>
                 </div>
 
