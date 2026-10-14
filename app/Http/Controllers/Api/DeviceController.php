@@ -3,9 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\AssignMediaRequest;
 use App\Http\Requests\ChangeDeviceGroupRequest;
-use App\Http\Requests\ChangeDeviceLocationRequest;
 use App\Http\Requests\StoreDeviceRequest;
 use App\Http\Requests\UpdateDeviceRequest;
 use App\Models\Campaign;
@@ -13,18 +11,13 @@ use App\Models\Device;
 use App\Services\DeviceService;
 use App\Services\Z2\Z2DeviceService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 class DeviceController extends Controller
 {
-    /**
-     * @var DeviceService
-     */
     protected DeviceService $deviceService;
 
-    /**
-     * @var Z2DeviceService
-     */
     protected Z2DeviceService $z2DeviceService;
 
     /**
@@ -39,7 +32,7 @@ class DeviceController extends Controller
     /**
      * Display a paginated listing of devices.
      */
-    public function index(): JsonResponse|\Illuminate\Http\RedirectResponse
+    public function index(): JsonResponse|RedirectResponse
     {
         if ($redirect = $this->redirectBrowserToWeb('devices.index')) {
             return $redirect;
@@ -267,27 +260,6 @@ class DeviceController extends Controller
     }
 
     /**
-     * Change the location of a device.
-     */
-    public function changeLocation(ChangeDeviceLocationRequest $request, Device $device): JsonResponse
-    {
-        try {
-            $this->authorize('update', $device);
-            $device->update(['location_id' => $request->validated('location_id')]);
-
-            return response()->json([
-                'message' => 'Ubicación del dispositivo cambiada correctamente.',
-                'device' => $device->fresh(),
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Error al cambiar la ubicación del dispositivo.',
-                'error' => $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    /**
      * Assign content to a device.
      */
     public function assignContent(Request $request, Device $device): JsonResponse
@@ -315,6 +287,7 @@ class DeviceController extends Controller
 
             if ($device->mac_address && $this->z2DeviceService->changeVideo($device->mac_address, $media->file_path)) {
                 $this->deviceService->assignContent($device->id, $request->input('campaign_id'));
+
                 return response()->json([
                     'message' => 'Contenido asignado correctamente al dispositivo.',
                     'device' => $device->fresh(),
@@ -346,6 +319,7 @@ class DeviceController extends Controller
 
             if ($device->mac_address && $this->z2DeviceService->unbindDevice($device->mac_address)) {
                 $this->deviceService->unbind($device->id, $request->input('campaign_id'));
+
                 return response()->json([
                     'message' => 'Contenido desvinculado correctamente del dispositivo.',
                     'device' => $device->fresh(),

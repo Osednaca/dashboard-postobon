@@ -8,7 +8,9 @@ class UpdateScheduleRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        return $this->user()?->can('update', $this->route('schedule'))
+            && ($this->user()->managesOperations()
+                || ($this->input('type') !== 'activate_campaign' && ! $this->filled('campaign_id')));
     }
 
     public function rules(): array

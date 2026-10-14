@@ -16,7 +16,7 @@ use Throwable;
 
 class ProcessSchedules extends Command
 {
-    protected $signature = 'schedules:process';
+    protected $signature = 'schedules:process {--schedule= : Execute only this schedule ID}';
 
     protected $description = 'Execute pending one-time and recurring schedules';
 
@@ -31,6 +31,7 @@ class ProcessSchedules extends Command
     {
         $now = CarbonImmutable::now(config('app.timezone'));
         $pendingSchedules = Schedule::with(['device', 'group.devices', 'campaign'])
+            ->when($this->option('schedule') !== null, fn ($query) => $query->whereKey($this->option('schedule')))
             ->where('status', 'pending')
             ->where('scheduled_at', '<=', $now)
             ->orderBy('scheduled_at')

@@ -33,7 +33,7 @@
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         @forelse($media as $item)
             <article class="overflow-hidden rounded-lg border border-border bg-white" :class="has({{ $item->id }}) ? 'border-primary' : ''">
-                <x-media-preview :media="$item" detail />
+                <x-media-preview :media="$item" detail compressed />
                 <div class="space-y-2 p-3">
                     <h4 class="text-sm font-medium text-text">{{ $item->name }}</h4>
                     <p class="text-xs text-text-muted"><x-media-duration :media="$item" /></p>

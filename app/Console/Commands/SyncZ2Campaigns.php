@@ -30,12 +30,12 @@ class SyncZ2Campaigns extends Command
 
         try {
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $apiKey,
+                'Authorization' => 'Bearer '.$apiKey,
                 'Accept' => 'application/json',
-            ])->get($apiUrl . '/campaigns');
+            ])->get($apiUrl.'/campaigns');
 
             if (! $response->successful()) {
-                $this->error('Z2 API request failed: ' . $response->status());
+                $this->error('Z2 API request failed: '.$response->status());
                 Log::error('Z2 campaign sync failed', ['status' => $response->status(), 'body' => $response->body()]);
 
                 return self::FAILURE;
@@ -45,7 +45,7 @@ class SyncZ2Campaigns extends Command
             $count = 0;
             $updated = 0;
 
-            $adminUser = User::where('role', 'admin')->first();
+            $adminUser = User::whereIn('role', ['superadmin', 'admin'])->first();
             $createdBy = $adminUser?->id ?? User::factory()->admin()->create()->id;
 
             foreach ($campaigns as $campaignData) {
@@ -93,7 +93,7 @@ class SyncZ2Campaigns extends Command
 
             return self::SUCCESS;
         } catch (\Exception $e) {
-            $this->error('Z2 campaign sync error: ' . $e->getMessage());
+            $this->error('Z2 campaign sync error: '.$e->getMessage());
             Log::error('Z2 campaign sync error', ['exception' => $e]);
 
             return self::FAILURE;

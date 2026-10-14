@@ -1,7 +1,6 @@
 <x-app-layout>
     <x-slot name="title">Editar Usuario</x-slot>
 
-    @php $user = $user ?? (object)['id' => 1, 'name' => 'Juan Pérez', 'email' => 'juan@3dfan.com', 'role' => 'operator']; @endphp
 
     <div class="max-w-2xl mx-auto space-y-6">
         <div class="flex items-center gap-3">
@@ -34,9 +33,11 @@
                 <div>
                     <label for="role" class="block text-sm font-medium text-text mb-1.5">Rol <span class="text-danger">*</span></label>
                     <select name="role" id="role" required class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors">
-                        <option value="admin" {{ old('role', $user->role) === 'admin' ? 'selected' : '' }}>Administrador</option>
-                        <option value="operator" {{ old('role', $user->role) === 'operator' ? 'selected' : '' }}>Operador</option>
+                        @foreach(auth()->user()->assignableRoles() as $role => $label)
+                            <option value="{{ $role }}" @selected(old('role', $user->role ?? '') === $role)>{{ $label }}</option>
+                        @endforeach
                     </select>
+                    @error('role')<p class="mt-1 text-xs text-danger">{{ $message }}</p>@enderror
                 </div>
 
                 <div class="pt-4 border-t border-border">

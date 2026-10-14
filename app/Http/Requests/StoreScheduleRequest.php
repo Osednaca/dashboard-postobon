@@ -2,13 +2,16 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Schedule;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreScheduleRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        return $this->user()?->can('create', Schedule::class)
+            && ($this->user()->managesOperations()
+                || ($this->input('type') !== 'activate_campaign' && ! $this->filled('campaign_id')));
     }
 
     public function rules(): array

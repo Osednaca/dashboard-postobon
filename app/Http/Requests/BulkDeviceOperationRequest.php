@@ -17,9 +17,8 @@ class BulkDeviceOperationRequest extends FormRequest
         return [
             'device_ids' => ['required', 'array', 'min:1'],
             'device_ids.*' => ['required', 'integer', 'exists:devices,id'],
-            'action' => ['required', 'in:power_on,power_off,disable,enable,change_group,change_location,unbind'],
+            'action' => ['required', 'in:power_on,power_off,disable,enable,change_group,unbind'],
             'target_group_id' => [Rule::requiredIf($this->input('action') === 'change_group'), 'nullable', 'integer', 'exists:groups,id'],
-            'target_location_id' => [Rule::requiredIf($this->input('action') === 'change_location'), 'nullable', 'integer', 'exists:locations,id'],
         ];
     }
 
@@ -35,9 +34,7 @@ class BulkDeviceOperationRequest extends FormRequest
             'action.required' => 'La acción es obligatoria.',
             'action.in' => 'La acción seleccionada no es válida.',
             'target_group_id.exists' => 'El grupo seleccionado no existe.',
-            'target_location_id.exists' => 'La ubicación seleccionada no existe.',
             'target_group_id.required' => 'Selecciona un grupo destino.',
-            'target_location_id.required' => 'Selecciona una ubicación destino.',
         ];
     }
 }

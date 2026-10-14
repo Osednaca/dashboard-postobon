@@ -1,10 +1,10 @@
-@props(['media', 'detail' => false, 'compact' => false])
+@props(['media', 'detail' => false, 'compact' => false, 'compressed' => false])
 @php
     $kind = str_starts_with($media->mime_type, 'video/') ? 'video'
         : (in_array($media->mime_type, ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif', 'image/bmp'], true) ? 'image' : 'unsupported');
 @endphp
 <div
-    x-data="mediaPreview(@js((string) $media->id), @js(route('media.content', $media)), @js($kind), @js($media->duration ?? 0))"
+    x-data="mediaPreview(@js((string) $media->id), @js(route('media.content', $media)), @js($kind), @js($media->duration ?? 0), @js($compressed && $kind === 'video'))"
     {{ $attributes->class(['media-preview relative overflow-hidden bg-black', 'h-10 w-10 shrink-0 rounded-lg' => $compact, 'mx-auto aspect-square w-full max-w-[28rem]' => !$compact]) }}
     aria-label="Vista previa de {{ $media->name }}"
 >
@@ -19,13 +19,13 @@
             x-on:load="ready()" x-on:error="fail()" :class="status === 'ready' ? 'opacity-100' : 'opacity-0'">
     @endif
     <div x-show="status !== 'ready'" class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-surface p-2 text-center text-xs text-text-light" role="status"
-        :aria-label="status === 'error' ? 'No se pudo cargar la vista previa' : 'Cargando vista previa'">
+        :aria-label="message || (status === 'error' ? 'No se pudo cargar la vista previa' : 'Cargando vista previa')">
         @if($compact)
             <span x-show="status !== 'error'">…</span>
         @else
-            <span x-text="status === 'error' ? 'No se pudo cargar la vista previa.' : (status === 'unsupported' ? 'Vista previa no disponible.' : 'Cargando vista previa…')">Cargando vista previa…</span>
+            <span x-text="message || (status === 'error' ? 'No se pudo cargar la vista previa.' : (status === 'unsupported' ? 'Vista previa no disponible.' : 'Cargando vista previa…'))">Cargando vista previa…</span>
         @endif
-        <button x-show="status === 'error'" x-cloak type="button" @click.stop="retry()" aria-label="Reintentar vista previa"
+        <button x-show="status === 'error' || status === 'unavailable'" x-cloak type="button" @click.stop="retry()" aria-label="Reintentar vista previa"
             class="rounded border border-border bg-white px-2 py-1 text-xs font-semibold text-primary">
             {{ $compact ? '↻' : 'Reintentar' }}
         </button>

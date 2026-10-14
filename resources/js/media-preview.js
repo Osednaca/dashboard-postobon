@@ -23,10 +23,17 @@ export function createMediaDurationStore() {
     };
 }
 
-export function createMediaPreview(id, url, kind, knownDuration = 0) {
+export function createMediaPreview(id, url, kind, knownDuration = 0, compressed = false, dependencies = {}) {
     let stopObserving;
+    let pollTimer;
+    let request;
+    let attempts = 0;
+    const fetchStatus = dependencies.fetch ?? globalThis.fetch;
+    const later = dependencies.setTimeout ?? globalThis.setTimeout;
+    const cancel = dependencies.clearTimeout ?? globalThis.clearTimeout;
     return {
         source: null,
+        message: null,
         status: kind === 'unsupported' ? 'unsupported' : 'loading',
         seeking: false,
         destroyed: false,
@@ -40,13 +47,55 @@ export function createMediaPreview(id, url, kind, knownDuration = 0) {
             });
         },
         start() {
-            if (this.destroyed || !this.inViewport || this.source !== null || this.status === 'error') return;
+            if (this.destroyed || !this.inViewport || this.source !== null || ['error', 'unavailable'].includes(this.status)) return;
+            if (compressed && kind === 'video') return this.resolveCompressed();
             this.source = url;
+        },
+        async resolveCompressed() {
+            if (request || pollTimer || this.destroyed || !this.inViewport) return;
+            if (++attempts > 72) {
+                this.fail('La preparación está tardando demasiado. Inténtalo más tarde.');
+                return;
+            }
+            const controller = new AbortController();
+            request = controller;
+            const timeout = later(() => controller.abort(), 15000);
+            try {
+                const response = await fetchStatus(`${url}?preview_status=1`, {
+                    headers: { Accept: 'application/json' }, credentials: 'same-origin', signal: controller.signal,
+                });
+                if (!response.ok) throw new Error('Preview status failed');
+                const result = await response.json();
+                if (this.destroyed || controller.signal.aborted) return;
+                if (result.status === 'ready' && typeof result.url === 'string' && result.url) {
+                    this.message = null;
+                    this.source = result.url;
+                } else if (result.status === 'pending') {
+                    this.message = result.message;
+                    this.status = 'pending';
+                    pollTimer = later(() => {
+                        pollTimer = null;
+                        this.start();
+                    }, 5000);
+                } else if (['error', 'unavailable'].includes(result.status)) {
+                    this.fail(result.message);
+                    this.status = result.status;
+                } else {
+                    throw new Error('Invalid preview status');
+                }
+            } catch {
+                if (!this.destroyed) this.fail('No se pudo consultar la vista previa comprimida.');
+            } finally {
+                cancel(timeout);
+                if (request === controller) request = null;
+            }
         },
         syncPlayback() {
             if (this.destroyed) return;
             const video = this.$refs.video;
             if (!this.inViewport) {
+                cancel(pollTimer);
+                pollTimer = null;
                 this.resumePlayback ||= Boolean(video && !video.paused && !video.ended);
                 video?.pause();
                 return;
@@ -79,13 +128,21 @@ export function createMediaPreview(id, url, kind, knownDuration = 0) {
                 this.status = 'ready';
             }
         },
-        fail() {
+        fail(message = null) {
             if (this.destroyed) return;
+            this.message = message;
+            cancel(pollTimer);
+            pollTimer = null;
             this.resumePlayback = false;
             this.$refs.video?.pause();
             this.status = 'error';
         },
         retry() {
+            if (request) return;
+            cancel(pollTimer);
+            pollTimer = null;
+            attempts = 0;
+            this.message = null;
             this.status = 'loading';
             this.resumePlayback = false;
             this.seeking = false;
@@ -101,6 +158,8 @@ export function createMediaPreview(id, url, kind, knownDuration = 0) {
         },
         destroy() {
             this.destroyed = true;
+            cancel(pollTimer);
+            request?.abort();
             stopObserving?.();
             const video = this.$refs.video;
             if (video) {
