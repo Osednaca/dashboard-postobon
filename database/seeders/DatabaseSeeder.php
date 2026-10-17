@@ -16,7 +16,6 @@ class DatabaseSeeder extends Seeder
             CampaignSeeder::class,
             ScheduleSeeder::class,
             NotificationSeeder::class,
-            AuditLogSeeder::class,
             DeviceHeartbeatSeeder::class,
             CampaignStatisticSeeder::class,
         ]);
