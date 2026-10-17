@@ -5,13 +5,14 @@ namespace App\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreScheduleRequest;
 use App\Http\Requests\UpdateScheduleRequest;
-use App\Models\Campaign;
 use App\Models\Device;
 use App\Models\Group;
 use App\Models\Media;
 use App\Models\Schedule;
 use App\Services\ScheduleService;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -31,19 +32,37 @@ class ScheduleController extends Controller
     /**
      * Display a listing of schedules.
      */
-    public function index(): View|RedirectResponse
+    public function index(Request $request): View|RedirectResponse
     {
         $this->authorize('viewAny', Schedule::class);
 
+        $filters = $request->validate([
+            'status' => ['nullable', 'in:pending,executed,failed,cancelled'],
+            'month' => ['nullable', 'date_format:Y-m', 'regex:/^(?!0000)\d{4}-\d{2}$/'],
+            'view' => ['nullable', 'in:list,calendar'],
+        ]);
+        $status = $filters['status'] ?? '';
+        $view = $filters['view'] ?? 'list';
+        $month = CarbonImmutable::createFromFormat('!Y-m', $filters['month'] ?? now()->format('Y-m'), config('app.timezone'));
+
         try {
-            $schedules = Schedule::with(['device', 'group', 'campaign'])
+            $query = Schedule::with(['device', 'group', 'campaign'])
                 ->when(! auth()->user()->managesOperations(), fn ($query) => $query
                     ->where('type', '!=', 'activate_campaign')->whereNull('campaign_id'))
+                ->when($status, fn ($query) => $query->where('status', $status));
+            $schedules = (clone $query)
                 ->orderByRaw("CASE WHEN status = 'pending' THEN 0 ELSE 1 END")
                 ->orderBy('scheduled_at')
-                ->paginate(15);
+                ->paginate(15)->withQueryString();
+            $calendarSchedules = (clone $query)
+                ->where('scheduled_at', '>=', $month)
+                ->where('scheduled_at', '<', $month->addMonth())
+                ->orderBy('scheduled_at')->get()
+                ->groupBy(fn (Schedule $schedule) => $schedule->scheduled_at->timezone(config('app.timezone'))->format('Y-m-d'));
+            $calendarStart = $month->startOfWeek();
+            $calendarEnd = $month->endOfMonth()->endOfWeek();
 
-            return view('schedules.index', compact('schedules'));
+            return view('schedules.index', compact('schedules', 'calendarSchedules', 'calendarStart', 'calendarEnd', 'month', 'status', 'view'));
         } catch (\Exception $e) {
             Log::error('Error al listar programaciones: '.$e->getMessage());
 
@@ -61,12 +80,9 @@ class ScheduleController extends Controller
 
         $devices = Device::orderBy('name')->get();
         $groups = Group::orderBy('name')->get();
-        $campaigns = auth()->user()->managesOperations()
-            ? Campaign::where('status', 'active')->orderBy('name')->get()
-            : collect();
         $media = Media::orderBy('name')->get();
 
-        return view('schedules.create', compact('devices', 'groups', 'campaigns', 'media'));
+        return view('schedules.create', compact('devices', 'groups', 'media'));
     }
 
     /**
@@ -119,12 +135,9 @@ class ScheduleController extends Controller
 
         $devices = Device::orderBy('name')->get();
         $groups = Group::orderBy('name')->get();
-        $campaigns = auth()->user()->managesOperations()
-            ? Campaign::where('status', 'active')->orderBy('name')->get()
-            : collect();
         $media = Media::orderBy('name')->get();
 
-        return view('schedules.edit', compact('schedule', 'devices', 'groups', 'campaigns', 'media'));
+        return view('schedules.edit', compact('schedule', 'devices', 'groups', 'media'));
     }
 
     /**

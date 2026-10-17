@@ -1,6 +1,7 @@
 @php
     $schedule = $schedule ?? null;
     $formType = old('type', $schedule?->type ?? 'power_on');
+    $formType = $formType === 'activate_campaign' ? '' : $formType;
     $recurrence = old('recurrence_type', $schedule?->recurrence_type ?? 'once');
     $scope = old('target_scope', $schedule?->device_id ? 'device' : ($schedule?->group_id ? 'group' : 'all'));
     $selectedDays = array_map('intval', old('recurrence_days', $schedule?->recurrence_days ?? [1, 2, 3, 4, 5]));
@@ -37,12 +38,10 @@
             <label for="type" class="block text-sm font-medium text-text mb-1.5">Acción <span class="text-danger">*</span></label>
             <select name="type" id="type" x-model="type" required
                     class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary">
+                <option value="" disabled>Seleccionar acción</option>
                 <option value="power_on">Encender</option>
                 <option value="power_off">Apagar</option>
                 <option value="change_content">Reproducir contenido</option>
-                @can('create', \App\Models\Campaign::class)
-                    <option value="activate_campaign">Activar campaña</option>
-                @endcan
                 <option value="format_sd">Formatear tarjeta SD</option>
             </select>
             @error('type')<p class="mt-1.5 text-xs text-danger">{{ $message }}</p>@enderror
@@ -51,19 +50,9 @@
             </p>
         </div>
 
-        @can('create', \App\Models\Campaign::class)
-        <div x-show="type === 'activate_campaign'" x-cloak>
-            <label for="campaign_id" class="block text-sm font-medium text-text mb-1.5">Campaña <span class="text-danger">*</span></label>
-            <select name="campaign_id" id="campaign_id" :disabled="type !== 'activate_campaign'"
-                    class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                <option value="">Seleccionar campaña</option>
-                @foreach($campaigns as $campaign)
-                    <option value="{{ $campaign->id }}" @selected(old('campaign_id', $schedule?->campaign_id) == $campaign->id)>{{ $campaign->name }}</option>
-                @endforeach
-            </select>
-            @error('campaign_id')<p class="mt-1.5 text-xs text-danger">{{ $message }}</p>@enderror
-        </div>
-        @endcan
+        @if($schedule?->type === 'activate_campaign')
+            <p class="rounded-lg bg-warning/10 px-3 py-2 text-sm text-amber-800">Esta programación histórica activa una campaña. Para editarla, selecciona una de las acciones disponibles.</p>
+        @endif
 
         <div x-show="type === 'change_content'" x-cloak>
             <label for="content_id" class="block text-sm font-medium text-text mb-1.5">Contenido <span class="text-danger">*</span></label>
@@ -78,7 +67,7 @@
         </div>
     </section>
 
-    <section class="space-y-5 border-t border-border pt-8" x-show="type !== 'activate_campaign'" x-cloak>
+    <section class="space-y-5 border-t border-border pt-8">
         <div>
             <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary">02 · Alcance</p>
             <h3 class="mt-1 text-lg font-semibold text-text">¿Dónde debe ejecutarse?</h3>
@@ -98,7 +87,7 @@
 
         <div x-show="scope === 'device'" x-cloak>
             <label for="device_id" class="block text-sm font-medium text-text mb-1.5">Dispositivo <span class="text-danger">*</span></label>
-            <select name="device_id" id="device_id" :disabled="scope !== 'device' || type === 'activate_campaign'"
+            <select name="device_id" id="device_id" :disabled="scope !== 'device'"
                     class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none focus:border-primary focus:ring-1 focus:ring-primary">
                 <option value="">Seleccionar dispositivo</option>
                 @foreach($devices as $device)
@@ -110,7 +99,7 @@
 
         <div x-show="scope === 'group'" x-cloak>
             <label for="group_id" class="block text-sm font-medium text-text mb-1.5">Grupo <span class="text-danger">*</span></label>
-            <select name="group_id" id="group_id" :disabled="scope !== 'group' || type === 'activate_campaign'"
+            <select name="group_id" id="group_id" :disabled="scope !== 'group'"
                     class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none focus:border-primary focus:ring-1 focus:ring-primary">
                 <option value="">Seleccionar grupo</option>
                 @foreach($groups as $group)
@@ -121,7 +110,8 @@
         </div>
 
         <p x-show="scope === 'all'" class="text-xs text-text-muted">
-            La instrucción se enviará a todos los dispositivos registrados con una dirección MAC válida.
+            <span x-show="type === 'change_content'">El contenido se enviará a todos los dispositivos registrados de los modelos 42 y 35.</span>
+            <span x-show="type !== 'change_content'">La instrucción se enviará a todos los dispositivos registrados con una dirección MAC válida.</span>
         </p>
     </section>
 

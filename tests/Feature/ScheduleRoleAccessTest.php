@@ -82,17 +82,27 @@ class ScheduleRoleAccessTest extends TestCase
         $this->assertSame('draft', $campaign->fresh()->status);
     }
 
-    public function test_admin_and_superadmin_retain_campaign_schedules_and_the_scheduled_processor_remains_global(): void
+    public function test_operational_roles_can_read_historical_campaign_schedules_but_cannot_submit_the_retired_action(): void
     {
         foreach (['admin', 'superadmin', 'campanas'] as $role) {
             $this->actingAs(User::factory()->create(['role' => $role]));
             $campaign = Campaign::factory()->create();
-            $response = $this->postJson('/api/schedules', $this->payload([
+            $historical = $this->schedule(['type' => 'activate_campaign', 'campaign_id' => $campaign->id]);
+            $this->postJson('/api/schedules', $this->payload([
                 'type' => 'activate_campaign', 'campaign_id' => $campaign->id,
-            ]))->assertCreated();
-            $this->getJson('/api/schedules/'.$response->json('id'))->assertOk();
-            $this->get('/schedules/create')->assertOk()->assertSee('value="activate_campaign"', false);
+            ]))->assertUnprocessable()->assertJsonValidationErrors('type')
+                ->assertJsonPath('errors.type.0', 'La acción Activar Campaña ya no está disponible. Selecciona otra acción.');
+            $this->putJson('/api/schedules/'.$historical->id, ['type' => 'activate_campaign'])
+                ->assertUnprocessable()->assertJsonValidationErrors('type');
+            $this->getJson('/api/schedules/'.$historical->id)->assertOk();
+            $this->get('/schedules/'.$historical->id)->assertOk();
+            $this->get('/schedules/create')->assertOk()->assertDontSee('value="activate_campaign"', false);
+            $this->get('/schedules/'.$historical->id.'/edit')->assertOk()->assertDontSee('value="activate_campaign"', false);
         }
+    }
+
+    public function test_the_scheduled_processor_remains_global(): void
+    {
         $device = Device::factory()->create(['mac_address' => 'SCHEDULERMAC']);
         $first = $this->schedule(['device_id' => $device->id, 'scheduled_at' => now()->subMinute()]);
         $second = $this->schedule(['device_id' => $device->id, 'scheduled_at' => now()->subMinute()]);

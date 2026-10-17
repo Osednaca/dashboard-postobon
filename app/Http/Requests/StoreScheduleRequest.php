@@ -18,11 +18,11 @@ class StoreScheduleRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'type' => ['required', 'in:power_on,power_off,change_content,activate_campaign,format_sd'],
+            'type' => ['required', 'in:power_on,power_off,change_content,format_sd'],
             'target_scope' => ['required', 'in:all,device,group'],
             'device_id' => ['nullable', 'required_if:target_scope,device', 'exists:devices,id'],
             'group_id' => ['nullable', 'required_if:target_scope,group', 'exists:groups,id'],
-            'campaign_id' => ['nullable', 'required_if:type,activate_campaign', 'exists:campaigns,id'],
+            'campaign_id' => ['prohibited'],
             'content_id' => ['nullable', 'required_if:type,change_content', 'exists:media,id'],
             'recurrence_type' => ['required', 'in:once,daily,weekly,monthly'],
             'scheduled_at' => ['nullable', 'required_if:recurrence_type,once', 'date'],
@@ -55,7 +55,10 @@ class StoreScheduleRequest extends FormRequest
             'name.required' => 'El nombre de la programación es obligatorio.',
             'name.max' => 'El nombre no puede tener más de 255 caracteres.',
             'type.required' => 'El tipo es obligatorio.',
-            'type.in' => 'El tipo seleccionado no es válido.',
+            'type.in' => $this->input('type') === 'activate_campaign'
+                ? 'La acción Activar Campaña ya no está disponible. Selecciona otra acción.'
+                : 'El tipo seleccionado no es válido.',
+            'campaign_id.prohibited' => 'Las programaciones ya no permiten activar campañas.',
             'device_id.exists' => 'El dispositivo seleccionado no existe.',
             'device_id.required_if' => 'Selecciona el dispositivo que recibirá la instrucción.',
             'group_id.exists' => 'El grupo seleccionado no existe.',
