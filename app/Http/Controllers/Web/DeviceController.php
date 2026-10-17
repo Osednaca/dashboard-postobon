@@ -6,11 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\BulkAssignMediaRequest;
 use App\Http\Requests\BulkDeviceOperationRequest;
 use App\Http\Requests\ChangeDeviceGroupRequest;
+use App\Http\Requests\DeviceIndexRequest;
 use App\Http\Requests\StoreDeviceRequest;
 use App\Http\Requests\UpdateDeviceRequest;
 use App\Models\Campaign;
 use App\Models\Device;
 use App\Models\Establishment;
+use App\Models\Group;
 use App\Models\Media;
 use App\Models\Wl35DeviceProfile;
 use App\Services\DeviceService;
@@ -56,7 +58,7 @@ class DeviceController extends Controller
     /**
      * Display a listing of devices.
      */
-    public function index(): View|RedirectResponse
+    public function index(DeviceIndexRequest $request): View|RedirectResponse
     {
         $this->authorize('viewAny', Device::class);
 
@@ -69,7 +71,11 @@ class DeviceController extends Controller
                 ]);
             }
 
-            $devices = Device::with(['location', 'group', 'establishmentProfile.businessType'])->paginate(15);
+            $groupId = $request->validated('group_id');
+            $groups = Group::orderBy('name')->get();
+            $devices = Device::with(['location', 'group', 'establishmentProfile.businessType'])
+                ->when($groupId, fn ($query) => $query->where('group_id', $groupId))
+                ->paginate(15)->withQueryString();
             $wl35Devices = collect();
             $fleetZ2Devices = collect();
             $fleetMedia = collect();
@@ -154,10 +160,16 @@ class DeviceController extends Controller
                 ]);
             }
 
+            if ($groupId) {
+                $wl35Devices = $wl35Devices->where('profile_group_id', (int) $groupId)->values();
+            }
+
             $establishments = Establishment::orderBy('name')->get();
 
             return view('devices.index', compact(
                 'devices',
+                'groups',
+                'groupId',
                 'establishments',
                 'wl35Devices',
                 'fleetZ2Devices',

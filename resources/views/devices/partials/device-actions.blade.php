@@ -24,6 +24,7 @@
     <a href="{{ $row['detailsUrl'] }}" class="device-menu-action"><x-device-action-icon name="info" />Obtener información</a>
     @if($row['editUrl'])<a href="{{ $row['editUrl'] }}" class="device-menu-action"><x-device-action-icon name="edit" />Editar dispositivo</a>@endif
     <div class="device-menu-danger">
+        <button type="button" class="device-menu-action" @click="openVideoRemoval([{{ Js::from($row['key']) }}])" :disabled="removalBusy"><x-device-action-icon name="trash" />Quitar video</button>
         <button type="button" class="device-menu-action" @click="closeActions(false); openFleetFormat([{{ Js::from($row['key']) }}])"><x-device-action-icon name="card" />Formatear tarjeta SD</button>
         @if($row['localId'])<button type="button" class="device-menu-action" @click="closeActions(false); deleteId={{ Js::from($row['localId']) }}; deleteName={{ Js::from($row['name']) }}; showDeleteModal=true"><x-device-action-icon name="trash" />Eliminar dispositivo</button>@endif
     </div>

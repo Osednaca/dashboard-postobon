@@ -1,11 +1,15 @@
 import { createDeviceLive } from './device-live.js';
 
-export function createDeviceList(rows = []) {
+export function createDeviceList(rows = [], dependencies = {}) {
+    const request = dependencies.fetch || globalThis.fetch;
     return {
         ...createDeviceLive(rows),
         statusFilter: '', protocolFilter: '', establishmentFilter: '', search: '',
         actionKey: null, actionPosition: {}, actionTrigger: null,
         playbackTargets: [], playbackName: '', dialogTrigger: null,
+        activeGroupId: '', showVideoRemovalModal: false,
+        removalTargets: [], removalMediaId: '', removalBusy: false,
+        removalResults: [], removalError: '', removalAttempted: false,
         matches(row) {
             const query = this.search.trim().toLocaleLowerCase();
             return (!query || row.searchable.toLocaleLowerCase().includes(query))
@@ -15,6 +19,56 @@ export function createDeviceList(rows = []) {
         },
         visibleRows() { return this.rows.filter(row => this.matches(row)); },
         countStatus(status) { return this.visibleRows().filter(row => row.status === status).length; },
+        visibleSelectedRows(keys = this.selectedFleetKeys) {
+            const selected = new Set(keys);
+            return this.visibleRows().filter(row => selected.has(row.key));
+        },
+        openVideoRemoval(keys = this.selectedFleetKeys) {
+            if (this.removalBusy) return;
+            this.removalTargets = this.visibleSelectedRows(keys)
+                .filter(row => row.removalKey)
+                .map(row => ({ key: row.removalKey, name: row.name, identifier: row.identifier }));
+            if (!this.removalTargets.length) return;
+            this.removalMediaId = '';
+            this.removalResults = [];
+            this.removalError = '';
+            this.removalAttempted = false;
+            this.closeActions(false);
+            this.showVideoRemovalModal = true;
+        },
+        closeVideoRemoval() {
+            if (!this.removalBusy) this.showVideoRemovalModal = false;
+        },
+        async submitVideoRemoval(form) {
+            if (this.removalBusy || this.removalAttempted || !this.removalMediaId || !this.removalTargets.length) return;
+            this.removalBusy = true;
+            this.removalAttempted = true;
+            this.removalError = '';
+            try {
+                const response = await request(form.action, {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: { Accept: 'application/json', 'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': form.querySelector('[name="_token"]').value },
+                    body: JSON.stringify({ media_id: this.removalMediaId,
+                        device_keys: this.removalTargets.map(target => target.key), group_id: this.activeGroupId || null }),
+                });
+                const payload = await response.json();
+                if (!response.ok) {
+                    // Validation happens before dispatch, so it is safe to correct the selection.
+                    if (response.status === 422) this.removalAttempted = false;
+                    throw new Error(Object.values(payload.errors || {}).flat()[0] || payload.message || 'No se pudo confirmar la solicitud.');
+                }
+                if (!Array.isArray(payload.results)) throw new Error('No se pudo confirmar la respuesta. Revisa los equipos antes de volver a solicitarlo.');
+                this.removalResults = payload.results;
+            } catch (error) {
+                this.removalError = error instanceof TypeError || error instanceof SyntaxError
+                    ? 'Se perdió la respuesta. Revisa los equipos antes de volver a solicitarlo.'
+                    : error.message;
+            } finally {
+                this.removalBusy = false;
+                this.$dispatch?.('refresh-devices');
+            }
+        },
         resetFilters() { this.search = ''; this.protocolFilter = ''; this.statusFilter = ''; this.establishmentFilter = ''; },
         focusAfterRender(resolveControl) {
             this.$nextTick(() => window.requestAnimationFrame(() => {
@@ -46,7 +100,7 @@ export function createDeviceList(rows = []) {
             this.showFleetPlayModal = true;
         },
         watchDialogs() {
-            for (const name of ['showFleetPlayModal', 'showDeleteModal', 'showBulkAssignMediaModal', 'showFleetUploadModal', 'showFleetFormatModal']) {
+            for (const name of ['showFleetPlayModal', 'showDeleteModal', 'showBulkAssignMediaModal', 'showFleetUploadModal', 'showFleetFormatModal', 'showVideoRemovalModal']) {
                 this.$watch(name, open => {
                     if (open) {
                         this.dialogTrigger = this.actionTrigger || document.activeElement;
@@ -67,6 +121,7 @@ export function createDeviceList(rows = []) {
             if (event.key === 'Escape') {
                 event.preventDefault();
                 if (this.actionKey) this.closeActions();
+                else if (this.showVideoRemovalModal) this.closeVideoRemoval();
                 else if (this.showFleetPlayModal) this.showFleetPlayModal = false;
                 else if (this.showDeleteModal) this.showDeleteModal = false;
                 else if (this.showBulkAssignMediaModal) this.showBulkAssignMediaModal = false;
