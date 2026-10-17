@@ -9,6 +9,7 @@ use App\Models\FleetOperation;
 use App\Models\FleetUpload;
 use App\Services\Fleet\CompressedMediaPreview;
 use Illuminate\Support\Facades\Schedule;
+use Illuminate\Support\Stringable;
 
 // Device status sync every minute
 Schedule::job(new DeviceStatusJob)->everyMinute();
@@ -29,7 +30,9 @@ Schedule::job(new HeartbeatJob)->everyFiveMinutes();
 Schedule::command('analytics:generate')->dailyAt('00:00');
 
 // Process scheduled tasks every minute
-Schedule::command('schedules:process')->everyMinute()->withoutOverlapping();
+Schedule::command('schedules:process')->everyMinute()->withoutOverlapping()
+    // Event otherwise discards child stdout/stderr; forward its captured output to Supervisor.
+    ->thenWithOutput(fn (Stringable $output) => fwrite(STDERR, (string) $output), true);
 
 // Check offline devices every 10 minutes
 Schedule::command('devices:check-offline')->everyTenMinutes();
