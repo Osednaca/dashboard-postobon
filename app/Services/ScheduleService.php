@@ -4,9 +4,9 @@ namespace App\Services;
 
 use App\Models\Schedule;
 use App\Repositories\Contracts\ScheduleRepositoryInterface;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 
 class ScheduleService extends BaseService
@@ -101,15 +101,8 @@ class ScheduleService extends BaseService
             return $schedule;
         }
 
-        // Set scheduled_at to now so the ProcessSchedules command will pick it up
-        $this->repository->update($id, [
-            'status' => 'pending',
-            'scheduled_at' => Carbon::now(),
-            'executed_at' => null,
-        ]);
-
-        // Run the process command which handles all Z2 API calls
-        Artisan::call('schedules:process', ['--schedule' => $schedule->id]);
+        // Force only the selected occurrence; keep its original planned time.
+        Artisan::call('schedules:process', ['--schedule' => $schedule->id, '--force' => true]);
 
         // Refresh and return the updated schedule
         /** @var Schedule|null */
@@ -137,9 +130,12 @@ class ScheduleService extends BaseService
     public function reschedule(int|string $id, string $scheduledAt): ?Schedule
     {
         return $this->repository->update($id, [
-            'scheduled_at' => $scheduledAt,
+            'scheduled_at' => CarbonImmutable::parse($scheduledAt, config('app.timezone'))
+                ->timezone(config('app.timezone')),
             'status' => 'pending',
             'executed_at' => null,
+            'last_run_status' => null,
+            'last_error' => null,
         ]);
     }
 }
