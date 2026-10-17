@@ -30,6 +30,8 @@ class ProcessSchedules extends Command
 
     private ?string $controlError = null;
 
+    private array $powerDiagnosticContext = [];
+
     public function __construct(
         private readonly Z2DeviceService $z2DeviceService,
         private readonly ScheduleRecurrenceService $recurrenceService,
@@ -63,6 +65,7 @@ class ProcessSchedules extends Command
         $failed = 0;
 
         foreach ($pendingSchedules as $schedule) {
+            $this->powerDiagnosticContext = [];
             // Playback can take as long as the existing 1900-second fleet job.
             $lock = Cache::lock('schedules:execute:'.$schedule->id, 3600);
 
@@ -82,6 +85,16 @@ class ProcessSchedules extends Command
                 }
 
                 $this->controlError = null;
+                if (in_array($schedule->type, ['power_on', 'power_off'], true)) {
+                    $this->powerDiagnosticContext = [
+                        'revision' => 'power-scope-v1', 'run_id' => (string) Str::uuid(),
+                        'mode' => $force ? 'manual' : 'automatic', 'schedule_id' => $schedule->id,
+                        'type' => $schedule->type, 'stored_scope' => $schedule->target_scope,
+                        'resolved_scope' => $schedule->controlTargetScope(),
+                        'group_id' => $schedule->group_id, 'device_id' => $schedule->device_id,
+                    ];
+                    $this->powerDiagnostic('started');
+                }
                 $success = match ($schedule->type) {
                     'power_on', 'power_off', 'format_sd' => $this->executeControl($schedule),
                     'change_content' => $this->executeChangeContent($schedule),
@@ -90,12 +103,14 @@ class ProcessSchedules extends Command
                 };
 
                 $this->finishRun($schedule, $success, $now, $success ? null : ($this->controlError ?? 'El dispositivo o la nube rechazó la instrucción.'));
+                $this->powerDiagnostic('completed', ['accepted' => $success]);
                 if ($success) {
                     $processed++;
                 } else {
                     $failed++;
                 }
             } catch (Throwable $exception) {
+                $this->powerDiagnostic('failed', ['error_class' => $exception::class]);
                 $this->finishRun($schedule, false, $now, $exception->getMessage());
                 $failed++;
 
@@ -118,6 +133,7 @@ class ProcessSchedules extends Command
     {
         $scope = $schedule->controlTargetScope();
         if ($scope === null) {
+            $this->powerDiagnostic('rejected', ['reason' => 'ambiguous_scope', 'requested_targets' => []]);
             $this->controlError = 'Destino sin confirmar. Edita la programación y selecciona el grupo, dispositivo o Todos.';
             Log::warning('Scheduled control rejected ambiguous scope', ['schedule_id' => $schedule->id,
                 'group_id' => $schedule->group_id, 'device_id' => $schedule->device_id]);
@@ -161,6 +177,8 @@ class ProcessSchedules extends Command
         Log::info('Scheduled control resolved recipients', ['schedule_id' => $schedule->id,
             'type' => $schedule->type, 'scope' => $scope, 'group_id' => $schedule->group_id,
             'requested_targets' => array_keys($targets)]);
+        $this->powerDiagnostic('resolved', ['requested_targets' => array_keys($targets),
+            'target_count' => count($targets), 'invalid_target_count' => count($errors)]);
 
         foreach ($targets as $key => $target) {
             try {
@@ -193,10 +211,13 @@ class ProcessSchedules extends Command
                 Log::info('Scheduled control recipient result', ['schedule_id' => $schedule->id,
                     'type' => $schedule->type, 'group_id' => $schedule->group_id,
                     'target' => $key, 'accepted' => $accepted]);
+                $this->powerDiagnostic('recipient', ['target' => $key, 'accepted' => $accepted]);
                 if (! $accepted) {
                     $errors[] = $key.': la orden no fue confirmada para este destinatario';
                 }
             } catch (Throwable $exception) {
+                $this->powerDiagnostic('recipient', ['target' => $key, 'accepted' => false,
+                    'error_class' => $exception::class]);
                 $errors[] = $key.': no se pudo completar o confirmar la solicitud';
                 Log::warning('Scheduled control recipient exception', ['schedule_id' => $schedule->id,
                     'type' => $schedule->type, 'group_id' => $schedule->group_id,
@@ -207,6 +228,8 @@ class ProcessSchedules extends Command
             $errors[] = 'No hay dispositivos válidos en el destino seleccionado';
         }
         if ($errors !== []) {
+            $this->powerDiagnostic('rejected', ['reason' => $targets === [] ? 'no_valid_targets' : 'recipient_failure',
+                'error_count' => count($errors)]);
             $this->controlError = implode('; ', $errors);
             Log::warning('Scheduled control has failed recipients', ['schedule_id' => $schedule->id,
                 'type' => $schedule->type, 'group_id' => $schedule->group_id,
@@ -214,6 +237,20 @@ class ProcessSchedules extends Command
         }
 
         return $errors === [];
+    }
+
+    private function powerDiagnostic(string $event, array $details = []): void
+    {
+        if ($this->powerDiagnosticContext === []) {
+            return;
+        }
+
+        try {
+            Log::channel('schedule_power')->info('SCHEDULE_POWER_DIAGNOSTIC',
+                array_merge($this->powerDiagnosticContext, ['event' => $event], $details));
+        } catch (Throwable) {
+            // Diagnostic availability must never change command delivery or retries.
+        }
     }
 
     private function executeChangeContent(Schedule $schedule): bool

@@ -1,5 +1,6 @@
 <?php
 
+use Monolog\Formatter\JsonFormatter;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
@@ -51,6 +52,15 @@ return [
     */
 
     'channels' => [
+
+        // Power targeting evidence must reach container logs even with LOG_LEVEL=error.
+        'schedule_power' => [
+            'driver' => 'monolog',
+            'handler' => StreamHandler::class,
+            'formatter' => JsonFormatter::class,
+            'level' => 'info',
+            'with' => ['stream' => 'php://stderr'],
+        ],
 
         // Independent of LOG_CHANNEL / LOG_STACK: keep unexpected failures visible in containers.
         'diagnostics' => [
