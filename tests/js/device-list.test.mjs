@@ -88,3 +88,77 @@ test('keyboard cycles dialog focus and Escape dismisses without submitting comma
     assert.equal(state.showFleetPlayModal, false);
     assert.equal(prevented, 3);
 });
+
+const removalRows = [
+    { ...rows[0], removalKey: 'z2:7', name: 'Recepción', identifier: 'AA:BB' },
+    { ...rows[1], removalKey: 'wl35:one', name: 'Entrada', identifier: 'one' },
+    { ...rows[2], removalKey: 'wl35:two', name: 'Bodega', identifier: 'two' },
+];
+const removalForm = { action: '/devices/bulk-remove-video', querySelector: () => ({ value: 'csrf' }) };
+
+test('removal excludes stale hidden selections and snapshots local identities and names', () => {
+    const state = createDeviceList(removalRows);
+    state.selectedFleetKeys = ['z2:AABB', 'wl35:one', 'wl35:two', 'wl35:missing'];
+    state.establishmentFilter = '2';
+    state.openVideoRemoval();
+    assert.deepEqual(state.removalTargets.map(target => target.key), ['z2:7', 'wl35:two']);
+    state.selectedFleetKeys = [];
+    state.rows[0] = { ...state.rows[0], name: 'Updated elsewhere' };
+    assert.equal(state.removalTargets[0].name, 'Recepción');
+    state.closeVideoRemoval();
+    state.openVideoRemoval(['wl35:one']);
+    assert.equal(state.showVideoRemovalModal, false);
+    state.resetFilters();
+    state.openVideoRemoval(['wl35:one']);
+    assert.deepEqual(state.removalTargets.map(target => target.key), ['wl35:one']);
+});
+
+test('removal posts a stable visible snapshot and active group once, and retains partial results', async () => {
+    const calls = [];
+    let resolveResponse;
+    const state = createDeviceList(removalRows, { fetch: async (...args) => {
+        calls.push(args);
+        return await new Promise(resolve => resolveResponse = resolve);
+    } });
+    state.selectedFleetKeys = ['z2:AABB', 'wl35:one', 'wl35:two'];
+    state.establishmentFilter = '2';
+    state.activeGroupId = '12';
+    state.openVideoRemoval();
+    state.removalMediaId = '9';
+    const pending = state.submitVideoRemoval(removalForm);
+    state.closeVideoRemoval();
+    assert.equal(state.showVideoRemovalModal, true);
+    await state.submitVideoRemoval(removalForm);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(JSON.parse(calls[0][1].body), { media_id: '9', device_keys: ['z2:7', 'wl35:two'], group_id: '12' });
+    assert.equal(calls[0][1].headers['X-CSRF-TOKEN'], 'csrf');
+    const results = [{ key: 'z2:7', name: 'Recepción', status: 'accepted', message: 'Pendiente' },
+        { key: 'wl35:two', name: 'Bodega', status: 'failed', message: 'Sin asociación' }];
+    resolveResponse({ ok: true, json: async () => ({ results }) });
+    await pending;
+    assert.deepEqual(state.removalResults, results);
+    assert.equal(state.removalBusy, false);
+    await state.submitVideoRemoval(removalForm);
+    assert.equal(calls.length, 1);
+    state.closeVideoRemoval();
+    assert.equal(state.showVideoRemovalModal, false);
+});
+
+test('validation errors allow correction, uncertain network failures do not silently retry', async () => {
+    let calls = 0;
+    const state = createDeviceList(removalRows, { fetch: async () => {
+        calls++;
+        if (calls === 1) return { ok: false, status: 422, json: async () => ({ errors: { device_keys: ['El grupo cambió.'] } }) };
+        throw new TypeError('Network failed');
+    } });
+    state.openVideoRemoval(['z2:AABB']);
+    state.removalMediaId = '9';
+    await state.submitVideoRemoval(removalForm);
+    assert.equal(state.removalError, 'El grupo cambió.');
+    assert.equal(state.removalAttempted, false);
+    await state.submitVideoRemoval(removalForm);
+    assert.match(state.removalError, /Revisa los equipos/);
+    assert.equal(state.removalAttempted, true);
+    await state.submitVideoRemoval(removalForm);
+    assert.equal(calls, 2);
+});

@@ -64,4 +64,41 @@ class GroupCreationService
             return $group;
         });
     }
+
+    /** Add selected members without detaching existing members or changing their settings. */
+    public function update(Group $group, array $data, int $userId): Group
+    {
+        return DB::transaction(function () use ($group, $data, $userId): Group {
+            $group = Group::whereKey($group->id)->lockForUpdate()->firstOrFail();
+            $changes = [];
+            foreach (array_unique($data['device_keys'] ?? []) as $key) {
+                [$type, $id] = array_pad(explode(':', $key, 2), 2, null);
+                $device = match ($type) {
+                    'z2' => Device::whereKey($id)->lockForUpdate()->first(),
+                    'wl35' => Wl35DeviceProfile::where('device_id', $id)->lockForUpdate()->first(),
+                    default => null,
+                };
+                if ($device === null) {
+                    throw ValidationException::withMessages(['device_keys' => 'Un dispositivo ya no está disponible. Revisa la selección.']);
+                }
+                if ($device->group_id === $group->id) {
+                    continue;
+                }
+
+                $changes[] = ['device_key' => $key, 'previous_group_id' => $device->group_id];
+                $device->group_id = $group->id;
+                $device->save();
+            }
+
+            $before = $group->only(['name', 'description']);
+            $group->fill(Arr::only($data, ['name', 'description']))->save();
+            $this->auditLog->log('update', 'Group', $group->id, $userId, [
+                'before' => $before,
+                'after' => $group->only(['name', 'description']),
+                'devices' => $changes,
+            ]);
+
+            return $group;
+        });
+    }
 }

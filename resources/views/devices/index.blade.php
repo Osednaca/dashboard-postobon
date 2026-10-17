@@ -5,6 +5,8 @@
 @section('content')
 @php
     $canOperateDevices = auth()->user()->operatesDevices();
+    $groups = $groups ?? \App\Models\Group::orderBy('name')->get();
+    $groupId = $groupId ?? null;
     $libraryVideos = $canOperateDevices ? \App\Models\Media::where('mime_type', 'like', 'video/%')->orderBy('name')->get() : collect();
     $initialLocalIds = collect(old('device_ids', []))->map(fn ($id) => (string) $id)->unique()->values();
     $localFleetKeys = $devices->getCollection()->mapWithKeys(function ($device) {
@@ -21,6 +23,7 @@
         $powered = (bool) ($live['power'] ?? ($device->power_status !== 'off'));
         return [
             'key' => 'z2:'.$mac, 'localId' => (string) $device->id, 'type' => 'z2',
+            'removalKey' => 'z2:'.$device->id,
             'name' => $device->name, 'identifier' => $device->mac_address,
             'status' => !$online ? 'offline' : ($powered ? 'online' : 'powered_off'),
             'powered' => $powered, 'bluetooth' => $device->bluetooth_status === 'on',
@@ -38,6 +41,7 @@
         $powered = (bool) ($device['power'] ?? false);
         return [
             'key' => (string) ($device['key'] ?? 'wl35:'.$device['id']), 'localId' => null, 'type' => 'wl35',
+            'removalKey' => 'wl35:'.$device['id'],
             'name' => $device['name'] ?? $device['id'], 'identifier' => $device['id'], 'ip' => $device['ip'] ?? '',
             'status' => !$online ? 'offline' : ($powered ? 'online' : 'powered_off'),
             'powered' => $powered, 'bluetooth' => (bool) ($device['bluetooth'] ?? false),
@@ -57,6 +61,7 @@
 
 <div x-data="{
     ...deviceList({{ Js::from($deviceRows) }}),
+    activeGroupId: {{ Js::from((string) $groupId) }},
     showDeleteModal: false, showBulkAssignMediaModal: false,
     showFleetPlayModal: false, showFleetUploadModal: false, showFleetFormatModal: false,
     bulkAssigningMedia: false, fleetSubmitting: false,
@@ -447,7 +452,7 @@
             <div class="device-list-stat"><span class="device-list-stat-icon device-list-tone-{{ $tone }}"><x-device-action-icon :name="$icon" /></span><div><strong class="block text-xl font-bold tabular-nums" x-text="{{ $filter === '' ? 'visibleRows().length' : "countStatus('".$filter."')" }}">{{ $filter === '' ? $deviceRows->count() : $deviceRows->where('status', $filter)->count() }}</strong><span class="text-xs text-text-light">{{ $label }}</span></div></div>
         @endforeach
     </section>
-    <p class="!mt-2 text-xs text-text-light"><span class="hidden sm:inline">Resumen de los equipos visibles en esta página · {{ $devices->total() }} 42 registrados y {{ $wl35Devices->count() }} 35 en la lista. </span>Resumen y filtros de esta página.</p>
+    <p class="!mt-2 text-xs text-text-light"><span class="hidden sm:inline">Resumen de los equipos visibles en esta página · {{ $devices->total() }} 42 registrados y {{ $wl35Devices->count() }} 35 en la lista. </span>El grupo filtra toda la lista; los demás filtros se aplican a esta página.</p>
 
     @if($gatewayError)
         <div class="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-amber-900">
@@ -475,6 +480,14 @@
     @endif
 
     <section class="rounded-xl border border-border bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+        <form action="{{ route('devices.index') }}" method="GET" class="mb-4 flex flex-wrap items-center gap-3">
+            <label for="device-group-filter" class="text-sm font-semibold text-text">Grupo</label>
+            <select id="device-group-filter" name="group_id" @change="$el.form.requestSubmit()" class="min-w-0 flex-1 rounded-lg border border-border bg-white px-3 py-2.5 text-sm sm:max-w-sm">
+                <option value="">Todos los grupos</option>
+                @foreach($groups as $group)<option value="{{ $group->id }}" @selected((string) $groupId === (string) $group->id)>{{ $group->name }}</option>@endforeach
+            </select>
+            <button type="submit" class="rounded-lg border border-border px-3 py-2 text-sm">Filtrar grupo</button>
+        </form>
         <div class="device-filter-grid grid gap-3 md:grid-cols-2 xl:grid-cols-5" :class="filtersExpanded ? 'device-filters-expanded' : ''">
             <label class="relative xl:col-span-2">
                 <svg class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
@@ -501,6 +514,7 @@
             <button type="button" @click="submitFleet('bluetooth', '1')" :disabled="fleetSubmitting || commandBusy" class="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs font-semibold text-primary disabled:opacity-50">Encender Bluetooth</button>
             <button type="button" @click="submitFleet('bluetooth', '0')" :disabled="fleetSubmitting || commandBusy" class="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-text-light disabled:opacity-50">Apagar Bluetooth</button>
             <button type="button" @click="openPlayback()" class="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white">Reproducir</button>
+            <button type="button" @click="openVideoRemoval()" :disabled="!visibleSelectedRows().length || removalBusy" class="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-xs font-semibold text-danger disabled:opacity-50">Quitar video</button>
             <button type="button" @click="openFleetUpload()" class="rounded-lg bg-secondary px-3 py-2 text-xs font-semibold text-white">Subir video</button>
             <button type="button" @click="openFleetFormat()" class="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-xs font-semibold text-danger transition hover:bg-danger/10">Formatear SD</button>
 
@@ -532,6 +546,41 @@
     @include('devices.partials.device-list-table')
 
     @if($canOperateDevices)
+    <div x-show="showVideoRemovalModal" data-dialog="showVideoRemovalModal" role="dialog" aria-modal="true" aria-labelledby="remove-video-title" :aria-busy="removalBusy" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="closeVideoRemoval()"></div>
+        <div class="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-white p-6 shadow-xl">
+            <h3 id="remove-video-title" class="text-lg font-semibold text-text">Quitar video de los dispositivos</h3>
+            <p class="mt-2 text-sm text-text-light">Se solicitará quitar el video de <strong x-text="removalTargets.length"></strong> equipos visibles seleccionados. El archivo seguirá disponible en Medios.</p>
+            @if($groupId)<p class="mt-2 text-sm font-semibold text-text">Grupo: {{ $groups->firstWhere('id', $groupId)?->name }}</p>@endif
+            <ul class="mt-3 max-h-32 space-y-1 overflow-y-auto rounded-lg bg-surface p-3 text-sm" aria-label="Dispositivos que recibirán la solicitud">
+                <template x-for="target in removalTargets" :key="target.key"><li><span x-text="target.name"></span> <span class="text-xs text-text-muted" x-text="target.identifier"></span></li></template>
+            </ul>
+            <form action="{{ route('devices.bulk-remove-video') }}" method="POST" @submit.prevent="submitVideoRemoval($event.currentTarget)" class="mt-4 space-y-4">
+                @csrf
+                <div>
+                    <label for="remove-video-media" class="block text-sm font-semibold text-text">Video que se quitará</label>
+                    <select id="remove-video-media" x-model="removalMediaId" required :disabled="removalBusy || removalAttempted" class="mt-2 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm">
+                        <option value="">Seleccionar video de Medios</option>
+                        @foreach($libraryVideos as $video)<option value="{{ $video->id }}">{{ $video->name }}</option>@endforeach
+                    </select>
+                    <p class="mt-2 text-xs text-text-light">Si un equipo no tiene una asociación conocida con este video, se indicará en el resultado. Los videos cargados directamente se pueden revisar desde el detalle del equipo.</p>
+                    @if($libraryVideos->isEmpty())<p class="mt-2 text-sm text-text-light">No hay videos en Medios para seleccionar.</p>@endif
+                </div>
+                <p x-show="removalBusy" role="status" class="text-sm text-text-light">Enviando solicitudes a los equipos…</p>
+                <p x-show="removalError" x-text="removalError" role="alert" class="rounded-lg bg-danger/10 p-3 text-sm text-danger"></p>
+                <div x-show="removalResults.length" aria-live="polite" class="space-y-3">
+                    <p class="text-xs text-text-light">Una solicitud aceptada aún requiere comprobar el contenido reportado por el equipo.</p>
+                    <template x-for="result in removalResults" :key="result.key">
+                        <div class="rounded-lg border border-border p-3 text-sm"><strong x-text="result.name"></strong><p :class="result.status === 'accepted' ? 'text-success' : 'text-danger'" x-text="result.status === 'accepted' ? 'Solicitud aceptada' : 'No se pudo procesar'"></p><p class="mt-1 text-text-light" x-text="result.message"></p></div>
+                    </template>
+                </div>
+                <div class="flex justify-end gap-3">
+                    <button type="button" @click="closeVideoRemoval()" :disabled="removalBusy" class="rounded-lg border border-border px-4 py-2.5 text-sm disabled:opacity-50" x-text="removalAttempted ? 'Cerrar' : 'Cancelar'"></button>
+                    <button type="submit" x-show="!removalAttempted" :disabled="removalBusy || !removalMediaId || !removalTargets.length" class="rounded-lg bg-danger px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">Confirmar: quitar video</button>
+                </div>
+            </form>
+        </div>
+    </div>
     <div x-show="showDeleteModal" data-dialog="showDeleteModal" role="dialog" aria-modal="true" aria-label="Eliminar dispositivo" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"><div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showDeleteModal=false"></div><div class="relative w-full max-w-md rounded-xl border border-border bg-white p-6 shadow-xl"><h3 class="text-lg font-semibold text-text">¿Eliminar dispositivo 42?</h3><p class="mt-2 text-sm text-text-light">Se eliminará <strong x-text="deleteName"></strong> del registro local.</p><div class="mt-6 flex justify-end gap-3"><button type="button" @click="showDeleteModal=false" class="rounded-lg border border-border px-4 py-2.5 text-sm">Cancelar</button><form :action="'/devices/'+deleteId" method="POST">@csrf @method('DELETE')<button class="rounded-lg bg-danger px-4 py-2.5 text-sm font-medium text-white">Eliminar</button></form></div></div></div>
 
     <div x-show="showBulkAssignMediaModal" data-dialog="showBulkAssignMediaModal" role="dialog" aria-modal="true" aria-label="Asignar medio a 42" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"><div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showBulkAssignMediaModal=false"></div><div class="relative w-full max-w-md rounded-xl border border-border bg-white p-6 shadow-xl"><h3 class="text-lg font-semibold text-text">Asignar medio a 42</h3><p class="mt-2 text-sm text-text-light">El mismo archivo se asignará a <strong x-text="selectedIds.length"></strong> dispositivos 42.</p><form action="{{ route('devices.bulk-assign-media') }}" method="POST" class="mt-5 space-y-4" @submit="bulkAssigningMedia=true">@csrf<template x-for="id in selectedIds" :key="'media-'+id"><input type="hidden" name="device_ids[]" :value="id"></template><select name="media_id" required class="w-full rounded-lg border border-border bg-white px-4 py-2.5 text-sm"><option value="">Seleccionar medio</option>@foreach(App\Models\Media::orderBy('name')->get() as $media)<option value="{{ $media->id }}" @selected((string) old('media_id') === (string) $media->id)>{{ $media->name }}</option>@endforeach</select><div class="flex justify-end gap-3"><button type="button" @click="showBulkAssignMediaModal=false" class="rounded-lg border border-border px-4 py-2.5 text-sm">Cancelar</button><button :disabled="bulkAssigningMedia" class="rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50" x-text="bulkAssigningMedia ? 'Asignando…' : 'Asignar medio'"></button></div></form></div></div>

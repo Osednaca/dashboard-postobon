@@ -102,9 +102,11 @@ class GroupController extends Controller
     {
         try {
             $this->authorize('update', $group);
-            $updated = $this->groupService->update($group->id, $request->validated());
+            $updated = $this->groupCreation->update($group, $request->validated(), $request->user()->id);
 
             return response()->json($updated);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Error al actualizar el grupo.',
