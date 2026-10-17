@@ -13,6 +13,7 @@ class Schedule extends Model
     protected $fillable = [
         'name',
         'type',
+        'target_scope',
         'device_id',
         'group_id',
         'campaign_id',
@@ -38,6 +39,40 @@ class Schedule extends Model
             'recurrence_day' => 'integer',
             'recurrence_ends_at' => 'datetime',
         ];
+    }
+
+    public function controlTargetScope(): ?string
+    {
+        $hasDevice = $this->device_id !== null;
+        $hasGroup = $this->group_id !== null;
+
+        return match ($this->target_scope) {
+            'all' => ! $hasDevice && ! $hasGroup ? 'all' : null,
+            'device' => $hasDevice && ! $hasGroup ? 'device' : null,
+            'group' => $hasGroup && ! $hasDevice ? 'group' : null,
+            null => $hasDevice !== $hasGroup ? ($hasDevice ? 'device' : 'group') : null,
+            default => null,
+        };
+    }
+
+    public function targetLabel(): string
+    {
+        $scope = $this->controlTargetScope();
+        if ($scope === null && $this->type === 'change_content' && $this->target_scope === null
+            && $this->device_id === null && $this->group_id === null) {
+            return 'Todos';
+        }
+        if ($scope === null && in_array($this->target_scope, ['device', 'group'], true)
+            && $this->device_id === null && $this->group_id === null) {
+            return $this->target_scope === 'group' ? 'Grupo no disponible' : 'Dispositivo no disponible';
+        }
+
+        return match ($scope) {
+            'all' => 'Todos',
+            'device' => $this->device?->name ?? 'Dispositivo no disponible',
+            'group' => $this->group?->name ?? 'Grupo no disponible',
+            default => 'Destino por confirmar',
+        };
     }
 
     public function isRecurring(): bool

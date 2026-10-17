@@ -34,7 +34,7 @@ class ScheduleRecurrenceService
             $data['recurrence_days'] = null;
             $data['recurrence_day'] = null;
             $data['recurrence_ends_at'] = null;
-            unset($data['starts_on'], $data['target_scope']);
+            unset($data['starts_on']);
 
             return $data;
         }
@@ -76,7 +76,7 @@ class ScheduleRecurrenceService
         $data['recurrence_day'] = $definition->recurrence_day;
         $data['recurrence_ends_at'] = $definition->recurrence_ends_at;
         $data['scheduled_at'] = $next;
-        unset($data['starts_on'], $data['target_scope']);
+        unset($data['starts_on']);
 
         return $data;
     }

@@ -3,7 +3,11 @@
     $formType = old('type', $schedule?->type ?? 'power_on');
     $formType = $formType === 'activate_campaign' ? '' : $formType;
     $recurrence = old('recurrence_type', $schedule?->recurrence_type ?? 'once');
-    $scope = old('target_scope', $schedule?->device_id ? 'device' : ($schedule?->group_id ? 'group' : 'all'));
+    $defaultScope = $schedule?->controlTargetScope();
+    if ($schedule?->type === 'change_content' && $schedule?->target_scope === null && ! $schedule?->device_id && ! $schedule?->group_id) {
+        $defaultScope = 'all';
+    }
+    $scope = old('target_scope', $defaultScope ?? '');
     $selectedDays = array_map('intval', old('recurrence_days', $schedule?->recurrence_days ?? [1, 2, 3, 4, 5]));
     $scheduledAt = old('scheduled_at', $schedule?->scheduled_at?->format('Y-m-d\TH:i'));
     $startsOn = old('starts_on', $schedule?->scheduled_at?->format('Y-m-d') ?? now(config('app.timezone'))->format('Y-m-d'));
@@ -76,7 +80,7 @@
         <div class="grid grid-cols-3 gap-2 rounded-xl bg-surface p-1.5">
             @foreach(['all' => 'Todos', 'device' => 'Dispositivo', 'group' => 'Grupo'] as $value => $label)
                 <label class="cursor-pointer">
-                    <input type="radio" name="target_scope" value="{{ $value }}" x-model="scope" class="sr-only">
+                    <input type="radio" name="target_scope" value="{{ $value }}" x-model="scope" required class="sr-only">
                     <span class="block rounded-lg px-3 py-2.5 text-center text-sm font-medium transition-all"
                           :class="scope === '{{ $value }}' ? 'bg-white text-primary shadow-sm ring-1 ring-border' : 'text-text-muted hover:text-text'">
                         {{ $label }}
@@ -84,6 +88,9 @@
                 </label>
             @endforeach
         </div>
+
+        @error('target_scope')<p class="text-xs text-danger">{{ $message }}</p>@enderror
+        <p x-show="!scope" class="text-sm text-amber-800">Selecciona el alcance de esta programación. Sin una selección confirmada no se enviará la instrucción.</p>
 
         <div x-show="scope === 'device'" x-cloak>
             <label for="device_id" class="block text-sm font-medium text-text mb-1.5">Dispositivo <span class="text-danger">*</span></label>
@@ -111,8 +118,9 @@
 
         <p x-show="scope === 'all'" class="text-xs text-text-muted">
             <span x-show="type === 'change_content'">El contenido se enviará a todos los dispositivos registrados de los modelos 42 y 35.</span>
-            <span x-show="type !== 'change_content'">La instrucción se enviará a todos los dispositivos registrados con una dirección MAC válida.</span>
+            <span x-show="type !== 'change_content'">La instrucción se enviará a todos los dispositivos registrados de los modelos 42 y 35.</span>
         </p>
+        <p x-show="scope === 'group'" class="text-xs text-text-muted">La instrucción se enviará únicamente a los dispositivos 42 y 35 que pertenezcan al grupo seleccionado al ejecutarse.</p>
     </section>
 
     <section class="space-y-5 border-t border-border pt-8">

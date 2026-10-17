@@ -5,8 +5,10 @@ namespace App\Console\Commands;
 use App\Models\Device;
 use App\Models\Media;
 use App\Models\Schedule;
+use App\Models\Wl35DeviceMedia;
 use App\Models\Wl35DeviceProfile;
 use App\Services\Fleet\FleetMediaPlaybackService;
+use App\Services\Fleet\UnifiedFleetClient;
 use App\Services\ScheduleRecurrenceService;
 use App\Services\Z2\Z2CampaignSyncService;
 use App\Services\Z2\Z2DeviceService;
@@ -25,6 +27,8 @@ class ProcessSchedules extends Command
         {--force : Execute the selected occurrence now, including a failed attempt}';
 
     protected $description = 'Execute pending one-time and recurring schedules';
+
+    private ?string $controlError = null;
 
     public function __construct(
         private readonly Z2DeviceService $z2DeviceService,
@@ -77,25 +81,15 @@ class ProcessSchedules extends Command
                     continue;
                 }
 
+                $this->controlError = null;
                 $success = match ($schedule->type) {
-                    'power_on' => $this->executeOnTargets(
-                        $schedule,
-                        fn (Device $device): bool => $this->z2DeviceService->powerOn($device->mac_address),
-                    ),
-                    'power_off' => $this->executeOnTargets(
-                        $schedule,
-                        fn (Device $device): bool => $this->z2DeviceService->powerOff($device->mac_address),
-                    ),
-                    'format_sd' => $this->executeOnTargets(
-                        $schedule,
-                        fn (Device $device): bool => $this->z2DeviceService->formatSd($device->mac_address),
-                    ),
+                    'power_on', 'power_off', 'format_sd' => $this->executeControl($schedule),
                     'change_content' => $this->executeChangeContent($schedule),
                     'activate_campaign' => $this->executeActivateCampaign($schedule),
                     default => false,
                 };
 
-                $this->finishRun($schedule, $success, $now, $success ? null : 'El dispositivo o la nube rechazó la instrucción.');
+                $this->finishRun($schedule, $success, $now, $success ? null : ($this->controlError ?? 'El dispositivo o la nube rechazó la instrucción.'));
                 if ($success) {
                     $processed++;
                 } else {
@@ -120,25 +114,106 @@ class ProcessSchedules extends Command
         return self::SUCCESS;
     }
 
-    private function executeOnTargets(Schedule $schedule, callable $command): bool
+    private function executeControl(Schedule $schedule): bool
     {
-        $devices = $this->targetDevices($schedule);
-
-        if ($devices->isEmpty()) {
-            Log::warning('Schedule has no eligible target devices', ['schedule_id' => $schedule->id]);
+        $scope = $schedule->controlTargetScope();
+        if ($scope === null) {
+            $this->controlError = 'Destino sin confirmar. Edita la programación y selecciona el grupo, dispositivo o Todos.';
+            Log::warning('Scheduled control rejected ambiguous scope', ['schedule_id' => $schedule->id,
+                'group_id' => $schedule->group_id, 'device_id' => $schedule->device_id]);
 
             return false;
         }
 
-        $success = true;
-
-        foreach ($devices as $device) {
-            if (! $command($device)) {
-                $success = false;
-            }
+        // Snapshot only persisted membership; a missing target never becomes all.
+        $devices = Device::query()
+            ->when($scope === 'device', fn ($query) => $query->whereKey($schedule->device_id))
+            ->when($scope === 'group', fn ($query) => $query->where('group_id', $schedule->group_id))
+            ->get();
+        $profiles = $scope === 'device' ? collect() : Wl35DeviceProfile::query()
+            ->when($scope === 'group', fn ($query) => $query->where('group_id', $schedule->group_id))
+            ->get();
+        if ($scope === 'group' && $schedule->group === null) {
+            $devices = collect();
+            $profiles = collect();
         }
 
-        return $success;
+        $targets = [];
+        $errors = [];
+        foreach ($devices as $device) {
+            $mac = strtoupper(str_replace(':', '', trim((string) $device->mac_address)));
+            if (! preg_match('/^[A-Z0-9]+$/D', $mac)) {
+                $errors[] = 'Equipo 42 #'.$device->id.': identificación inválida';
+
+                continue;
+            }
+            $targets['z2:'.$mac] = ['type' => 'z2', 'id' => $device->mac_address];
+        }
+        foreach ($profiles as $profile) {
+            $id = (string) $profile->device_id;
+            if (! preg_match('/^[A-Za-z0-9_.:-]+$/D', $id)) {
+                $errors[] = 'Equipo 35 #'.$profile->id.': identificación inválida';
+
+                continue;
+            }
+            $targets['wl35:'.$id] = ['type' => 'wl35', 'id' => $id];
+        }
+        Log::info('Scheduled control resolved recipients', ['schedule_id' => $schedule->id,
+            'type' => $schedule->type, 'scope' => $scope, 'group_id' => $schedule->group_id,
+            'requested_targets' => array_keys($targets)]);
+
+        foreach ($targets as $key => $target) {
+            try {
+                if ($target['type'] === 'z2') {
+                    $accepted = match ($schedule->type) {
+                        'power_on' => $this->z2DeviceService->powerOn($target['id']),
+                        'power_off' => $this->z2DeviceService->powerOff($target['id']),
+                        'format_sd' => $this->z2DeviceService->formatSd($target['id']),
+                    };
+                } else {
+                    $payload = ['command' => $schedule->type === 'format_sd' ? 'format_sd' : 'power',
+                        'targets' => [$key]];
+                    if ($payload['command'] === 'power') {
+                        $payload['value'] = $schedule->type === 'power_on';
+                    }
+                    $response = app(UnifiedFleetClient::class)->sendCommand($payload, $schedule->type === 'format_sd');
+                    $results = $response['results'] ?? null;
+                    $result = is_array($results) && array_is_list($results) && count($results) === 1 ? $results[0] : null;
+                    $accepted = is_array($result)
+                        && (! array_key_exists('success', $response) || $response['success'] === true)
+                        && (! array_key_exists('command', $response) || $response['command'] === $payload['command'])
+                        && ($result['key'] ?? null) === $key
+                        && ($result['type'] ?? null) === 'wl35'
+                        && ($result['id'] ?? null) === $target['id']
+                        && ($result['success'] ?? null) === true;
+                    if ($accepted && $schedule->type === 'format_sd') {
+                        Wl35DeviceMedia::where('device_id', $target['id'])->delete();
+                    }
+                }
+                Log::info('Scheduled control recipient result', ['schedule_id' => $schedule->id,
+                    'type' => $schedule->type, 'group_id' => $schedule->group_id,
+                    'target' => $key, 'accepted' => $accepted]);
+                if (! $accepted) {
+                    $errors[] = $key.': la orden no fue confirmada para este destinatario';
+                }
+            } catch (Throwable $exception) {
+                $errors[] = $key.': no se pudo completar o confirmar la solicitud';
+                Log::warning('Scheduled control recipient exception', ['schedule_id' => $schedule->id,
+                    'type' => $schedule->type, 'group_id' => $schedule->group_id,
+                    'target' => $key, 'error' => $exception->getMessage()]);
+            }
+        }
+        if ($targets === []) {
+            $errors[] = 'No hay dispositivos válidos en el destino seleccionado';
+        }
+        if ($errors !== []) {
+            $this->controlError = implode('; ', $errors);
+            Log::warning('Scheduled control has failed recipients', ['schedule_id' => $schedule->id,
+                'type' => $schedule->type, 'group_id' => $schedule->group_id,
+                'requested_targets' => array_keys($targets), 'errors' => $errors]);
+        }
+
+        return $errors === [];
     }
 
     private function executeChangeContent(Schedule $schedule): bool

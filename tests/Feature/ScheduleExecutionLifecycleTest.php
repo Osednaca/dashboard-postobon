@@ -133,7 +133,7 @@ class ScheduleExecutionLifecycleTest extends TestCase
             ->once()->andThrow(new \RuntimeException('Fallo de transporte'));
         $this->artisan('schedules:process')->assertSuccessful();
         $this->assertSame('failed', $schedule->fresh()->status);
-        $this->assertSame('Fallo de transporte', $schedule->fresh()->last_error);
+        $this->assertStringContainsString('no se pudo completar o confirmar la solicitud', $schedule->fresh()->last_error);
         $lock = Cache::lock('schedules:execute:'.$schedule->id, 300);
         $this->assertTrue($lock->get());
         $lock->release();

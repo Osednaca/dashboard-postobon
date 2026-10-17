@@ -319,26 +319,6 @@ class ScheduleGroupPlaybackTest extends TestCase
         $this->assertSame('executed', $schedule->fresh()->status);
     }
 
-    #[DataProvider('powerScopes')]
-    public function test_legacy_power_skips_blank_macs_and_keeps_35_outside_its_supported_targets(bool $groupScope): void
-    {
-        $media = $this->media();
-        $group = Group::factory()->create();
-        Device::factory()->create(['group_id' => $group->id, 'mac_address' => '']);
-        Device::factory()->create(['group_id' => $group->id, 'mac_address' => 'VALID']);
-        $this->profile('fan-a', $group);
-        $schedule = $this->schedule($media, ['type' => 'power_off', 'group_id' => $groupScope ? $group->id : null]);
-        $this->mock(Z2DeviceService::class)->shouldReceive('powerOff')->once()->with('VALID')->andReturnTrue();
-        $this->artisan('schedules:process')->assertSuccessful();
-        $this->assertSame('executed', $schedule->fresh()->status);
-        Http::assertNothingSent();
-    }
-
-    public static function powerScopes(): array
-    {
-        return [[true], [false]];
-    }
-
     #[DataProvider('emptyGroups')]
     public function test_empty_or_deleted_group_never_expands_into_all_devices(bool $deleted): void
     {

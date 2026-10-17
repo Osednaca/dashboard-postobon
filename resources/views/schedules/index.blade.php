@@ -88,7 +88,7 @@
                                         <span class="text-sm font-medium {{ $type['color'] }}">{{ $type['label'] }}</span>
                                     </td>
                                     <td class="px-6 py-4">
-                                        <div class="text-sm text-text">{{ $schedule->device?->name ?? $schedule->group?->name ?? 'Todos' }}</div>
+                                        <div class="text-sm text-text">{{ $schedule->targetLabel() }}</div>
                                     </td>
                                     <td class="px-6 py-4">
                                         <div class="text-sm font-medium text-text">{{ $schedule->recurrenceLabel() }}</div>
@@ -160,7 +160,7 @@
                                         @foreach($calendarSchedules->get($date->format('Y-m-d'), []) as $event)
                                             <a href="{{ route('schedules.show', $event) }}" class="mt-2 block rounded-md bg-surface p-2 text-xs hover:ring-1 hover:ring-primary">
                                                 <span class="block font-medium text-text break-words">{{ $event->scheduled_at->timezone(config('app.timezone'))->format('H:i') }} · {{ $event->name }}</span>
-                                                <span class="my-1 block text-text-muted break-words">{{ $event->device?->name ?? $event->group?->name ?? 'Todos' }}</span>
+                                                <span class="my-1 block text-text-muted break-words">{{ $event->targetLabel() }}</span>
                                                 <x-status-badge :status="$event->status" size="sm" />
                                             </a>
                                         @endforeach
