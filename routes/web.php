@@ -9,6 +9,7 @@ use App\Http\Controllers\Web\DashboardController;
 use App\Http\Controllers\Web\DeviceController;
 use App\Http\Controllers\Web\DeviceEstablishmentController;
 use App\Http\Controllers\Web\DevicePreviewController;
+use App\Http\Controllers\Web\DeviceVideoRemovalController;
 use App\Http\Controllers\Web\EstablishmentController;
 use App\Http\Controllers\Web\GroupController;
 use App\Http\Controllers\Web\InstantPlayController;
@@ -85,6 +86,7 @@ Route::middleware(['auth', 'role:superadmin,admin,tecnico,campanas'])->group(fun
     Route::post('devices/bulk-operation', [DeviceController::class, 'bulkOperation'])->name('devices.bulk-operation')->middleware('role:superadmin');
     Route::post('devices/bulk-format-sd', [DeviceController::class, 'bulkFormatSd'])->name('devices.bulk-format-sd')->middleware('role:superadmin');
     Route::post('devices/bulk-assign-media', [DeviceController::class, 'bulkAssignMedia'])->name('devices.bulk-assign-media')->middleware('role:superadmin');
+    Route::post('devices/bulk-remove-video', DeviceVideoRemovalController::class)->name('devices.bulk-remove-video')->middleware('role:superadmin');
     Route::post('devices/{device}/format-sd', [DeviceController::class, 'formatSd'])->name('devices.format-sd')->middleware('role:superadmin');
     Route::post('devices/{device}/set-volume', [DeviceController::class, 'setVolume'])->name('devices.set-volume')->middleware('role:superadmin');
 
