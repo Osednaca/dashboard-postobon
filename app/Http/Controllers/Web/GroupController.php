@@ -115,7 +115,14 @@ class GroupController extends Controller
     {
         $this->authorize('update', $group);
 
-        return view('groups.edit', compact('group'));
+        $catalog = collect($this->groupCreation->devices());
+
+        return view('groups.edit', [
+            'group' => $group,
+            'currentDevices' => $catalog->where('group_id', $group->id)->values()->all(),
+            'groupDevices' => $catalog->where('group_id', '!=', $group->id)->values()->all(),
+            'businessTypes' => BusinessType::orderBy('name')->get(),
+        ]);
     }
 
     /**
@@ -126,14 +133,16 @@ class GroupController extends Controller
         $this->authorize('update', $group);
 
         try {
-            $this->groupService->update($group->id, $request->validated());
+            $this->groupCreation->update($group, $request->validated(), $request->user()->id);
 
             return redirect()->route('groups.index')
                 ->with('success', 'Grupo actualizado exitosamente.');
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error('Error al actualizar grupo: '.$e->getMessage());
 
-            return back()->with('error', 'Ocurrió un error al actualizar el grupo. Por favor intente nuevamente.');
+            return back()->withInput()->with('error', 'Ocurrió un error al actualizar el grupo. Por favor intente nuevamente.');
         }
     }
 
