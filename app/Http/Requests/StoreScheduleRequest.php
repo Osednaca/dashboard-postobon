@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\Schedule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreScheduleRequest extends FormRequest
 {
@@ -20,8 +21,8 @@ class StoreScheduleRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'type' => ['required', 'in:power_on,power_off,change_content,format_sd'],
             'target_scope' => ['required', 'in:all,device,group'],
-            'device_id' => ['nullable', 'required_if:target_scope,device', 'exists:devices,id'],
-            'group_id' => ['nullable', 'required_if:target_scope,group', 'exists:groups,id'],
+            'device_id' => ['nullable', 'required_if:target_scope,device', 'prohibited_unless:target_scope,device', Rule::exists('devices', 'id')->whereNull('deleted_at')],
+            'group_id' => ['nullable', 'required_if:target_scope,group', 'prohibited_unless:target_scope,group', Rule::exists('groups', 'id')->whereNull('deleted_at')],
             'campaign_id' => ['prohibited'],
             'content_id' => ['nullable', 'required_if:type,change_content', 'exists:media,id'],
             'recurrence_type' => ['required', 'in:once,daily,weekly,monthly'],
@@ -38,14 +39,16 @@ class StoreScheduleRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $defaultScope = $this->filled('device_id') ? 'device' : ($this->filled('group_id') ? 'group' : 'all');
+        $defaultScope = $this->filled('device_id') !== $this->filled('group_id')
+            ? ($this->filled('device_id') ? 'device' : 'group')
+            : ($this->input('type') === 'change_content' && ! $this->filled('device_id') && ! $this->filled('group_id') ? 'all' : null);
         $scope = $this->input('target_scope', $defaultScope);
 
         $this->merge([
             'target_scope' => $scope,
             'recurrence_type' => $this->input('recurrence_type', 'once'),
-            'device_id' => $scope === 'device' ? $this->input('device_id') : null,
-            'group_id' => $scope === 'group' ? $this->input('group_id') : null,
+            'device_id' => $this->input('device_id'),
+            'group_id' => $this->input('group_id'),
         ]);
     }
 
@@ -53,6 +56,10 @@ class StoreScheduleRequest extends FormRequest
     {
         return [
             'name.required' => 'El nombre de la programación es obligatorio.',
+            'target_scope.required' => 'Selecciona explícitamente Todos, Dispositivo o Grupo antes de guardar.',
+            'target_scope.in' => 'El alcance seleccionado no es válido.',
+            'device_id.prohibited_unless' => 'El dispositivo no coincide con el alcance seleccionado.',
+            'group_id.prohibited_unless' => 'El grupo no coincide con el alcance seleccionado.',
             'name.max' => 'El nombre no puede tener más de 255 caracteres.',
             'type.required' => 'El tipo es obligatorio.',
             'type.in' => $this->input('type') === 'activate_campaign'

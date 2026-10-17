@@ -1,7 +1,6 @@
 <x-app-layout>
     <x-slot name="title">Detalle de Programación</x-slot>
 
-    @php $schedule = $schedule ?? (object)['id' => 1, 'name' => 'Apagado nocturno', 'type' => 'power_off', 'device_name' => 'Fan 3D 001', 'group_name' => 'Centros Comerciales', 'scheduled_at' => '2024-06-15 22:00:00', 'status' => 'executed', 'created_at' => '2024-06-01 10:00:00']; @endphp
 
     <div class="space-y-6">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -47,12 +46,8 @@
                         <span class="text-sm font-medium text-text">{{ $typeLabels[$schedule->type] ?? $schedule->type }}</span>
                     </div>
                     <div class="flex justify-between py-2 border-b border-border">
-                        <span class="text-sm text-text-muted">Dispositivo</span>
-                        <span class="text-sm font-medium text-text">{{ $schedule->device?->name ?? 'Todos' }}</span>
-                    </div>
-                    <div class="flex justify-between py-2 border-b border-border">
-                        <span class="text-sm text-text-muted">Grupo</span>
-                        <span class="text-sm font-medium text-text">{{ $schedule->group?->name ?? 'Todos' }}</span>
+                        <span class="text-sm text-text-muted">Destino</span>
+                        <span class="text-sm font-medium text-text">{{ $schedule->targetLabel() }}</span>
                     </div>
                     <div class="flex justify-between py-2 border-b border-border">
                         <span class="text-sm text-text-muted">Frecuencia</span>

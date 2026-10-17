@@ -115,7 +115,7 @@ class SchedulePresentationTest extends TestCase
             ->assertSee('Cancelada');
         $campaign = Campaign::factory()->create();
         $schedule->update(['type' => 'activate_campaign', 'campaign_id' => $campaign->id]);
-        $this->putJson('/api/schedules/'.$schedule->id, ['type' => 'power_on'])
+        $this->putJson('/api/schedules/'.$schedule->id, ['type' => 'power_on', 'target_scope' => 'all'])
             ->assertOk()->assertJsonPath('type', 'power_on')->assertJsonPath('campaign_id', null);
         $this->assertNull($schedule->fresh()->campaign_id);
     }
