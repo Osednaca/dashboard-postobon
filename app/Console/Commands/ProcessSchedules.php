@@ -11,12 +11,14 @@ use App\Services\Z2\Z2DeviceService;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class ProcessSchedules extends Command
 {
-    protected $signature = 'schedules:process {--schedule= : Execute only this schedule ID}';
+    protected $signature = 'schedules:process {--schedule= : Execute only this schedule ID}
+        {--force : Execute the selected occurrence now, including a failed attempt}';
 
     protected $description = 'Execute pending one-time and recurring schedules';
 
@@ -29,11 +31,19 @@ class ProcessSchedules extends Command
 
     public function handle(): int
     {
+        $force = (bool) $this->option('force');
+
+        if ($force && $this->option('schedule') === null) {
+            $this->error('Para ejecutar inmediatamente, seleccione una programación con --schedule.');
+
+            return self::FAILURE;
+        }
+
         $now = CarbonImmutable::now(config('app.timezone'));
         $pendingSchedules = Schedule::with(['device', 'group.devices', 'campaign'])
             ->when($this->option('schedule') !== null, fn ($query) => $query->whereKey($this->option('schedule')))
-            ->where('status', 'pending')
-            ->where('scheduled_at', '<=', $now)
+            ->whereIn('status', $force ? ['pending', 'failed'] : ['pending'])
+            ->when(! $force, fn ($query) => $query->where('scheduled_at', '<=', $now))
             ->orderBy('scheduled_at')
             ->get();
 
@@ -45,7 +55,23 @@ class ProcessSchedules extends Command
         $failed = 0;
 
         foreach ($pendingSchedules as $schedule) {
+            $lock = Cache::lock('schedules:execute:'.$schedule->id, 300);
+
+            if (! $lock->get()) {
+                continue;
+            }
+
             try {
+                $plannedAt = $schedule->scheduled_at->copy();
+                $schedule->refresh();
+
+                // A simultaneous manual/automatic worker may have finished the
+                // occurrence after this command selected its candidates.
+                if (! in_array($schedule->status, $force ? ['pending', 'failed'] : ['pending'], true)
+                    || ! $schedule->scheduled_at->equalTo($plannedAt)) {
+                    continue;
+                }
+
                 $success = match ($schedule->type) {
                     'power_on' => $this->executeOnTargets(
                         $schedule,
@@ -79,6 +105,8 @@ class ProcessSchedules extends Command
                     'type' => $schedule->type,
                     'exception' => $exception->getMessage(),
                 ]);
+            } finally {
+                $lock->release();
             }
         }
 
@@ -171,8 +199,11 @@ class ProcessSchedules extends Command
         CarbonImmutable $ranAt,
         ?string $error,
     ): void {
+        $after = $schedule->scheduled_at->greaterThan($ranAt)
+            ? CarbonImmutable::instance($schedule->scheduled_at)
+            : $ranAt;
         $next = $schedule->isRecurring()
-            ? $this->recurrenceService->nextOccurrence($schedule, $ranAt)
+            ? $this->recurrenceService->nextOccurrence($schedule, $after)
             : null;
 
         $schedule->executed_at = $ranAt;

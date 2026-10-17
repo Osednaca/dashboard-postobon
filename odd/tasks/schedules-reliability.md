@@ -1,0 +1,44 @@
+# Schedule reliability
+
+## Objective, authorization and problem
+User authorized local fixes to `/schedules` on 2026-10-17: preserve morning execution times, refresh execution status automatically, remove Activar Campaña, replace dummy calendar events and repair its status filter, and deliver scheduled playback to every device in a group.
+
+Delegated read-only exploration established that the requested application is this Laravel project, not the initial dashboard-fan-wl35 working directory. The list is server rendered without refresh; the calendar contains static days/events and its status selector has no binding. ScheduleService overwrites scheduled_at when execution completes; ProcessSchedules resolves only group.devices (42), ignoring group.wl35Devices (35). Verify timezone serialization and parsing before choosing its correction.
+
+## Scope and constraints
+Preserve planned timestamps, existing recurrence and permissions; distinguish completed one-time schedules from the next recurring execution. Use real persisted schedules and a common filter in list/calendar. Reuse supported playback adapters for both device types, deduplicate recipients, and report partial failures honestly. Do not invent hardware capabilities.
+
+No remote execution, credential/session probing, real device orders, deployment, push, PR or merge authorized by this request. Use isolated SQLite and fake external services. Preserve pre-existing changes to docs/DESPLIEGUE_LATENCIA.md and private-cloud. Existing branch codex/device-content-preview, starting HEAD e9ab18d; do not disturb earlier commits.
+
+## Workflow and delivery
+- Route: delegated direct. Mapping/preparation spans more than four files; each writer requires multiple non-trivial files. Parent owns acceptance and commits.
+- TDD OFF: explicit prior project user decision dated 2026-10-10, recorded in odd/tasks/device-content-preview.md Workflow configuration and retained by odd/tasks/group-campaign-segmentation.md. Ordinary functional regression tests required. Runner: php artisan test --compact --bootstrap=storage/framework/testing/isolated-suite-bootstrap.php. Bootstrap verified present: enforces SQLite :memory: and blocks stray HTTP.
+- RDD disabled/unmanaged: gentle-ai review mode status --cwd E:/programacion/dashboard-postobon reports OFF from global preference on this turn. Do not initiate native reviews.
+- Delivery strategy ask-on-risk; retain cached user-selected feature-branch-chain from the existing project task documents. Local work-unit commits only; any future PR slices follow these task boundaries. Approximately 900-1500 authored additions plus deletions forecast, generated outputs excluded. About 400 lines/task is advisory, never a code compression or omitted-test requirement.
+- Engram project dashboard-postobon, topic odd/schedules-reliability/tasks; full document plus locator odd/tasks/schedules-reliability.md saved to observation 5 through local MCP and full readback matched. Initial project context/search found no existing project. Session codex-schedules-reliability-20261017 registered for this repository. Resynchronize/read back after each progress update.
+- Applicable checks: focused PHP and JavaScript regressions, isolated full PHP suite, full Node suite, Vite production build, changed-file Pint, git diff --check, rendered local UI if feasible. Production worker configuration, MySQL and physical playback remain unverified locally.
+
+## Tasks
+- [x] T1 — Preserve scheduled local times and correct execution lifecycle.
+  - Route delegated; model/service/processor and regressions span multiple non-trivial files. Mapping and preparation delegated to map_schedules.
+  - Acceptance: original planned time survives one-time execution; recurrence advances exactly once in application timezone; completed/error/next occurrence states reflect observed dispatch results. Investigate and fix the five-hour offset at its actual boundary. Retain retry and duplicate prevention.
+  - Checks: morning timestamps, UTC/app serialization, one-time success/failure, daily/weekly recurrence, processing/execute-now paths; fake providers only.
+  - Rollback boundary: schedule datetime/lifecycle behavior and corresponding tests, independent of calendar or recipient expansion.
+  - Implemented: application-time normalization on one-time creation/update/reschedule, preserved planned date on execute-now via a bounded force flag, per-occurrence cache lock and stale-candidate recheck, recurrence advancement after max(planned,actual). Automatic minute registration already existed with withoutOverlapping; no scheduler configuration change needed.
+  - Observed: isolated ScheduleExecutionLifecycleTest 16 tests/85 assertions passed; fresh combined lifecycle + ScheduleRoleAccessTest passed 20 tests/158 assertions in 3.50s. Pint and diff check passed. One earlier combined run held an obsolete role-test assertion while the frontend writer updated that file; fresh rerun resolved it without backend source changes. Parent inspected lifecycle and UTC roundtrip regression: raw Eloquent stores 15:00 for supplied 15:00Z, normalized service correctly stores 10:00 Bogota. Screenshot history itself was not inspected/repaired.
+  - Local runtime harness: mocked real Artisan schedules:process automatic/manual entrypoints prove status persistence, due-only selection, retries, recurrence and no duplicate invocation. Production cron, MySQL and physical execution unavailable/unverified. Commit identity recorded after staging this coherent unit; RDD disabled/unmanaged.
+- [ ] T2 — Dispatch group playback to every supported member.
+  - Route delegated; shared resolution/dispatch and regression files are multiple non-trivial files. Use supported 42/35 playback services and existing media identity mapping.
+  - Acceptance: all 42 and 35 members receive the chosen content; no unrelated device is included; duplicates excluded; missing/unsupported/offline/failed recipients do not become false success. Preserve individual and legacy actions where applicable.
+  - Checks: multiple42, multiple35, mixed group, individual, empty group, partial provider failure, fake transport assertions per member; preserve media duration/identity.
+  - Rollback boundary: mixed-group scheduling resolution/dispatch and corresponding tests.
+- [ ] T3 — Show real calendar data, working filter and current status; remove campaign activation.
+  - Route delegated; controller, Blade, JavaScript/validation and regressions span multiple non-trivial files.
+  - Acceptance: calendar uses persisted schedules on their local dates, supports real month navigation and empty months; status selector filters both views; status refreshes after automatic/manual execution without losing current month/filter. New/edit actions omit Activar Campaña and submitted obsolete action is rejected with clear validation while historical records remain readable.
+  - Checks: real dates/month boundaries, status filter, empty/populated calendar, current status refresh, form and API validation/authorization; isolated PHP/Node and rendered UI.
+  - Rollback boundary: scheduling presentation/filter/refresh/action validation and regression tests.
+
+## Progress and verification
+Initial exploration complete. Parent read AGENTS.md and resolved applicable Laravel and work-unit-commits skills; chained-pr resolved by registry name for the cached delivery strategy. No native review requested because RDD is disabled. T1 delegated to schedule_backend; T3 delegated concurrently to schedule_ui with non-overlapping ownership (backend services/command versus controllers/requests/Blade/JS). T2 follows T1 on the same backend files. map_schedules provides a bounded read-only T2 adapter investigation. Parent owns integration, tracking and commits.
+
+Additional T1 evidence: Eloquent accepts explicit-offset Carbon values and writes their wall-clock value to timezone-less storage; UTC API input therefore needs conversion into application timezone before persistence. Regression must prove 10:00 Bogota -> 15:00Z -> 10:00 stored/displayed. Manual recurring execution consumes its planned occurrence and computes the next after max(planned_at, ran_at), preventing its duplicate later. No bulk rewrite of existing production timestamps is authorized or inferred.

@@ -13,7 +13,7 @@ class ScheduleRecurrenceService
      * Convert form/API recurrence fields into values that can be persisted.
      * scheduled_at always stores the next execution.
      *
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
     public function prepare(array $data, ?Schedule $existing = null): array
@@ -22,6 +22,13 @@ class ScheduleRecurrenceService
         $recurrenceType = (string) ($data['recurrence_type'] ?? $existing?->recurrence_type ?? 'once');
 
         if ($recurrenceType === 'once') {
+            if (isset($data['scheduled_at'])) {
+                // API dates serialize as UTC; persist the same instant in the
+                // application's wall-clock timezone, like datetime-local input.
+                $data['scheduled_at'] = CarbonImmutable::parse($data['scheduled_at'], $timezone)
+                    ->timezone($timezone);
+            }
+
             $data['recurrence_type'] = 'once';
             $data['recurrence_time'] = null;
             $data['recurrence_days'] = null;
@@ -48,7 +55,7 @@ class ScheduleRecurrenceService
             'recurrence_days' => $recurrenceType === 'weekly' ? array_values(array_map('intval', $days ?? [])) : null,
             'recurrence_day' => $recurrenceType === 'monthly' ? (int) $dayOfMonth : null,
             'recurrence_ends_at' => $endsAt
-                ? CarbonImmutable::parse($endsAt, $timezone)->endOfDay()
+                ? CarbonImmutable::parse($endsAt, $timezone)->timezone($timezone)->endOfDay()
                 : null,
         ]);
 
