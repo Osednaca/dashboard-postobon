@@ -3,11 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\FleetUpload;
-use App\Models\Wl35DeviceMedia;
-use App\Services\Fleet\MediaPreviewSource;
-use App\Services\Fleet\MediaSourceMaterializer;
-use App\Services\Fleet\UnifiedFleetClient;
-use App\Services\Fleet\Wl35MediaMapping;
+use App\Services\Fleet\FleetMediaPlaybackService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -29,11 +25,8 @@ class PlayFleetMediaJob implements ShouldQueue
 
     public function __construct(public readonly string $fleetUploadId) {}
 
-    public function handle(
-        UnifiedFleetClient $fleetClient,
-        MediaSourceMaterializer $materializer,
-        MediaPreviewSource $sources,
-    ): void {
+    public function handle(FleetMediaPlaybackService $playback): void
+    {
         $upload = FleetUpload::with('sourceMedia')->findOrFail($this->fleetUploadId);
 
         if ($upload->status === 'completed') {
@@ -54,84 +47,13 @@ class PlayFleetMediaJob implements ShouldQueue
                 throw new \RuntimeException('El medio fue eliminado antes de iniciar la reproducción.');
             }
 
-            $targets = array_values(array_unique($upload->targets ?? []));
-            $z2Targets = array_values(array_filter(
-                $targets,
-                fn (string $target): bool => str_starts_with($target, 'z2:'),
-            ));
-            $wl35Targets = array_values(array_filter(
-                $targets,
-                fn (string $target): bool => str_starts_with($target, 'wl35:'),
-            ));
-            $source = str_starts_with($media->mime_type, 'video/') ? $sources->resolve($media) : null;
-            if ($source === null) {
-                throw new \RuntimeException('No se pudo encontrar el archivo de video seleccionado.');
-            }
-            $isCloudLibraryFile = $source['kind'] === 'private_cloud';
-            $results = [];
-            $wl35UploadTargets = $wl35Targets;
-
-            if ($wl35Targets !== []) {
-                [$knownResults, $wl35UploadTargets] = $this->playKnownWl35Media(
-                    $fleetClient,
-                    $wl35Targets,
-                    $media->id,
-                );
-                $results = array_merge($results, $knownResults);
-            }
-
-            if ($isCloudLibraryFile && $z2Targets !== []) {
-                $upload->update(['phase' => 'sending_z2', 'progress' => 22]);
-                $results = array_merge(
-                    $results,
-                    $this->runZ2Playback($fleetClient, $z2Targets, rawurldecode(basename($source['path']))),
-                );
-            }
-
-            $distributionTargets = $isCloudLibraryFile
-                ? $wl35UploadTargets
-                : array_values(array_unique(array_merge($z2Targets, $wl35UploadTargets)));
-
-            if ($distributionTargets !== []) {
-                $upload->update(['phase' => 'downloading_media', 'progress' => 30]);
-
-                try {
-                    $materializer->materialize($media, $upload->file_path);
-                    $upload->update(['phase' => 'uploading_gateway', 'progress' => 40]);
-
-                    $distribution = $fleetClient->uploadPathAndDistribute(
-                        Storage::disk('local')->path($upload->file_path),
-                        $upload->original_name,
-                        $distributionTargets,
-                        function (string $phase, int $progress) use ($upload): void {
-                            $mappedProgress = match ($phase) {
-                                'uploading_gateway' => 45,
-                                'distributing' => 65,
-                                'finalizing' => 92,
-                                default => max(40, min(92, $progress)),
-                            };
-                            $upload->update(['phase' => $phase, 'progress' => $mappedProgress]);
-                        },
-                        true,
-                    );
-                    $distributionResults = $distribution['results'] ?? [];
-                    app(Wl35MediaMapping::class)->remember($distributionResults, $distributionTargets, $media->id, $upload->original_name);
-                    $results = array_merge($results, $distributionResults);
-                } catch (Throwable $exception) {
-                    Log::error('Falló la rama de carga para reproducción instantánea.', [
-                        'fleet_upload_id' => $upload->id,
-                        'targets' => $distributionTargets,
-                        'error' => $exception->getMessage(),
-                    ]);
-                    $results = array_merge(
-                        $results,
-                        $this->failedResults($distributionTargets, $exception->getMessage()),
-                    );
-                }
-            }
-
-            $upload->update(['phase' => 'finalizing', 'progress' => 95]);
-            $summary = $this->summarize($targets, $results);
+            $summary = $playback->play(
+                $media,
+                $upload->targets ?? [],
+                $upload->original_name,
+                $upload->file_path,
+                fn (string $phase, int $progress) => $upload->update(compact('phase', 'progress')),
+            );
             $upload->update([
                 'status' => 'completed',
                 'phase' => 'completed',
@@ -155,125 +77,6 @@ class PlayFleetMediaJob implements ShouldQueue
         if ($upload !== null) {
             Storage::disk('local')->delete($upload->file_path);
         }
-    }
-
-    /** @return array{0: array<int, array<string, mixed>>, 1: array<int, string>} */
-    private function playKnownWl35Media(
-        UnifiedFleetClient $fleetClient,
-        array $targets,
-        int $mediaId,
-    ): array {
-        $targetIds = collect($targets)->mapWithKeys(fn (string $key): array => [
-            substr($key, strlen('wl35:')) => $key,
-        ]);
-        $remaining = collect($targets)->flip();
-        $results = [];
-
-        try {
-            $liveById = collect($fleetClient->getFleet()['devices'] ?? [])
-                ->where('type', 'wl35')
-                ->keyBy(fn (array $device): string => (string) ($device['id'] ?? ''));
-            $mappings = Wl35DeviceMedia::where('media_id', $mediaId)
-                ->whereIn('device_id', $targetIds->keys())
-                ->get();
-            $targetsByIndex = [];
-
-            foreach ($mappings as $mapping) {
-                $live = $liveById->get($mapping->device_id);
-                $reportedCount = (int) ($live['video_count'] ?? 0);
-
-                if ($mapping->video_index > $reportedCount) {
-                    $mapping->delete();
-
-                    continue;
-                }
-
-                if (! ($live['online'] ?? false) || ! ($live['connected'] ?? false) || ! ($live['session_ready'] ?? false)) {
-                    continue;
-                }
-
-                $key = $targetIds->get($mapping->device_id);
-                $targetsByIndex[$mapping->video_index][] = $key;
-                $remaining->forget($key);
-            }
-
-            foreach ($targetsByIndex as $index => $knownTargets) {
-                try {
-                    $response = $fleetClient->sendCommand([
-                        'command' => 'play',
-                        'targets' => array_values($knownTargets),
-                        'wl35_video_index' => (int) $index,
-                    ]);
-                    $results = array_merge($results, $response['results'] ?? []);
-                } catch (Throwable $exception) {
-                    $results = array_merge($results, $this->failedResults($knownTargets, $exception->getMessage()));
-                }
-            }
-        } catch (Throwable $exception) {
-            Log::warning('No fue posible consultar los índices WL35 conocidos; se volverá a cargar el medio.', [
-                'media_id' => $mediaId,
-                'error' => $exception->getMessage(),
-            ]);
-        }
-
-        return [$results, $remaining->keys()->values()->all()];
-    }
-
-    /** @return array<int, array<string, mixed>> */
-    private function runZ2Playback(
-        UnifiedFleetClient $fleetClient,
-        array $targets,
-        string $filename,
-    ): array {
-        try {
-            $response = $fleetClient->sendCommand([
-                'command' => 'play',
-                'targets' => $targets,
-                'z2_filename' => $filename,
-            ]);
-
-            return $response['results'] ?? [];
-        } catch (Throwable $exception) {
-            return $this->failedResults($targets, $exception->getMessage());
-        }
-    }
-
-    /** @return array<int, array<string, mixed>> */
-    private function failedResults(array $targets, string $error): array
-    {
-        return array_map(fn (string $key): array => [
-            'key' => $key,
-            'type' => str_starts_with($key, 'wl35:') ? 'wl35' : 'z2',
-            'id' => str_contains($key, ':') ? substr($key, strpos($key, ':') + 1) : $key,
-            'success' => false,
-            'error' => $error,
-        ], $targets);
-    }
-
-    /** @return array<string, mixed> */
-    private function summarize(array $targets, array $results): array
-    {
-        $byKey = collect($results)
-            ->filter(fn ($result): bool => is_array($result) && isset($result['key']))
-            ->keyBy('key');
-        $ordered = collect($targets)->map(function (string $key) use ($byKey): array {
-            return $byKey->get($key) ?? [
-                'key' => $key,
-                'type' => str_starts_with($key, 'wl35:') ? 'wl35' : 'z2',
-                'id' => str_contains($key, ':') ? substr($key, strpos($key, ':') + 1) : $key,
-                'success' => false,
-                'error' => 'El gateway no devolvió resultado para este dispositivo.',
-            ];
-        })->values()->all();
-        $succeeded = count(array_filter($ordered, fn (array $result): bool => ($result['success'] ?? false) === true));
-
-        return [
-            'success' => $succeeded === count($ordered),
-            'total' => count($ordered),
-            'succeeded' => $succeeded,
-            'failed' => count($ordered) - $succeeded,
-            'results' => $ordered,
-        ];
     }
 
     private function markAsFailed(string $message): void

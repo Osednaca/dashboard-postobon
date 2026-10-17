@@ -285,7 +285,14 @@ class Z2DeviceService
         $results = [];
 
         foreach ($macs as $mac) {
-            $results[$mac] = $this->playCloudVideo($mac, $cloudFilename);
+            try {
+                $results[$mac] = $this->playCloudVideo($mac, $cloudFilename);
+            } catch (\Throwable $exception) {
+                $results[$mac] = false;
+                Log::warning('[PrivateCloud] Playback failed for device; continuing group', [
+                    'mac' => $mac, 'error' => $exception->getMessage(),
+                ]);
+            }
         }
 
         return ['filename' => $cloudFilename, 'results' => $results];
