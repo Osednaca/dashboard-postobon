@@ -13,6 +13,8 @@ use App\Http\Controllers\Api\ScheduleController;
 use App\Http\Controllers\Web\DeviceEstablishmentController;
 use Illuminate\Support\Facades\Route;
 
+require __DIR__.'/mobile.php';
+
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
 Route::post('/reset-password', [AuthController::class, 'resetPassword']);
