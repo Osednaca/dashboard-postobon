@@ -38,3 +38,11 @@ Crear requiere `name` (máx.255), `business_type_id` válido y `address` (máx.5
 `GET/POST /business-types`, `PATCH/DELETE /business-types/{id}`; ability `business-types:manage` y Policies existentes. Recurso `{id,name,establishments_count}`. Nombre obligatorio, único y máx.120; lista con `search` y paginación. Borrar un tipo usado responde 409 `business_type_has_establishments`. Las escrituras de ambos catálogos se auditan por actor/entidad sin copiar los campos de entrada.
 
 Verificación de catálogos/lista: `php artisan test --compact --bootstrap=storage/framework/testing/isolated-suite-bootstrap.php --filter='MobileDeviceTest|MobileEstablishmentTest|MobileBusinessTypeTest'`. Los tests simulan las fuentes privadas y no envían órdenes ni peticiones remotas reales.
+
+## Destino cloud opcional en onboarding
+
+El onboarding está habilitado por defecto. `POST /device-onboardings` admite `cloud_domain` opcional: omitido, `null` o vacío conserva el destino de `network.cfg` y no requiere host ni identificador. Un host DNS ASCII/IPv4 con puerto1–65535 pide un cambio explícito mediante bind completo documentado. URLs, rutas, queries, credenciales y delimitadores de protocolo no están permitidos. La rama de cambio requiere el identificador público de enrolamiento configurado por administración; en su ausencia devuelve422 `cloud_target_requires_enrollment` sobre `cloud_domain`, sin bloquear el flujo de conservar.
+
+La sesión devuelve `cloud_domain:string|null` y guarda un snapshot inmutable de `provisioning_profile` con `cloud_domain`/`advertisers_code` nulos al conservar, o destino/código público validados al cambiar. No acepta PATCH del destino; preparar otra sesión para elegir otro. El destino forma parte de la idempotencia. Cambios de preferencias/configuración posteriores no reescriben sesiones existentes. `Z2_MOBILE_ONBOARDING_ENABLED=false` sigue permitiendo que administración deshabilite nuevas sesiones expresamente.
+
+Contrato y recuperación detallados en [MOBILE_ONBOARDING.md](MOBILE_ONBOARDING.md). El cambio de destino no cambia la API privada del backend y nunca confirma éxito sin heartbeat nuevo en la fuente configurada.

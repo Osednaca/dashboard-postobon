@@ -39,8 +39,6 @@ class MobileOnboardingTest extends TestCase
             'privatecloud.base_url' => 'http://private-cloud.test',
             'privatecloud.token' => 'server-only-secret',
             'mobile_onboarding.enabled' => true,
-            'mobile_onboarding.cloud_domain' => 'devices.example.test:9920',
-            'mobile_onboarding.requires_bind' => false,
         ]);
         Http::fake(fn () => Http::response(
             $this->cloudUnavailable ? [] : ['result' => 0, 'devices' => $this->devices],
@@ -119,27 +117,20 @@ class MobileOnboardingTest extends TestCase
         $this->assertSame(1, DeviceOnboarding::count());
     }
 
-    public function test_disabled_invalid_or_privileged_binding_profile_fails_closed(): void
+    public function test_explicit_admin_disable_still_prevents_new_sessions(): void
     {
-        foreach ([
-            ['mobile_onboarding.enabled' => false],
-            ['mobile_onboarding.enabled' => true, 'mobile_onboarding.cloud_domain' => 'https://dashboard.example.test'],
-            ['mobile_onboarding.cloud_domain' => 'devices.example.test:9920', 'mobile_onboarding.requires_bind' => true,
-                'mobile_onboarding.advertisers_code' => 'privileged-secret', 'mobile_onboarding.public_enrollment_identifier' => false],
-        ] as $settings) {
-            config($settings);
-            $this->withHeader('Idempotency-Key', 'operation-profile')->postJson(self::BASE, $this->payload())
-                ->assertStatus(503)->assertJsonPath('error.code', 'onboarding_unconfigured');
-        }
+        config(['mobile_onboarding.enabled' => false]);
+        $this->withHeader('Idempotency-Key', 'operation-profile')->postJson(self::BASE, $this->payload())
+            ->assertStatus(503)->assertJsonPath('error.code', 'onboarding_unconfigured');
         $this->assertSame(0, DeviceOnboarding::count());
         Http::assertNothingSent();
     }
 
     public function test_validated_public_enrollment_identifier_is_only_exposed_when_required(): void
     {
-        config(['mobile_onboarding.requires_bind' => true, 'mobile_onboarding.public_enrollment_identifier' => true,
+        config(['mobile_onboarding.public_enrollment_identifier' => true,
             'mobile_onboarding.advertisers_code' => 'public-installation-id']);
-        $this->withHeader('Idempotency-Key', 'operation-bind')->postJson(self::BASE, $this->payload())
+        $this->withHeader('Idempotency-Key', 'operation-bind')->postJson(self::BASE, $this->payload(['cloud_domain' => 'devices.example.test:8088']))
             ->assertCreated()->assertJsonPath('data.provisioning_profile.advertisers_code', 'public-installation-id');
     }
 
@@ -149,7 +140,7 @@ class MobileOnboardingTest extends TestCase
             ['sync_class' => 15], ['sync_class' => -1], ['play_mode' => 2],
             ['play_mode' => 0, 'sync_class' => 6], ['expected_identifier' => 'not-a-mac'],
             ['name' => 'Entrada&Domain=evil'], ['name' => str_repeat('🎈', 40)],
-            ['wifi_password' => 'do-not-store'], ['cloud_domain' => 'evil.test:9910'],
+            ['wifi_password' => 'do-not-store'], ['cloud_domain' => 'https://evil.test:9910'],
         ] as $overrides) {
             $this->withHeader('Idempotency-Key', 'operation-invalid')->postJson(self::BASE, $this->payload($overrides))
                 ->assertUnprocessable();

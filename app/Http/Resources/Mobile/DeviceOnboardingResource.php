@@ -2,7 +2,6 @@
 
 namespace App\Http\Resources\Mobile;
 
-use App\Services\Mobile\OnboardingProvisioningProfile;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -12,7 +11,7 @@ class DeviceOnboardingResource extends JsonResource
     {
         $profile = null;
         if (in_array($this->status, ['prepared', 'local_connected'], true)) {
-            $profile = app(OnboardingProvisioningProfile::class)->get();
+            $profile = $this->provisioning_profile;
         }
 
         return [
@@ -24,6 +23,7 @@ class DeviceOnboardingResource extends JsonResource
             'establishment_id' => $this->establishment_id,
             'play_mode' => $this->play_mode,
             'sync_class' => $this->sync_class,
+            'cloud_domain' => $this->cloud_domain,
             'last_result_code' => $this->last_result_code,
             'expires_at' => $this->expires_at->toIso8601String(),
             'configuration_reported_at' => $this->configuration_reported_at?->toIso8601String(),

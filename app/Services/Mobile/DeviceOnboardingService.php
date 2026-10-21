@@ -23,10 +23,16 @@ class DeviceOnboardingService
 
     public function prepare(User $actor, array $data, string $key): DeviceOnboarding
     {
-        $hash = hash('sha256', json_encode([
+        $data['cloud_domain'] = $data['cloud_domain'] ?? null;
+        $fingerprint = [
             $data['device_type'], $data['expected_identifier'], $data['name'],
             (int) $data['establishment_id'], (int) $data['play_mode'], (int) $data['sync_class'],
-        ], JSON_THROW_ON_ERROR));
+        ];
+        // Preserve historical fingerprints when omitted/null means keep network.cfg.
+        if ($data['cloud_domain'] !== null) {
+            $fingerprint[] = $data['cloud_domain'];
+        }
+        $hash = hash('sha256', json_encode($fingerprint, JSON_THROW_ON_ERROR));
         $existing = DeviceOnboarding::where('user_id', $actor->id)->where('idempotency_key', $key)->first();
         if ($existing) {
             $this->sameRequest($existing, $hash);
@@ -34,10 +40,10 @@ class DeviceOnboardingService
             return $this->status($existing, $actor);
         }
 
-        $this->profile->get();
+        $profile = $this->profile->get($data['cloud_domain']);
         $snapshot = $this->telemetry->find($data['expected_identifier'], true);
         try {
-            return DB::transaction(function () use ($actor, $data, $key, $hash, $snapshot): DeviceOnboarding {
+            return DB::transaction(function () use ($actor, $data, $key, $hash, $snapshot, $profile): DeviceOnboarding {
                 // Serializes same-actor idempotency while unique indexes protect different actors.
                 User::whereKey($actor->id)->lockForUpdate()->firstOrFail();
                 $existing = DeviceOnboarding::where('user_id', $actor->id)->where('idempotency_key', $key)->lockForUpdate()->first();
@@ -62,6 +68,7 @@ class DeviceOnboardingService
                     'status' => 'prepared',
                     'idempotency_key' => $key,
                     'request_hash' => $hash,
+                    'provisioning_profile' => $profile,
                     'baseline_heartbeat_count' => $this->count($snapshot),
                     'baseline_last_seen_at' => $this->telemetry->seenAt($snapshot),
                     'expires_at' => now()->addMinutes(max(1, (int) config('mobile_onboarding.session_minutes', 30))),
@@ -72,6 +79,7 @@ class DeviceOnboardingService
                     'establishment_id' => $session->establishment_id,
                     'play_mode' => $session->play_mode,
                     'sync_class' => $session->sync_class,
+                    'cloud_domain' => $session->cloud_domain,
                 ]);
 
                 return $session;

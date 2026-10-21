@@ -16,6 +16,7 @@ class DeviceOnboarding extends Model
         return [
             'play_mode' => 'integer',
             'sync_class' => 'integer',
+            'provisioning_profile' => 'array',
             'baseline_heartbeat_count' => 'integer',
             'baseline_last_seen_at' => 'immutable_datetime',
             'configuration_reported_at' => 'immutable_datetime',

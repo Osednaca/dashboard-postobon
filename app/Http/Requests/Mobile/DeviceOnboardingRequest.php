@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Mobile;
 
+use App\Rules\FirmwareCloudDomain;
 use App\Services\Mobile\OnboardingTelemetry;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -19,6 +20,9 @@ class DeviceOnboardingRequest extends FormRequest
         if (is_string($this->input('expected_identifier'))) {
             $this->merge(['expected_identifier' => OnboardingTelemetry::normalize($this->input('expected_identifier'))]);
         }
+        if (is_string($this->input('cloud_domain')) && $domain = FirmwareCloudDomain::normalize($this->input('cloud_domain'))) {
+            $this->merge(['cloud_domain' => $domain]);
+        }
     }
 
     public function rules(): array
@@ -33,6 +37,7 @@ class DeviceOnboardingRequest extends FormRequest
         if ($this->isMethod('POST')) {
             $rules['device_type'] = ['required', Rule::in(['z2'])];
             $rules['expected_identifier'] = ['required', 'string', 'regex:/\A[A-F0-9]{12}\z/'];
+            $rules['cloud_domain'] = ['sometimes', 'nullable', 'string', 'max:255', new FirmwareCloudDomain];
         }
 
         return $rules;

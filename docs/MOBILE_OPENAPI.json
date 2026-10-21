@@ -910,7 +910,7 @@
       "post": {
         "operationId": "mobileOperation18",
         "summary": "Preparar sesión Z2",
-        "description": "Ability onboarding:create;60 requests/minute. Disabled by default until a validated firmware profile is configured. Cloud baseline must be available.",
+        "description": "Ability onboarding:create;60 requests/minute. Enabled by default, preserve existing network.cfg when cloud_domain omitted/null/blank. Explicit custom target requires validated public enrollment identifier (422 otherwise). New sessions may be explicitly administratively disabled (503). Source baseline must be available. Profile/target frozen; idempotency includes custom target.",
         "parameters": [
           {
             "$ref": "#/components/parameters/IdempotencyKey"
@@ -1028,7 +1028,7 @@
       "patch": {
         "operationId": "mobileOperation20",
         "summary": "Actualizar sesión antes del envío",
-        "description": "",
+        "description": "Only prepared/local_connected; cloud_domain cannot be changed. New target requires a new session.",
         "parameters": [],
         "responses": {
           "200": {
@@ -1927,15 +1927,29 @@
             ]
           },
           "cloud_domain": {
-            "type": "string",
-            "description": "Validated firmware host:port, distinct from HTTPS API and private REST URLs."
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Frozen explicit firmware host:port, or null when preserving existing destination."
           },
           "requires_bind": {
             "type": "boolean"
           },
           "advertisers_code": {
-            "type": "string",
-            "description": "Only present for bind after explicit validation as a non-privileged public enrollment identifier."
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Frozen validated public enrollment identifier for complete bind; null when preserving."
           }
         },
         "required": [
@@ -1943,8 +1957,10 @@
           "version",
           "tcp_port",
           "cloud_domain",
-          "requires_bind"
-        ]
+          "requires_bind",
+          "advertisers_code"
+        ],
+        "description": "Public profile snapshotted at creation, never regenerated from changed settings. Historical sessions without snapshot return null profile."
       },
       "OnboardingInput": {
         "type": "object",
@@ -1981,6 +1997,18 @@
             "minimum": 0,
             "maximum": 14,
             "description": "A=0 ... G=6 ... O=14. Individual mode0 requires class0. Not an administrative group."
+          },
+          "cloud_domain": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional creation-only ASCII DNS host or IPv4 plus port1..65535. No URL/path/query/credentials. Omitted/null/blank preserves network.cfg. Normalized lowercase host and decimal port. Custom change requires configured public enrollment identifier, otherwise422 cloud_target_requires_enrollment."
           }
         },
         "required": [
@@ -2175,6 +2203,17 @@
                 "type": "null"
               }
             ]
+          },
+          "cloud_domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Immutable creation target; null preserves existing network.cfg."
           }
         },
         "required": [
@@ -2192,7 +2231,8 @@
           "device_id",
           "verification",
           "provisioning_profile",
-          "last_result_code"
+          "last_result_code",
+          "cloud_domain"
         ],
         "description": "Deleted target establishment makes unfinished session failed with last_result_code establishment_unavailable, null establishment_id/profile and released reservation."
       },
