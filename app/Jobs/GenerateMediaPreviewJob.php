@@ -17,8 +17,11 @@ class GenerateMediaPreviewJob implements ShouldBeUnique, ShouldQueue
 
     public int $uniqueFor = 600;
 
-    public function __construct(public readonly int $mediaId, public readonly string $identity)
-    {
+    public function __construct(
+        public readonly int $mediaId,
+        public readonly string $identity,
+        public readonly ?string $pendingOwner = null,
+    ) {
         $this->onQueue((string) config('mediapreview.queue'));
     }
 
@@ -29,6 +32,6 @@ class GenerateMediaPreviewJob implements ShouldBeUnique, ShouldQueue
 
     public function handle(CompressedMediaPreview $previews): void
     {
-        $previews->generate($this->mediaId, $this->identity);
+        $previews->generate($this->mediaId, $this->identity, $this->pendingOwner ?? null);
     }
 }
