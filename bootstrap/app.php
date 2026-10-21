@@ -21,6 +21,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Wi-Fi credentials are byte-sensitive; retain spaces without disabling
+        // ordinary normalization for names, addresses or other request fields.
+        $middleware->trimStrings(except: ['wifi_ssid', 'wifi_password']);
         $middleware->trustProxies(at: '*');
         $middleware->redirectUsersTo(fn (Request $request): string => route(
             $request->user()?->role === 'tecnico' ? 'establishments.index' : 'dashboard.index',

@@ -161,12 +161,15 @@ class DeviceOnboardingService
     public function status(DeviceOnboarding $session, User $actor): DeviceOnboarding
     {
         $this->authorize($session, $actor);
-        $snapshot = in_array($session->status, ['awaiting_online', 'ready_to_complete'], true) && ! $session->expires_at->isPast()
+        $snapshot = $session->establishment_id !== null && in_array($session->status, ['awaiting_online', 'ready_to_complete'], true) && ! $session->expires_at->isPast()
             ? $this->telemetry->find($session->expected_identifier) : null;
 
         return DB::transaction(function () use ($session, $snapshot): DeviceOnboarding {
             $session = DeviceOnboarding::whereKey($session->id)->lockForUpdate()->firstOrFail();
-            if (! in_array($session->status, ['completed', 'cancelled', 'expired'], true) && $session->expires_at->isPast()) {
+            if ($this->invalidateMissingEstablishment($session)) {
+                return $session;
+            }
+            if (! in_array($session->status, ['completed', 'cancelled', 'expired', 'failed'], true) && $session->expires_at->isPast()) {
                 $session->forceFill(['status' => 'expired', 'active_identifier' => null])->save();
             }
             if (in_array($session->status, ['awaiting_online', 'ready_to_complete'], true)) {
@@ -184,12 +187,20 @@ class DeviceOnboardingService
         if ($session->status === 'completed') {
             return $session;
         }
+        if ($session->establishment_id === null) {
+            // Persist the terminal state before rejecting completion; throwing inside a
+            // transaction would otherwise roll back the reservation release.
+            $session = $this->status($session, $actor);
+        }
         $this->active($session);
         $snapshot = $this->telemetry->find($session->expected_identifier, true);
 
-        return DB::transaction(function () use ($session, $actor, $snapshot): DeviceOnboarding {
+        $result = DB::transaction(function () use ($session, $actor, $snapshot): DeviceOnboarding {
             $session = DeviceOnboarding::whereKey($session->id)->lockForUpdate()->firstOrFail();
             if ($session->status === 'completed') {
+                return $session;
+            }
+            if ($this->invalidateMissingEstablishment($session)) {
                 return $session;
             }
             $this->active($session);
@@ -234,6 +245,12 @@ class DeviceOnboardingService
 
             return $session;
         }, 3);
+
+        if ($result->status === 'failed') {
+            $this->active($result);
+        }
+
+        return $result;
     }
 
     public function cancel(DeviceOnboarding $session, User $actor): DeviceOnboarding
@@ -242,7 +259,10 @@ class DeviceOnboardingService
 
         return DB::transaction(function () use ($session, $actor): DeviceOnboarding {
             $session = DeviceOnboarding::whereKey($session->id)->lockForUpdate()->firstOrFail();
-            if ($session->status === 'cancelled') {
+            if (in_array($session->status, ['cancelled', 'failed'], true)) {
+                return $session;
+            }
+            if ($this->invalidateMissingEstablishment($session)) {
                 return $session;
             }
             // Recovery must be able to discard an expired attempt without reopening it.
@@ -305,9 +325,24 @@ class DeviceOnboardingService
 
     private function active(DeviceOnboarding $session): void
     {
-        if ($session->expires_at->isPast() || in_array($session->status, ['completed', 'cancelled', 'expired'], true)) {
+        if ($session->expires_at->isPast() || in_array($session->status, ['completed', 'cancelled', 'expired', 'failed'], true)) {
             $this->fail('onboarding_inactive', 'Esta instalación finalizó o expiró. Prepara una nueva si es necesario.');
         }
+    }
+
+    private function invalidateMissingEstablishment(DeviceOnboarding $session): bool
+    {
+        if ($session->establishment_id === null && ! in_array($session->status, ['completed', 'cancelled', 'expired', 'failed'], true)) {
+            $session->forceFill([
+                'status' => 'failed',
+                'last_result_code' => 'establishment_unavailable',
+                'active_identifier' => null,
+            ])->save();
+
+            return true;
+        }
+
+        return $session->status === 'failed';
     }
 
     private function sameRequest(DeviceOnboarding $session, string $hash): void

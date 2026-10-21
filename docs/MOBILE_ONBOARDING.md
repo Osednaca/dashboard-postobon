@@ -31,7 +31,7 @@ Toda respuesta de sesión usa `{ "data": { ... } }`. El `id` público es un UUID
 | `GET /device-onboardings/{uuid}` | Consulta estado y evidencia disponible; no emite comandos al equipo |
 | `POST /device-onboardings/{uuid}/events` | `{event:"local_connected"|"configuration_sent", result_code?:"sent"|"readback_verified"|"connection_failed"|"response_unknown"}` |
 | `POST /device-onboardings/{uuid}/complete` | Sin cuerpo de configuración; verifica de nuevo y finaliza en transacción |
-| `POST /device-onboardings/{uuid}/cancel` | Sin cuerpo; cancela una sesión activa. Si ya expiró, libera su reserva y devuelve `expired` idempotentemente para permitir comenzar otra. No cancela una instalación completada ni presume rollback del Wi-Fi físico |
+| `POST /device-onboardings/{uuid}/cancel` | Sin cuerpo; cancela una sesión activa. Si ya expiró o falló, libera/conserva libre su reserva y devuelve `expired`/`failed` idempotentemente para permitir comenzar otra. No cancela una instalación completada ni presume rollback del Wi-Fi físico |
 
 Prefijo común: `/api/mobile/v1`. Los POST de acción no aceptan campos extra, ni `online:true` como prueba. Tampoco se aceptan contraseña, payload TCP o URL/cloud destino del cliente. Los eventos son reportes del teléfono, no pruebas de éxito.
 
@@ -52,6 +52,7 @@ DTO de sesión:
     "establishment_id": 12,
     "play_mode": 1,
     "sync_class": 6,
+    "last_result_code": null,
     "expires_at": "2026-10-21T16:00:00Z",
     "configuration_reported_at": null,
     "completed_at": null,
@@ -69,6 +70,10 @@ DTO de sesión:
 ```
 
 El perfil se devuelve solo en `prepared`/`local_connected`; después es `null`. El identificador de resultado final usa `z2:<id local>`. `verification` solo aparece al completar y vale `private_cloud_fresh_heartbeat_and_reported_mode`. Describe evidencia de conexión y modo reportado; no garantiza sincronía de fotogramas ni que el nombre físico haya persistido.
+
+Si se elimina el establecimiento mientras la instalación está pendiente, la siguiente consulta devuelve `status:"failed"`, `last_result_code:"establishment_unavailable"`, `establishment_id:null` y perfil `null`. La reserva de MAC queda libre. Completar se rechaza; cancelar permite descartar la recuperación local y preparar una nueva sesión para un establecimiento válido.
+
+En la API de establecimientos, `wifi_ssid` y `wifi_password` son campos sensibles a los espacios: se conservan sus caracteres iniciales/finales al crear o actualizar, con la contraseña cifrada y solo escritura. Se aplica la misma excepción de normalización al formulario web. Otros campos, como nombre y dirección, conservan el recorte ordinario de espacios. Una contraseña vacía en edición mantiene la clave anterior, según el contrato existente. El onboarding nunca guarda esas credenciales de forma implícita.
 
 ## Secuencia y evidencia
 

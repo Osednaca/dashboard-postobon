@@ -59,6 +59,39 @@ class MobileEstablishmentTest extends TestCase
         }
     }
 
+    public function test_wifi_credentials_preserve_leading_and_trailing_spaces_during_create_and_update(): void
+    {
+        $type = BusinessType::create(['name' => 'Tienda']);
+        $ssid = '  Red del local  ';
+        $password = '  primera-clave  ';
+        $id = $this->postJson('/api/mobile/v1/establishments', [
+            'name' => '  Tienda de prueba  ', 'address' => '  Calle 1  ',
+            'business_type_id' => $type->id, 'wifi_ssid' => $ssid, 'wifi_password' => $password,
+        ])->assertCreated()->assertJsonPath('data.name', 'Tienda de prueba')
+            ->assertJsonPath('data.address', 'Calle 1')->assertJsonPath('data.wifi_ssid', $ssid)
+            ->assertJsonMissingPath('data.wifi_password')->json('data.id');
+        $establishment = Establishment::findOrFail($id);
+        $this->assertSame($ssid, $establishment->wifi_ssid);
+        $this->assertSame($password, $establishment->wifi_password);
+        $this->assertNotSame($password, $establishment->getRawOriginal('wifi_password'));
+
+        $updatedSsid = ' Red actualizada   ';
+        $updatedPassword = '   segunda-clave ';
+        $this->patchJson('/api/mobile/v1/establishments/'.$id, [
+            'wifi_ssid' => $updatedSsid, 'wifi_password' => $updatedPassword,
+        ])->assertOk()->assertJsonPath('data.wifi_ssid', $updatedSsid)->assertJsonMissingPath('data.wifi_password');
+        $establishment->refresh();
+        $this->assertSame($updatedSsid, $establishment->wifi_ssid);
+        $this->assertSame($updatedPassword, $establishment->wifi_password);
+        $encrypted = $establishment->getRawOriginal('wifi_password');
+        $this->assertNotSame($updatedPassword, $encrypted);
+        $this->patchJson('/api/mobile/v1/establishments/'.$id, ['wifi_password' => ''])->assertOk();
+        $this->assertSame($encrypted, $establishment->refresh()->getRawOriginal('wifi_password'));
+        $this->assertSame($updatedPassword, $establishment->wifi_password);
+        $this->assertStringNotContainsString($password, AuditLog::all()->toJson());
+        $this->assertStringNotContainsString($updatedPassword, AuditLog::all()->toJson());
+    }
+
     public function test_validation_and_safe_counts_match_web_contract(): void
     {
         $this->postJson('/api/mobile/v1/establishments', ['latitude' => 4.5])->assertUnprocessable()

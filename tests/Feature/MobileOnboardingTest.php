@@ -311,4 +311,39 @@ class MobileOnboardingTest extends TestCase
         $this->assertNull($device->fresh()->establishment_id);
         $this->assertSame('awaiting_online', DeviceOnboarding::sole()->status);
     }
+
+    public function test_deleted_establishment_fails_session_without_profile_and_releases_mac_for_fresh_prepare(): void
+    {
+        $uuid = $this->prepare();
+        $this->deleteJson('/api/mobile/v1/establishments/'.$this->establishment->id)->assertNoContent();
+        $this->getJson(self::BASE.'/'.$uuid)->assertOk()
+            ->assertJsonPath('data.status', 'failed')
+            ->assertJsonPath('data.last_result_code', 'establishment_unavailable')
+            ->assertJsonPath('data.establishment_id', null)
+            ->assertJsonPath('data.provisioning_profile', null);
+        $this->assertNull(DeviceOnboarding::sole()->active_identifier);
+        $this->postJson(self::BASE.'/'.$uuid.'/complete')->assertConflict();
+        $this->postJson(self::BASE.'/'.$uuid.'/events', ['event' => 'local_connected'])->assertConflict();
+        $this->postJson(self::BASE.'/'.$uuid.'/cancel')->assertOk()->assertJsonPath('data.status', 'failed');
+        $this->establishment = Establishment::create([
+            'name' => 'Nuevo destino', 'address' => 'Calle 2',
+            'business_type_id' => BusinessType::firstOrCreate(['name' => 'Tienda'])->id,
+        ]);
+        $next = $this->prepare('operation-new-establishment');
+        $this->assertNotSame($uuid, $next);
+        $this->assertSame(0, Device::count());
+    }
+
+    public function test_complete_persists_missing_target_failure_even_without_status_request(): void
+    {
+        $uuid = $this->prepare();
+        $this->report($uuid);
+        $this->establishment->delete();
+        $this->postJson(self::BASE.'/'.$uuid.'/complete')->assertConflict();
+        $session = DeviceOnboarding::sole();
+        $this->assertSame('failed', $session->status);
+        $this->assertSame('establishment_unavailable', $session->last_result_code);
+        $this->assertNull($session->active_identifier);
+        $this->assertSame(0, Device::count());
+    }
 }

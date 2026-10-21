@@ -24,6 +24,7 @@ class DeviceOnboardingResource extends JsonResource
             'establishment_id' => $this->establishment_id,
             'play_mode' => $this->play_mode,
             'sync_class' => $this->sync_class,
+            'last_result_code' => $this->last_result_code,
             'expires_at' => $this->expires_at->toIso8601String(),
             'configuration_reported_at' => $this->configuration_reported_at?->toIso8601String(),
             'completed_at' => $this->completed_at?->toIso8601String(),
