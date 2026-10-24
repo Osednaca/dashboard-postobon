@@ -30,6 +30,7 @@ Toda respuesta de sesión usa `{ "data": { ... } }`. El `id` público es un UUID
 | `PATCH /device-onboardings/{uuid}` | Solo `name`, `establishment_id`, `play_mode`, `sync_class`; permitido antes de enviar configuración |
 | `GET /device-onboardings/{uuid}` | Consulta estado y evidencia disponible; no emite comandos al equipo |
 | `POST /device-onboardings/{uuid}/events` | `{event:"local_connected"|"configuration_sent", result_code?:"sent"|"readback_verified"|"connection_failed"|"response_unknown"}` |
+| `POST /device-onboardings/{uuid}/resume-verification` | Sin cuerpo; retoma solo la verificación de una sesión vencida cuyo Wi-Fi ya fue enviado. Devuelve200 con la misma sesión en `awaiting_online`, sin perfil ni comandos físicos |
 | `POST /device-onboardings/{uuid}/complete` | Sin cuerpo de configuración; verifica de nuevo y finaliza en transacción |
 | `POST /device-onboardings/{uuid}/cancel` | Sin cuerpo; cancela una sesión activa. Si ya expiró o falló, libera/conserva libre su reserva y devuelve `expired`/`failed` idempotentemente para permitir comenzar otra. No cancela una instalación completada ni presume rollback del Wi-Fi físico |
 
@@ -93,7 +94,15 @@ En la API de establecimientos, `wifi_ssid` y `wifi_password` son campos sensible
 
 El sincronizador puede haber descubierto un registro sin asignación antes de completar; es válido. El onboarding no cambia el nombre solicitado ni la asociación hasta verificar. Una MAC ya asignada, incluso al mismo establecimiento por otra operación, produce409 y no se reclama silenciosamente. Un equipo borrado suavemente también se rechaza. Una reserva única por MAC impide dos instalaciones activas; expiración/cancelación la libera. La restricción única de identidad del inventario y locks resuelven conflictos de creación.
 
-Una caída privada devuelve503, nunca online falso. La telemetría de modo puede estar ausente o no cambiar en determinado firmware: la sesión permanece pendiente y la app debe mostrarlo, sin inventar éxito. Heartbeat no prueba criptográficamente propiedad ni el SSID utilizado. Un reinicio de nube que reduzca el contador puede impedir completar esa sesión; preparar otra tras diagnosticar, sin reenviar comandos automáticamente.
+Una caída privada devuelve503, nunca online falso. La telemetría de modo puede estar ausente o no cambiar en determinado firmware: la sesión permanece pendiente y la app debe mostrarlo, sin inventar éxito. Heartbeat no prueba criptográficamente propiedad ni el SSID utilizado. Un reinicio de nube que reduzca el contador puede impedir completar la ventana vigente; tras su expiración se puede retomar explícitamente la verificación con una nueva baseline, sin reenviar comandos automáticamente.
+
+### Recuperar una verificación expirada
+
+Si el teléfono ya envió Wi-Fi pero perdió acceso a Internet hasta que venció la sesión, conservar la recuperación local y ofrecer «Retomar verificación». La app debe habilitar esta acción únicamente cuando guardó `configuration_sent`, o `send_uncertain` con `wifiAttempted:true`. Llama a `POST /device-onboardings/{uuid}/resume-verification` y continúa consultando/completando la misma sesión. No vuelve al AP ni reenvía nombre, modo o contraseña. El endpoint debe desplegarse antes de usar esta función de la app; no requiere migraciones.
+
+La API conserva MAC, nombre, establecimiento, modo/clase y perfil originales. Revalida autorización, establecimiento vigente, dispositivo sin asignar y reserva exclusiva de MAC. Solo una sesión vencida puede iniciar otra ventana de verificación de30 minutos (o el plazo configurado), directamente en `awaiting_online`. El primer reporte de configuración se conserva, o se registra ahora si nunca alcanzó al servidor. Se toma el contador **actual** y una nueva hora del servidor: ni el heartbeat ya observado ni uno anterior prueban éxito; después se exige otra señal reciente con el modo/clase exactos. No se guarda nombre/asignación hasta `complete`.
+
+Repetir la acción durante `awaiting_online`/`ready_to_complete` vigente devuelve el estado sin mover baseline ni vencimiento, incluso si se perdió la primera respuesta. Una sesión completada devuelve su resultado; canceladas y fallidas no reviven. Una sesión local todavía vigente responde409 `onboarding_not_expired`; otro instalador con reserva activa responde409 `onboarding_in_progress`; equipo asignado/no disponible responde409 `device_already_assigned`; establecimiento eliminado responde409 `establishment_unavailable`. Un usuario ajeno recibe404. Campos adicionales producen422 y una nube no disponible503 `cloud_unavailable`, sin renovar ni modificar la sesión. Expirar o consultar por GET no inicia esta recuperación automáticamente.
 
 ## Verificación local
 

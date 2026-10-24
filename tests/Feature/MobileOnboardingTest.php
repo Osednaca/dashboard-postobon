@@ -325,6 +325,164 @@ class MobileOnboardingTest extends TestCase
         $this->assertSame(0, Device::count());
     }
 
+    public function test_expired_unreported_configuration_resumes_without_changing_intent_and_completes_only_after_new_matching_heartbeat(): void
+    {
+        $this->heartbeat(50);
+        $uuid = $this->prepare();
+        $original = DeviceOnboarding::sole()->only([
+            'uuid', 'expected_identifier', 'name', 'establishment_id', 'play_mode', 'sync_class',
+            'cloud_domain', 'provisioning_profile', 'idempotency_key', 'request_hash',
+        ]);
+        $this->travel(31)->minutes();
+        $this->getJson(self::BASE.'/'.$uuid)->assertJsonPath('data.status', 'expired');
+        $this->heartbeat(1); // A restarted cloud counter starts a new observation window.
+        $this->postJson(self::BASE.'/'.$uuid.'/resume-verification')->assertOk()
+            ->assertJsonPath('data.status', 'awaiting_online')
+            ->assertJsonPath('data.provisioning_profile', null);
+        $renewed = DeviceOnboarding::sole();
+        $this->assertSame($original, $renewed->only(array_keys($original)));
+        $this->assertSame(self::MAC, $renewed->active_identifier);
+        $this->assertSame(1, $renewed->baseline_heartbeat_count);
+        $this->assertTrue($renewed->verification_baseline_at->equalTo(now()));
+        $this->assertTrue($renewed->configuration_reported_at->equalTo(now()));
+        $this->assertTrue($renewed->expires_at->equalTo(now()->addMinutes(30)));
+        $this->assertSame(0, Device::count());
+        $this->postJson(self::BASE.'/'.$uuid.'/complete')->assertConflict()->assertJsonPath('error.code', 'device_not_verified');
+        $this->travel(2)->seconds();
+        $this->heartbeat(2, ['playMode' => 0]);
+        $this->postJson(self::BASE.'/'.$uuid.'/complete')->assertConflict();
+        $this->heartbeat(2, ['deviceClass' => 5]);
+        $this->postJson(self::BASE.'/'.$uuid.'/complete')->assertConflict();
+        $this->heartbeat(2);
+        $this->getJson(self::BASE.'/'.$uuid)->assertJsonPath('data.status', 'ready_to_complete');
+        $this->postJson(self::BASE.'/'.$uuid.'/complete')->assertOk()->assertJsonPath('data.status', 'completed');
+        $this->assertSame('Entrada principal', Device::sole()->name);
+        $this->assertSame($this->establishment->id, Device::sole()->establishment_id);
+        $completed = DeviceOnboarding::sole()->getAttributes();
+        $this->postJson(self::BASE.'/'.$uuid.'/resume-verification')->assertOk()->assertJsonPath('data.status', 'completed');
+        $this->assertSame($completed, DeviceOnboarding::sole()->getAttributes());
+        $this->assertSame(1, AuditLog::where('action', 'mobile_onboarding_verification_resumed')->count());
+        $this->assertSame(1, AuditLog::where('action', 'mobile_onboarding_completed')->count());
+    }
+
+    public function test_verification_renewal_before_expiry_read_preserves_report_and_replays_without_moving_baseline_or_deadline(): void
+    {
+        $uuid = $this->prepare();
+        $this->report($uuid);
+        $reportedAt = DeviceOnboarding::sole()->configuration_reported_at;
+        $this->travel(31)->minutes();
+        $this->heartbeat(10);
+        $this->postJson(self::BASE.'/'.$uuid.'/resume-verification')->assertOk()->assertJsonPath('data.status', 'awaiting_online');
+        $this->assertTrue(DeviceOnboarding::sole()->configuration_reported_at->equalTo($reportedAt));
+        $renewed = DeviceOnboarding::sole()->getAttributes();
+        $this->travel(2)->seconds();
+        $this->cloudUnavailable = true;
+        $this->postJson(self::BASE.'/'.$uuid.'/resume-verification')->assertOk();
+        $this->assertSame($renewed, DeviceOnboarding::sole()->getAttributes());
+        $this->cloudUnavailable = false;
+        $this->heartbeat(11);
+        $this->getJson(self::BASE.'/'.$uuid)->assertJsonPath('data.status', 'ready_to_complete');
+        $ready = DeviceOnboarding::sole()->getAttributes();
+        $this->postJson(self::BASE.'/'.$uuid.'/resume-verification')->assertOk()->assertJsonPath('data.status', 'ready_to_complete');
+        $this->assertSame($ready, DeviceOnboarding::sole()->getAttributes());
+        $this->assertSame(1, AuditLog::where('action', 'mobile_onboarding_verification_resumed')->count());
+    }
+
+    public function test_live_local_stages_cannot_be_renewed_and_resume_accepts_no_client_configuration(): void
+    {
+        $uuid = $this->prepare();
+        $this->postJson(self::BASE.'/'.$uuid.'/resume-verification')->assertConflict()->assertJsonPath('error.code', 'onboarding_not_expired');
+        $this->postJson(self::BASE.'/'.$uuid.'/events', ['event' => 'local_connected'])->assertOk();
+        $this->postJson(self::BASE.'/'.$uuid.'/resume-verification')->assertConflict()->assertJsonPath('error.code', 'onboarding_not_expired');
+        $this->travel(31)->minutes();
+        $this->postJson(self::BASE.'/'.$uuid.'/resume-verification', ['name' => 'Changed', 'online' => true])->assertUnprocessable();
+        $this->assertSame('Entrada principal', DeviceOnboarding::sole()->name);
+        $this->postJson(self::BASE.'/'.$uuid.'/resume-verification')->assertOk()->assertJsonPath('data.status', 'awaiting_online');
+    }
+
+    public function test_resume_remains_owner_and_ability_scoped(): void
+    {
+        $uuid = $this->prepare();
+        $this->travel(31)->minutes();
+        $original = DeviceOnboarding::sole()->getAttributes();
+        $this->authenticate(User::factory()->tecnico()->create());
+        $this->postJson(self::BASE.'/'.$uuid.'/resume-verification')->assertNotFound();
+        $this->authenticate($this->actor, ['devices:read']);
+        $this->postJson(self::BASE.'/'.$uuid.'/resume-verification')->assertForbidden();
+        $this->assertSame($original, DeviceOnboarding::sole()->getAttributes());
+    }
+
+    public function test_cancelled_and_failed_attempts_never_resume_even_after_their_deadline(): void
+    {
+        $uuid = $this->prepare();
+        $this->postJson(self::BASE.'/'.$uuid.'/cancel')->assertOk();
+        $this->travel(31)->minutes();
+        foreach (['cancelled', 'failed'] as $status) {
+            DeviceOnboarding::sole()->forceFill(['status' => $status])->save();
+            $original = DeviceOnboarding::sole()->getAttributes();
+            $this->postJson(self::BASE.'/'.$uuid.'/resume-verification')->assertConflict()->assertJsonPath('error.code', 'onboarding_inactive');
+            $this->assertSame($original, DeviceOnboarding::sole()->getAttributes());
+        }
+    }
+
+    public function test_resume_rejects_missing_establishment_without_revival(): void
+    {
+        $uuid = $this->prepare();
+        $this->travel(31)->minutes();
+        $this->getJson(self::BASE.'/'.$uuid)->assertJsonPath('data.status', 'expired');
+        $this->establishment->delete();
+        $original = DeviceOnboarding::sole()->getAttributes();
+        $this->postJson(self::BASE.'/'.$uuid.'/resume-verification')->assertConflict()->assertJsonPath('error.code', 'establishment_unavailable');
+        $this->assertSame($original, DeviceOnboarding::sole()->getAttributes());
+    }
+
+    public function test_resume_rejects_assigned_or_deleted_inventory_with_normalized_mac(): void
+    {
+        $uuid = $this->prepare();
+        $this->travel(31)->minutes();
+        $device = Device::factory()->create(['mac_address' => 'aa:bb:cc:dd:ee:ff', 'establishment_id' => $this->establishment->id]);
+        $original = DeviceOnboarding::sole()->getAttributes();
+        $this->postJson(self::BASE.'/'.$uuid.'/resume-verification')->assertConflict()->assertJsonPath('error.code', 'device_already_assigned');
+        $device->update(['establishment_id' => null]);
+        $device->delete();
+        $this->postJson(self::BASE.'/'.$uuid.'/resume-verification')->assertConflict()->assertJsonPath('error.code', 'device_already_assigned');
+        $this->assertSame($original, DeviceOnboarding::sole()->getAttributes());
+    }
+
+    public function test_resume_preserves_competing_live_reservation_but_can_reacquire_an_expired_one(): void
+    {
+        $uuid = $this->prepare();
+        $this->travel(31)->minutes();
+        $this->authenticate(User::factory()->tecnico()->create());
+        $other = $this->prepare('operation-another-installer');
+        $this->authenticate($this->actor);
+        $this->postJson(self::BASE.'/'.$uuid.'/resume-verification')->assertConflict()->assertJsonPath('error.code', 'onboarding_in_progress');
+        $this->assertSame($other, DeviceOnboarding::where('active_identifier', self::MAC)->sole()->uuid);
+        $this->travel(31)->minutes();
+        $this->postJson(self::BASE.'/'.$uuid.'/resume-verification')->assertOk()->assertJsonPath('data.status', 'awaiting_online');
+        $this->assertSame($uuid, DeviceOnboarding::where('active_identifier', self::MAC)->sole()->uuid);
+        $this->assertSame('expired', DeviceOnboarding::where('uuid', $other)->sole()->status);
+    }
+
+    public function test_resume_cloud_failure_and_audit_failure_leave_expired_attempt_unchanged(): void
+    {
+        $uuid = $this->prepare();
+        $this->travel(31)->minutes();
+        $this->getJson(self::BASE.'/'.$uuid)->assertJsonPath('data.status', 'expired');
+        $original = DeviceOnboarding::sole()->getAttributes();
+        $this->cloudUnavailable = true;
+        $this->postJson(self::BASE.'/'.$uuid.'/resume-verification')->assertStatus(503)->assertJsonPath('error.code', 'cloud_unavailable');
+        $this->assertSame($original, DeviceOnboarding::sole()->getAttributes());
+        $this->cloudUnavailable = false;
+        $this->mock(AuditLogService::class)->shouldReceive('log')->once()->andThrow(new \RuntimeException('Audit unavailable'));
+        foreach ($this->app['router']->getRoutes() as $route) {
+            $route->flushController();
+        }
+        $this->postJson(self::BASE.'/'.$uuid.'/resume-verification')->assertStatus(500);
+        $this->assertSame($original, DeviceOnboarding::sole()->getAttributes());
+        $this->assertSame(0, Device::count());
+    }
+
     public function test_complete_persists_missing_target_failure_even_without_status_request(): void
     {
         $uuid = $this->prepare();

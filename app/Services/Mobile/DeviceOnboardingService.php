@@ -189,6 +189,59 @@ class DeviceOnboardingService
         }, 3);
     }
 
+    public function resumeVerification(DeviceOnboarding $session, User $actor): DeviceOnboarding
+    {
+        $this->authorize($session, $actor);
+        if (! $this->needsVerificationRenewal($session)) {
+            return $session;
+        }
+        // Read before locking: an unavailable cloud must leave the expired attempt intact.
+        $snapshot = $this->telemetry->find($session->expected_identifier, true);
+
+        try {
+            return DB::transaction(function () use ($session, $actor, $snapshot): DeviceOnboarding {
+                User::whereKey($actor->id)->lockForUpdate()->firstOrFail();
+                $session = DeviceOnboarding::whereKey($session->id)->lockForUpdate()->firstOrFail();
+                $this->authorize($session, $actor);
+                // A concurrent retry must not move the new baseline or extend its deadline.
+                if (! $this->needsVerificationRenewal($session)) {
+                    return $session;
+                }
+                $establishment = Establishment::whereKey($session->establishment_id)->lockForUpdate()->first();
+                if (! $establishment) {
+                    $this->fail('establishment_unavailable', 'El establecimiento ya no está disponible. Prepara otra instalación.');
+                }
+                $this->rejectAssigned($session->expected_identifier);
+                DeviceOnboarding::where('active_identifier', $session->expected_identifier)
+                    ->whereKeyNot($session->id)
+                    ->where('expires_at', '<=', now())
+                    ->update(['active_identifier' => null, 'status' => 'expired']);
+                if (DeviceOnboarding::where('active_identifier', $session->expected_identifier)
+                    ->whereKeyNot($session->id)->exists()) {
+                    $this->fail('onboarding_in_progress', 'Este ventilador ya tiene una instalación en curso.');
+                }
+                $session->forceFill([
+                    'status' => 'awaiting_online',
+                    'active_identifier' => $session->expected_identifier,
+                    'configuration_reported_at' => $session->configuration_reported_at ?? now(),
+                    'verification_baseline_at' => now(),
+                    // This is a new observation window, including if the cloud counter reset.
+                    'baseline_heartbeat_count' => $this->count($snapshot),
+                    'baseline_last_seen_at' => $this->telemetry->seenAt($snapshot),
+                    'expires_at' => now()->addMinutes(max(1, (int) config('mobile_onboarding.session_minutes', 30))),
+                    'last_result_code' => null,
+                ])->save();
+                $this->audit->log('mobile_onboarding_verification_resumed', 'DeviceOnboarding', $session->id, $actor->id, [
+                    'session_uuid' => $session->uuid,
+                ]);
+
+                return $session;
+            }, 3);
+        } catch (UniqueConstraintViolationException) {
+            $this->fail('onboarding_in_progress', 'Este ventilador ya tiene una instalación en curso.');
+        }
+    }
+
     public function complete(DeviceOnboarding $session, User $actor): DeviceOnboarding
     {
         $this->authorize($session, $actor);
@@ -329,6 +382,24 @@ class DeviceOnboardingService
         if (! $actor->assignsDevices() || ($session->user_id !== $actor->id && ! $actor->isSuperadmin())) {
             $this->fail('not_found', 'No se encontró la instalación solicitada.', 404);
         }
+    }
+
+    private function needsVerificationRenewal(DeviceOnboarding $session): bool
+    {
+        if ($session->status === 'completed') {
+            return false;
+        }
+        if (! in_array($session->status, ['prepared', 'local_connected', 'awaiting_online', 'ready_to_complete', 'expired'], true)) {
+            $this->fail('onboarding_inactive', 'Esta instalación finalizó y no se puede retomar.');
+        }
+        if (! $session->expires_at->isPast()) {
+            if (in_array($session->status, ['awaiting_online', 'ready_to_complete'], true)) {
+                return false;
+            }
+            $this->fail('onboarding_not_expired', 'Esta instalación todavía está vigente. Continúa con su verificación habitual.');
+        }
+
+        return true;
     }
 
     private function active(DeviceOnboarding $session): void
