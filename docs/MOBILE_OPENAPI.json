@@ -1159,6 +1159,79 @@
         }
       }
     },
+    "/device-onboardings/{onboarding}/resume-verification": {
+      "parameters": [
+        {
+          "name": "onboarding",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "resumeMobileOnboardingVerification",
+        "summary": "Retomar verificación de instalación expirada",
+        "description": "May omit body or send{}. Explicit verification-only recovery after the app already sent Wi-Fi. Preserves original identity/name/establishment/mode/class and acquires the MAC reservation again. An expired session becomes awaiting_online with a fresh current heartbeat baseline, timestamp and bounded verification deadline. Requires a later fresh matching heartbeat before complete. Live verification retries and completed sessions return unchanged; cancelled/failed sessions never revive. No firmware commands or credentials. Conflicts include onboarding_not_expired, onboarding_inactive, onboarding_in_progress, device_already_assigned and establishment_unavailable.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Same onboarding renewed for verification, or unchanged idempotent result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Onboarding"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyAction"
+              }
+            }
+          }
+        }
+      }
+    },
     "/device-onboardings/{onboarding}/complete": {
       "parameters": [
         {

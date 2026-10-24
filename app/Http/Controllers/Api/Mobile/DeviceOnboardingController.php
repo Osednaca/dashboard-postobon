@@ -38,6 +38,11 @@ class DeviceOnboardingController extends Controller
         return new DeviceOnboardingResource($this->onboardings->event($onboarding, $request->user(), $request->validated()));
     }
 
+    public function resumeVerification(DeviceOnboardingActionRequest $request, DeviceOnboarding $onboarding): DeviceOnboardingResource
+    {
+        return new DeviceOnboardingResource($this->onboardings->resumeVerification($onboarding, $request->user()));
+    }
+
     public function complete(DeviceOnboardingActionRequest $request, DeviceOnboarding $onboarding): DeviceOnboardingResource
     {
         return new DeviceOnboardingResource($this->onboardings->complete($onboarding, $request->user()));
