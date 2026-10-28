@@ -1,0 +1,32 @@
+# Ciclo completo de campañas
+
+## Objetivo y autorización
+Publicar todos los videos de una campaña en los dispositivos seleccionados, reproducirlos en secuencia repetida (decisión explícita del usuario), respetar inicio y fin, y retirar sus archivos de la SD al finalizar sin borrar archivos usados por otras campañas activas. Implementación local autorizada el 2026-10-28; no están autorizados despliegues, acceso remoto, publicación Git, comandos reales ni lectura de credenciales.
+
+## Evidencia y restricciones
+La auditoría encontró publicación de solo `media()->first()`, activación/finalización que solo cambian estado, ninguna expiración automática y ausencia de registro durable campaña/archivo/dispositivo. Modelo42 conserva un solo desiredVideo y una orden FileDelect; playlist optimista no confirma SD. Modelo35 confirma borrado con trama real 0x84/conteo, pero no reporta identidad estable y un timeout no permite reintentar índices sin riesgo. Reutilizar mecanismos existentes, no borrar por inferencia.
+Preservar contenido previo y referencias de campañas activas; serializar publicación, rotación y eliminación por dispositivo. Revalidar vigencia antes de enviar; un job atrasado no debe reinstalar una campaña finalizada. Confirmación física requiere evidencia real posterior; errores/offline permanecen visibles y reintentables cuando sea seguro. Las campañas permanentes no expiran. Evitar convertir borrado de campaña en pérdida del registro de limpieza.
+
+## Configuración y entrega
+- Rama `codex/campaign-lifecycle` en dashboard-postobon (base `705639a`) y repositorios locales asociados private-cloud y dashboard-fan-wl35. Registrar commits independientes por repositorio.
+- Ruta delegada directa: mapeo 4+ archivos y escrituras múltiples no triviales. Todos los escritores leen este documento antes de editar.
+- TDD OFF por decisión explícita previa documentada en `odd/tasks/device-content-preview.md`. Runner dashboard: `php artisan test`, pruebas Node existentes, Pint y build; proveedores: runners existentes detectados localmente. Pruebas sin servicios externos.
+- RDD disabled/unmanaged: OFF global confirmado. No activar revisión nativa.
+- Estrategia `ask-on-risk`, cadena `feature-branch-chain` ya elegida por el usuario. Pronóstico 1800–3000 líneas de autor; 400 por tarea es orientativo, sin omitir pruebas ni comprimir código. No crear PR. Recomendar excepciones de tamaño para unidades que no admitan separación coherente.
+- Engram no disponible: espejo completo pendiente en proyecto dashboard-postobon, tema `odd/campaign-lifecycle/tasks`.
+- Cambios previos a preservar: dashboard `docs/DESPLIEGUE_LATENCIA.md`; gateway `PERFORMANCE.md` y `esp32/PRUEBA_WL35_V8.md`.
+
+## Tareas
+- [x] T1 — Modelo42: inventario realmente reportado con frescura y retirada serializada persistente, sin confirmar desde estado optimista. Ruta delegada (servicio, HTTP/TCP y pruebas). Verificar duplicados, reinicio, reportes antiguos/ausentes y varias eliminaciones.
+- [x] T2 — Modelo35: evidencia estricta de eliminación y publicación sin reproducción prematura, reutilizando protocolo existente. Ruta delegada (gateway y pruebas). Verificar conteo real y respuestas ambiguas sin eliminar otro índice.
+- [ ] T3 — Registro durable y procesamiento de campañas: todos los medios/destinos, fechas, idempotencia, publicación secuencial confirmada, fin y limpieza protegida por referencias compartidas. Ruta delegada (modelo, migración, servicios/jobs y pruebas). Verificar offline, trabajos tardíos, fallos parciales, ediciones y borrado lógico.
+- [ ] T4 — Secuencia repetida por dispositivo y coordinación con campañas concurrentes, detención al finalizar y entradas web/API/programación centralizadas. Ruta delegada (servicios, scheduler y pruebas). Verificar orden, duración, repetición y protección contra tareas obsoletas.
+- [ ] T5 — Estado visible, documentación operativa y verificación de integración. Ruta delegada (UI/documentación y pruebas). Exponer publicación/limpieza pendientes, compartidos y confirmados; documentar scheduler/worker y limitaciones de conexión/hardware.
+- [ ] T6 — Coordinar locks con cargas, formato y retiros manuales existentes. Ruta delegada: exploración reveló escritores externos al ciclo que también cambian índices35; excluirlos con el mismo bloqueo por dispositivo y probar concurrencia sin deadlocks. Alcance necesario para no retirar un archivo ajeno.
+
+## Progreso
+Exploración terminada y decisión de secuencia confirmada. Implementar T1/T2 y núcleo T3 en paralelo con contratos explícitos; luego T4/T5. No se ha modificado ni consultado una SD real.
+
+- T2 cerrado en gateway: `b90b6b5`, 204 líneas de autor. `npm test`: 16 pruebas aprobadas; diff check aprobado. ACK exige conteo exacto; timeout no permite reintento ciego por índice. Bloqueos de upload/delete/formato y publicación sin reproducción prematura verificados. Rollback: cuatro archivos del commit, sin firmware. RDD disabled/unmanaged. Espejo Engram pendiente.
+- Precisión T1 aceptada: PlayList real posterior no demuestra inventario SD completo del42; exponer `reported_absent` y `physicalConfirmed=false`, nunca borrado físico confirmado por inferencia. La orden FileDelect sí solicita retirada; queda pendiente verificación física con hardware/protocolo.
+- T1 cerrado en private-cloud: `0b094be`, 306 líneas de autor. 31 pruebas Node, 9 store, protocolo y 80 smoke aprobados. Smoke inicial falló sin servidor; reejecutado con fixture local temporal y cerrado. Diff check aprobado. Incluye selección de archivo existente sin nueva descarga. Rollback unidad completa de proveedor; RDD disabled/unmanaged. Engram pendiente.
