@@ -15,6 +15,7 @@ class Schedule extends Model
         'type',
         'target_scope',
         'device_id',
+        'device_targets',
         'group_id',
         'campaign_id',
         'content_id',
@@ -36,6 +37,7 @@ class Schedule extends Model
             'scheduled_at' => 'datetime',
             'executed_at' => 'datetime',
             'recurrence_days' => 'array',
+            'device_targets' => 'array',
             'recurrence_day' => 'integer',
             'recurrence_ends_at' => 'datetime',
         ];
@@ -43,8 +45,16 @@ class Schedule extends Model
 
     public function controlTargetScope(): ?string
     {
-        $hasDevice = $this->device_id !== null;
+        if ($this->device_targets !== null && (! is_array($this->device_targets)
+            || count(array_filter($this->device_targets, fn ($key) => is_string($key) && preg_match('/^(z2|wl35):[1-9][0-9]*$/D', $key))) !== count($this->device_targets))) {
+            return null;
+        }
+        $hasDevice = $this->device_id !== null || ! empty($this->device_targets);
         $hasGroup = $this->group_id !== null;
+
+        if ($this->device_id !== null && ! empty($this->device_targets)) {
+            return null;
+        }
 
         return match ($this->target_scope) {
             'all' => ! $hasDevice && ! $hasGroup ? 'all' : null,
@@ -55,21 +65,32 @@ class Schedule extends Model
         };
     }
 
+    /** @return list<int> */
+    public function selectedDeviceIds(string $provider): array
+    {
+        return collect($this->device_targets ?? [])
+            ->filter(fn ($key) => is_string($key) && str_starts_with($key, $provider.':'))
+            ->map(fn (string $key): int => (int) substr($key, strlen($provider) + 1))
+            ->all();
+    }
+
     public function targetLabel(): string
     {
         $scope = $this->controlTargetScope();
         if ($scope === null && $this->type === 'change_content' && $this->target_scope === null
-            && $this->device_id === null && $this->group_id === null) {
+            && $this->device_id === null && $this->group_id === null && empty($this->device_targets)) {
             return 'Todos';
         }
         if ($scope === null && in_array($this->target_scope, ['device', 'group'], true)
-            && $this->device_id === null && $this->group_id === null) {
+            && $this->device_id === null && $this->group_id === null && empty($this->device_targets)) {
             return $this->target_scope === 'group' ? 'Grupo no disponible' : 'Dispositivo no disponible';
         }
 
         return match ($scope) {
             'all' => 'Todos',
-            'device' => $this->device?->name ?? 'Dispositivo no disponible',
+            'device' => $this->device_targets !== null
+                ? count($this->device_targets).' dispositivo(s)'
+                : ($this->device?->name ?? 'Dispositivo no disponible'),
             'group' => $this->group?->name ?? 'Grupo no disponible',
             default => 'Destino por confirmar',
         };

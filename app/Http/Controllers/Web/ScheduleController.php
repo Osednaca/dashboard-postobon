@@ -10,6 +10,7 @@ use App\Models\Device;
 use App\Models\Group;
 use App\Models\Media;
 use App\Models\Schedule;
+use App\Models\Wl35DeviceProfile;
 use App\Services\ScheduleService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -81,10 +82,11 @@ class ScheduleController extends Controller
         $this->authorize('create', Schedule::class);
 
         $devices = Device::orderBy('name')->get();
+        $wl35Devices = Wl35DeviceProfile::orderBy('name')->get();
         $groups = Group::orderBy('name')->get();
         $media = Media::orderBy('name')->get();
 
-        return view('schedules.create', compact('devices', 'groups', 'media'));
+        return view('schedules.create', compact('devices', 'wl35Devices', 'groups', 'media'));
     }
 
     /**
@@ -136,10 +138,11 @@ class ScheduleController extends Controller
         $this->authorize('update', $schedule);
 
         $devices = Device::orderBy('name')->get();
+        $wl35Devices = Wl35DeviceProfile::orderBy('name')->get();
         $groups = Group::orderBy('name')->get();
         $media = Media::orderBy('name')->get();
 
-        return view('schedules.edit', compact('schedule', 'devices', 'groups', 'media'));
+        return view('schedules.edit', compact('schedule', 'devices', 'wl35Devices', 'groups', 'media'));
     }
 
     /**

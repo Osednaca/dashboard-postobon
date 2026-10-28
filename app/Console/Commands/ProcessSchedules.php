@@ -146,10 +146,12 @@ class ProcessSchedules extends Command
         // Snapshot only persisted membership; a missing target never becomes all.
         $devices = Device::query()
             ->whereNotIn('id', $this->excludedDeviceIds($schedule))
-            ->when($scope === 'device', fn ($query) => $query->whereKey($schedule->device_id))
+            ->when($scope === 'device', fn ($query) => $query->whereKey($schedule->device_targets !== null
+                ? $schedule->selectedDeviceIds('z2') : [$schedule->device_id]))
             ->when($scope === 'group', fn ($query) => $query->where('group_id', $schedule->group_id))
             ->get();
-        $profiles = $scope === 'device' ? collect() : Wl35DeviceProfile::query()
+        $profiles = Wl35DeviceProfile::query()
+            ->when($scope === 'device', fn ($query) => $query->whereKey($schedule->selectedDeviceIds('wl35')))
             ->when($scope === 'group', fn ($query) => $query->where('group_id', $schedule->group_id))
             ->get();
         if ($scope === 'group' && $schedule->group === null) {
@@ -159,6 +161,10 @@ class ProcessSchedules extends Command
 
         $targets = [];
         $errors = [];
+        if ($scope === 'device' && $schedule->device_targets !== null
+            && $devices->count() + $profiles->count() !== count($schedule->device_targets)) {
+            $errors[] = 'Uno o más dispositivos seleccionados ya no están disponibles';
+        }
         foreach ($devices as $device) {
             $mac = strtoupper(str_replace(':', '', trim((string) $device->mac_address)));
             if (! preg_match('/^[A-Z0-9]+$/D', $mac)) {
@@ -258,6 +264,12 @@ class ProcessSchedules extends Command
 
     private function executeChangeContent(Schedule $schedule): bool
     {
+        $scope = $schedule->controlTargetScope();
+        $legacyAll = $schedule->target_scope === null && $schedule->device_id === null
+            && $schedule->group_id === null && $schedule->device_targets === null;
+        if ($scope === null && ! $legacyAll) {
+            return false;
+        }
         $media = $schedule->content_id ? Media::find($schedule->content_id) : null;
         $devices = $this->targetDevices($schedule);
         $wl35Devices = $this->targetWl35Devices($schedule);
@@ -274,6 +286,10 @@ class ProcessSchedules extends Command
             ->filter()->unique()->map(fn (string $id): string => 'wl35:'.$id)->values()->all();
         $success = ! $devices->contains(fn (Device $device): bool => trim(str_replace(':', '', (string) $device->mac_address)) === '')
             && ! $wl35Devices->contains(fn (Wl35DeviceProfile $device): bool => blank($device->device_id));
+        if ($scope === 'device' && $schedule->device_targets !== null
+            && $devices->count() + $wl35Devices->count() !== count($schedule->device_targets)) {
+            $success = false;
+        }
 
         if ($macs !== []) {
             try {
@@ -314,6 +330,9 @@ class ProcessSchedules extends Command
     /** @return Collection<int, Wl35DeviceProfile> */
     private function targetWl35Devices(Schedule $schedule): Collection
     {
+        if ($schedule->device_targets !== null) {
+            return Wl35DeviceProfile::whereKey($schedule->selectedDeviceIds('wl35'))->get();
+        }
         if ($schedule->device_id !== null) {
             return new Collection;
         }
@@ -347,6 +366,10 @@ class ProcessSchedules extends Command
     /** @return Collection<int, Device> */
     private function targetDevices(Schedule $schedule): Collection
     {
+        if ($schedule->device_targets !== null) {
+            return Device::whereKey($schedule->selectedDeviceIds('z2'))
+                ->whereNotIn('id', $this->excludedDeviceIds($schedule))->get();
+        }
         if ($schedule->device_id !== null) {
             return Device::whereKey($schedule->device_id)->whereNotIn('id', $this->excludedDeviceIds($schedule))->get();
         }
