@@ -109,6 +109,7 @@ Route::middleware(['auth', 'role:superadmin,admin,tecnico,campanas'])->group(fun
     Route::post('campaigns/{campaign}/add-media', [CampaignController::class, 'addMedia'])->name('campaigns.add-media')->middleware('role:superadmin,admin,campanas');
     Route::post('campaigns/{campaign}/remove-media/{media}', [CampaignController::class, 'removeMedia'])->name('campaigns.remove-media')->middleware('role:superadmin,admin,campanas');
 
+    Route::post('schedules/bulk-delete', [ScheduleController::class, 'bulkDestroy'])->name('schedules.bulk-delete')->middleware('role:superadmin,admin,campanas');
     Route::resource('schedules', ScheduleController::class)->middleware('role:superadmin,admin,campanas');
     Route::post('schedules/{schedule}/execute', [ScheduleController::class, 'execute'])->name('schedules.execute')->middleware('role:superadmin,admin,campanas');
     Route::resource('notifications', NotificationController::class)->middleware('role:superadmin');

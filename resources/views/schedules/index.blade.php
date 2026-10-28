@@ -51,6 +51,11 @@
 
             <p class="mb-3 text-xs text-text-muted">Zona horaria: {{ config('app.timezone') }} · Estados actualizados cada 15 segundos.</p>
             <p x-show="refreshError" x-cloak role="status" class="mb-3 text-xs text-danger">No se pudieron actualizar los estados. Se intentará de nuevo automáticamente.</p>
+            <form id="bulk-delete-schedules" method="POST" action="{{ route('schedules.bulk-delete') }}" x-show="view === 'list'" @submit="if (!window.confirm(`¿Eliminar ${selected.length} programaciones seleccionadas?`)) $event.preventDefault()" class="mb-3 flex flex-wrap items-center gap-3">
+                @csrf
+                <button type="submit" :disabled="selected.length === 0" class="rounded-lg bg-danger px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">Eliminar seleccionadas <span x-text="selected.length ? `(${selected.length})` : ''"></span></button>
+                <span class="text-xs text-text-muted">Selecciona las programaciones de esta página. La actualización automática se pausa mientras haya selección.</span>
+            </form>
             <div x-ref="results" data-schedule-results>
             {{-- List View --}}
             <div x-show="view === 'list'" x-transition>
@@ -58,6 +63,7 @@
                     <table class="w-full text-sm text-left">
                         <thead class="bg-surface text-xs font-semibold text-text-light uppercase tracking-wider">
                             <tr>
+                                <th class="px-6 py-4"><input type="checkbox" aria-label="Seleccionar todas las programaciones de esta página" :checked="allSelected()" @change="selectAll($event.target.checked)" class="rounded border-border text-primary"></th>
                                 <th class="px-6 py-4">Nombre</th>
                                 <th class="px-6 py-4">Tipo</th>
                                 <th class="px-6 py-4">Dispositivo/Grupo</th>
@@ -70,6 +76,7 @@
                         <tbody class="divide-y divide-border">
                             @forelse($schedules ?? [] as $schedule)
                                 <tr class="hover:bg-surface/50 transition-colors">
+                                    <td class="px-6 py-4"><input type="checkbox" name="ids[]" value="{{ $schedule->id }}" form="bulk-delete-schedules" data-schedule-select aria-label="Seleccionar {{ $schedule->name }}" :checked="selected.includes($el.value)" @change="select($el.value, $el.checked)" class="rounded border-border text-primary"></td>
                                     <td class="px-6 py-4">
                                         <div class="font-medium text-text">{{ $schedule->name ?? 'Programación Ejemplo' }}</div>
                                         <div class="text-xs text-text-muted mt-0.5">{{ $schedule->type ? '' : '' }}</div>
@@ -116,7 +123,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="7" class="px-6 py-12 text-center">
+                                    <td colspan="8" class="px-6 py-12 text-center">
                                         <div class="flex flex-col items-center gap-3">
                                             <div class="w-12 h-12 rounded-full bg-surface-dark flex items-center justify-center">
                                                 <svg class="w-6 h-6 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
