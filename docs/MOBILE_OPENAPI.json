@@ -712,57 +712,6 @@
             "$ref": "#/components/responses/Error500"
           }
         }
-      },
-      "post": {
-        "operationId": "mobileOperation14",
-        "summary": "Crear tipo de negocio",
-        "description": "Ability business-types:manage; unique name.",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": {
-                      "$ref": "#/components/schemas/BusinessType"
-                    }
-                  },
-                  "required": [
-                    "data"
-                  ]
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Error401"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error403"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error404"
-          },
-          "422": {
-            "$ref": "#/components/responses/Error422"
-          },
-          "500": {
-            "$ref": "#/components/responses/Error500"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BusinessTypeInput"
-              }
-            }
-          }
-        }
       }
     },
     "/business-types/{business_type}": {
@@ -1444,6 +1393,73 @@
                 "$ref": "#/components/schemas/OnboardingRegistration"
               }
             }
+          }
+        }
+      }
+    },
+    "/establishments/location-picker": {
+      "get": {
+        "operationId": "mobileLocationPicker",
+        "summary": "Selector autenticado Google Maps y Places",
+        "description": "Ability establishments:manage. HTML para WebView con bearer solo en petición inicial. No-store. GOOGLE_MAPS_API_KEY de navegador restringida al dominio. Puente JSON con nonce: location-selected {address,latitude,longitude} o location-error {message}.",
+        "parameters": [
+          {
+            "name": "nonce",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "address",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 500
+            }
+          },
+          {
+            "name": "latitude",
+            "in": "query",
+            "description": "Requiere longitude",
+            "schema": {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90
+            }
+          },
+          {
+            "name": "longitude",
+            "in": "query",
+            "description": "Requiere latitude",
+            "schema": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "HTML con mapa o aviso de configuración no disponible",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sesión requerida"
+          },
+          "403": {
+            "description": "Rol o habilidad no autorizados"
+          },
+          "422": {
+            "description": "Parámetros inválidos"
           }
         }
       }
@@ -2148,8 +2164,8 @@
           "sync_class": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 14,
-            "description": "A=0 ... G=6 ... O=14. Individual mode0 requires class0. Not an administrative group."
+            "maximum": 2147483647,
+            "description": "Clase numérica entera; modo individual requiere 0. Límite de aplicación, no máximo confirmado del firmware."
           },
           "cloud_domain": {
             "anyOf": [
@@ -2195,7 +2211,8 @@
           "sync_class": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 14
+            "maximum": 2147483647,
+            "description": "Clase numérica entera; modo individual requiere 0. Límite de aplicación, no máximo confirmado del firmware."
           }
         },
         "required": [],
@@ -2294,7 +2311,8 @@
           "sync_class": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 14
+            "maximum": 2147483647,
+            "description": "Clase numérica entera; modo individual requiere 0. Límite de aplicación, no máximo confirmado del firmware."
           },
           "expires_at": {
             "type": "string",

@@ -35,7 +35,15 @@ Crear requiere `name` (máx.255), `business_type_id` válido y `address` (máx.5
 
 ## Tipos de negocio
 
-`GET/POST /business-types`, `PATCH/DELETE /business-types/{id}`; ability `business-types:manage` y Policies existentes. Recurso `{id,name,establishments_count}`. Nombre obligatorio, único y máx.120; lista con `search` y paginación. Borrar un tipo usado responde 409 `business_type_has_establishments`. Las escrituras de ambos catálogos se auditan por actor/entidad sin copiar los campos de entrada.
+`GET /business-types`, `PATCH/DELETE /business-types/{id}`; ability `business-types:manage` y Policies existentes. La app no puede crear tipos: POST devuelve405; la administración web conserva esa función. Recurso `{id,name,establishments_count}`. Nombre obligatorio, único y máx.120; lista con `search` y paginación. Borrar un tipo usado responde 409 `business_type_has_establishments`. Las escrituras de ambos catálogos se auditan por actor/entidad sin copiar los campos de entrada.
+
+### Selector de ubicación móvil
+
+`GET /establishments/location-picker` devuelve HTML autenticado para WebView, con ability `establishments:manage`. Query: `nonce` UUID requerido, `address` opcional (máx.500), `latitude` y `longitude` opcionales pero en pareja y dentro de rangos geográficos. La ruta está declarada antes de `{establishment}`. El bearer se envía únicamente en la carga inicial; nunca en URL, HTML ni mensajes. La respuesta usa `Cache-Control: no-store, private`.
+
+Reutiliza `GOOGLE_MAPS_API_KEY`/`services.google_maps.key` del formulario web. Configurar Maps JavaScript API, Places y Geocoding según la cuenta existente y restringir la clave de navegador al dominio de producción. No crear una clave sin restricciones ni una clave privilegiada para incluirla en HTML. Sin clave o ante fallo Google, se muestra un mensaje de configuración/conectividad; nunca se guarda el centro inicial como selección.
+
+Autocomplete, toque de mapa y arrastre del marcador eligen ubicación. Solo el botón «Usar ubicación» emite JSON `{type:"location-selected",nonce,address,latitude,longitude}`. Los fallos emiten `{type:"location-error",nonce,message}`. La app debe validar URL de origen, nonce, forma y rangos antes de aplicar los datos; bloquea navegación fuera del picker y conserva la atribución Google. Edición puede precargar coordenadas, sin confirmar automáticamente. No hay pruebas reales de Google/credenciales en la suite aislada.
 
 Verificación de catálogos/lista: `php artisan test --compact --bootstrap=storage/framework/testing/isolated-suite-bootstrap.php --filter='MobileDeviceTest|MobileEstablishmentTest|MobileBusinessTypeTest'`. Los tests simulan las fuentes privadas y no envían órdenes ni peticiones remotas reales.
 

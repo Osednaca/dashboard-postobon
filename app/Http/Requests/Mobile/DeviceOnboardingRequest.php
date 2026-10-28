@@ -32,7 +32,7 @@ class DeviceOnboardingRequest extends FormRequest
             'name' => [$required, 'string', 'max:64', 'not_regex:/[&=\x00-\x1F\x7F]/'],
             'establishment_id' => [$required, 'integer', 'exists:establishments,id'],
             'play_mode' => [$required, 'integer', Rule::in([0, 1])],
-            'sync_class' => [$required, 'integer', 'between:0,14'],
+            'sync_class' => [$required, 'integer', 'between:0,2147483647'],
         ];
         if ($this->isMethod('POST')) {
             $rules['device_type'] = ['required', Rule::in(['z2'])];
@@ -57,7 +57,7 @@ class DeviceOnboardingRequest extends FormRequest
                     $validator->errors()->add('idempotency_key', 'Envía una clave de operación válida de 8 a 100 caracteres.');
                 }
                 if (in_array($this->input('play_mode'), [0, '0'], true) && ! in_array($this->input('sync_class'), [0, '0'], true)) {
-                    $validator->errors()->add('sync_class', 'El modo individual utiliza la clase A (0).');
+                    $validator->errors()->add('sync_class', 'El modo individual utiliza la clase 0.');
                 }
             }
         });

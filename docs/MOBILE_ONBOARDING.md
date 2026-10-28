@@ -39,7 +39,9 @@ Prefijo común: `/api/mobile/v1`. Los POST de acción no aceptan campos extra, n
 
 La identidad esperada es una MAC de 12 dígitos hexadecimales, normalizada a mayúsculas; se aceptan separadores `:` o `-` en la entrada. No se deriva del SSID. Nombre: máximo64 caracteres y128 bytes UTF-8, sin `&`, `=`, controles o saltos de línea mientras no se confirme escape en el firmware.
 
-`play_mode=0` exige `sync_class=0`. `play_mode=1` permite clases A–O, índices0–14; G corresponde a6. P/15 está rechazado porque solo se observó en el generador SD, sin validación de cambio remoto/local. El TCP local documentado es opcode`0x17`: consulta sin payload; cambio `PlayMode=1&Class=6` o individual `PlayMode=0&Class=0`. La app debe reconsultar localmente y enviar Wi-Fi después; terminar de escribir en un socket no equivale a aplicar el ajuste.
+`play_mode=0` exige `sync_class=0`. `play_mode=1` admite una clase numérica entera entre0 y2147483647, sin selector de letras. Este máximo es un límite de aplicación, no un máximo demostrado del firmware; el equipo observado devolvió Class=12345678. El TCP local documentado es opcode`0x17`: consulta sin payload; cambio `PlayMode=1&Class=6` o individual `PlayMode=0&Class=0`. La app debe reconsultar exactamente modo/clase antes de enviar Wi-Fi y detenerse si el equipo rechaza o trunca el valor; terminar de escribir en un socket no equivale a aplicar el ajuste.
+
+La migración `2026_10_28_000003_expand_onboarding_sync_class` amplía la columna a unsignedInteger. Desplegarla con `php artisan migrate --force` antes de la nueva app. El rollback se detiene si existen clases mayores que255 para no truncar recuperaciones. La verificación acepta entero o cadena decimal canónica dentro del mismo rango y mantiene la exigencia de una señal nueva. Negativos, decimales, exponentes y valores fuera del rango no se aceptan.
 
 DTO de sesión:
 
