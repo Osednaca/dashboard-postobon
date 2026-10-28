@@ -18,7 +18,7 @@ class StoreGroupRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => ['required', 'string', 'max:255', Rule::unique('groups', 'name')],
+            'name' => ['required', 'string', 'max:255', Rule::unique('groups', 'name')->whereNull('deleted_at')],
             'description' => ['nullable', 'string', 'max:1000'],
             'business_type_id' => ['nullable', 'integer', 'exists:business_types,id'],
             'address' => ['nullable', 'string', 'max:500'],

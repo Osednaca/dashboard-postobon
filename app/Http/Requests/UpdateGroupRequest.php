@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Services\GroupCreationService;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 class UpdateGroupRequest extends FormRequest
@@ -16,7 +17,7 @@ class UpdateGroupRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => ['sometimes', 'string', 'max:255'],
+            'name' => ['sometimes', 'string', 'max:255', Rule::unique('groups', 'name')->whereNull('deleted_at')->ignore($this->route('group'))],
             'description' => ['nullable', 'string', 'max:1000'],
             'device_keys' => ['sometimes', 'array', 'max:10000'],
             'device_keys.*' => ['required', 'string', 'max:255'],
@@ -51,6 +52,7 @@ class UpdateGroupRequest extends FormRequest
     {
         return [
             'name.max' => 'El nombre no puede tener más de 255 caracteres.',
+            'name.unique' => 'Ya existe un grupo con este nombre.',
             'description.max' => 'La descripción no puede tener más de 1000 caracteres.',
         ];
     }

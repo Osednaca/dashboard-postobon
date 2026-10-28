@@ -12,7 +12,7 @@ Permitir seleccionar y eliminar varias programaciones, dirigir una programación
 - Conservar modificación preexistente en `docs/DESPLIEGUE_LATENCIA.md`.
 
 ## Tareas y criterios
-- [ ] T1 — Permitir quitar miembros al editar grupos, preservando dispositivos reasignados concurrentemente y la coherencia de proveedores. Ruta delegada: preparación y múltiples archivos no triviales. Verificar permisos y pertenencia con pruebas aisladas.
+- [x] T1 — Permitir quitar miembros al editar grupos, preservando dispositivos reasignados concurrentemente y la coherencia de proveedores. Ruta delegada: preparación y múltiples archivos no triviales. Verificar permisos y pertenencia con pruebas aisladas.
 - [ ] T2 — Permitir crear un grupo con el nombre de uno eliminado, conservando historial y unicidad entre activos también en base de datos. Ruta delegada: validación, migración y pruebas. Verificar creación, duplicados activos y migración.
 - [x] T3 — Seleccionar y eliminar varias programaciones desde la lista, con permisos y selección coherente durante actualizaciones. Ruta delegada: interfaz, servidor y pruebas en múltiples archivos. Verificar selección y eliminación.
 - [ ] T4 — Seleccionar varios dispositivos para una programación y ejecutarla solo sobre ellos, manteniendo compatibilidad con registros existentes. Ruta delegada: persistencia, solicitudes, ejecución, interfaz y pruebas. Verificar control y contenido, edición, validación y compatibilidad.
@@ -21,3 +21,4 @@ Permitir seleccionar y eliminar varias programaciones, dirigir una programación
 Exploración terminada. Implementar y verificar cada unidad; registrar commit, resultado, límites de rollback y cantidad de líneas. La copia Engram está pendiente. No se ha ejecutado una migración en producción ni interactuado con equipos reales.
 
 - T3: commit `6d89a44` (215 líneas incluyendo documento); PHP 4 pruebas/43 aserciones, Node 8 pruebas y Pint aprobados. Refresco pausado durante selección; lote autorizado y transaccional. Rollback: commit T3, manteniendo otras unidades. RDD disabled/unmanaged.
+- T1: commit `c05341f` (139 líneas); PHP 18 pruebas/197 aserciones, Pint y diff check aprobados. Primera ejecución de prueba falló por un atributo obsoleto en el propio test y se corrigió. Rollback: selección, validación y desvinculación de miembros y sus pruebas. RDD disabled/unmanaged.
