@@ -48,6 +48,11 @@ class SchedulePresentationTest extends TestCase
         $response->assertSee('08:10 · Mañana 16')->assertSee('Octubre 2026')
             ->assertSee('data-calendar-date="2026-10-31"', false)
             ->assertSee('month=2026-09', false)->assertSee('month=2026-11', false);
+        $response->assertSee('data-calendar-mobile-date="2026-10-17"', false)
+            ->assertSee('data-calendar-more="mobile-2026-10-17"', false)
+            ->assertSee('data-calendar-more="desktop-2026-10-17"', false)
+            ->assertSee('Ver 15 más')->assertSee('Ver 14 más')
+            ->assertSee('Programaciones del mes');
         Http::assertNothingSent();
     }
 

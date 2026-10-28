@@ -18,7 +18,7 @@
 
         {{-- View Toggle --}}
         <div class="bg-white rounded-xl border border-border p-4" x-data="scheduleIndex(@js($view))">
-            <div class="flex items-center justify-between mb-4">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div class="flex items-center gap-1 bg-surface rounded-lg p-1">
                     <button @click="setView('list')" :class="view === 'list' ? 'bg-white text-primary shadow-sm' : 'text-text-light hover:text-text'" class="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -137,37 +137,64 @@
             {{-- Calendar View: persisted dates, independent of list pagination. --}}
             <div x-show="view === 'calendar'" x-cloak class="space-y-4">
                 <div class="flex flex-wrap items-center justify-between gap-3">
-                    <a href="{{ route('schedules.index', ['view' => 'calendar', 'month' => $month->subMonth()->format('Y-m'), 'status' => $status]) }}" class="rounded-lg border border-border px-3 py-2 text-sm text-primary" aria-label="Mes anterior">← Anterior</a>
+                    <a href="{{ route('schedules.index', ['view' => 'calendar', 'month' => $month->subMonth()->format('Y-m'), 'status' => $status]) }}" class="rounded-lg border border-border px-3 py-2 text-sm text-primary" aria-label="Mes anterior">← <span class="hidden sm:inline">Anterior</span></a>
                     <h3 class="text-lg font-semibold text-text">{{ ucfirst($month->locale('es')->translatedFormat('F Y')) }}</h3>
-                    <a href="{{ route('schedules.index', ['view' => 'calendar', 'month' => $month->addMonth()->format('Y-m'), 'status' => $status]) }}" class="rounded-lg border border-border px-3 py-2 text-sm text-primary" aria-label="Mes siguiente">Siguiente →</a>
+                    <a href="{{ route('schedules.index', ['view' => 'calendar', 'month' => $month->addMonth()->format('Y-m'), 'status' => $status]) }}" class="rounded-lg border border-border px-3 py-2 text-sm text-primary" aria-label="Mes siguiente"><span class="hidden sm:inline">Siguiente</span> →</a>
                 </div>
                 <p class="text-xs text-text-muted">Las programaciones recurrentes muestran su próxima ejecución registrada.</p>
                 @if($calendarSchedules->isEmpty())
                     <p class="rounded-lg bg-surface p-4 text-sm text-text-muted">No hay programaciones{{ $status ? ' con este estado' : '' }} en este mes.</p>
                 @endif
-                <div class="overflow-x-auto">
-                    <div class="min-w-[700px]">
-                        <div class="grid grid-cols-7 gap-2 mb-2">
-                            @foreach(['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'] as $day)
-                                <div class="text-center text-xs font-medium text-text-muted py-2">{{ $day }}</div>
-                            @endforeach
-                        </div>
-                        <div class="grid grid-cols-7 gap-2">
-                            @for($date = $calendarStart; $date->lte($calendarEnd); $date = $date->addDay())
-                                <div data-calendar-date="{{ $date->format('Y-m-d') }}" class="min-h-28 rounded-lg border border-border p-2 {{ $date->month !== $month->month ? 'bg-surface text-text-muted' : 'text-text' }}">
-                                    <time datetime="{{ $date->format('Y-m-d') }}" class="text-sm {{ $date->isToday() ? 'font-bold text-primary' : '' }}">{{ $date->day }}</time>
-                                    @if($date->month === $month->month)
-                                        @foreach($calendarSchedules->get($date->format('Y-m-d'), []) as $event)
-                                            <a href="{{ route('schedules.show', $event) }}" class="mt-2 block rounded-md bg-surface p-2 text-xs hover:ring-1 hover:ring-primary">
-                                                <span class="block font-medium text-text break-words">{{ $event->scheduled_at->timezone(config('app.timezone'))->format('H:i') }} · {{ $event->name }}</span>
-                                                <span class="my-1 block text-text-muted break-words">{{ $event->targetLabel() }}</span>
-                                                <x-status-badge :status="$event->status" size="sm" />
-                                            </a>
+                {{-- A chronological agenda keeps event links readable without horizontal scrolling on phones. --}}
+                <div class="space-y-3 md:hidden" aria-label="Programaciones del mes">
+                    @for($date = $calendarStart; $date->lte($calendarEnd); $date = $date->addDay())
+                        @php($events = $calendarSchedules->get($date->format('Y-m-d'), collect()))
+                        @if($date->month === $month->month && $events->isNotEmpty())
+                            <section data-calendar-mobile-date="{{ $date->format('Y-m-d') }}" class="rounded-lg border border-border p-3">
+                                <h4 class="text-sm font-semibold text-text {{ $date->isToday() ? 'text-primary' : '' }}">
+                                    <time datetime="{{ $date->format('Y-m-d') }}">{{ ucfirst($date->locale('es')->translatedFormat('l d \d\e F')) }}</time>
+                                </h4>
+                                @foreach($events->take(1) as $event)
+                                    @include('schedules.partials.calendar-event', ['event' => $event])
+                                @endforeach
+                                @if($events->count() > 1)
+                                    <details data-calendar-more="mobile-{{ $date->format('Y-m-d') }}">
+                                        <summary class="flex min-h-11 cursor-pointer items-center text-sm font-medium text-primary">Ver {{ $events->count() - 1 }} más</summary>
+                                        @foreach($events->skip(1) as $event)
+                                            @include('schedules.partials.calendar-event', ['event' => $event])
                                         @endforeach
+                                    </details>
+                                @endif
+                            </section>
+                        @endif
+                    @endfor
+                </div>
+                <div class="hidden md:block" aria-label="Calendario mensual">
+                    <div class="grid grid-cols-7 gap-2 mb-2">
+                        @foreach(['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'] as $day)
+                            <div class="text-center text-xs font-medium text-text-muted py-2">{{ $day }}</div>
+                        @endforeach
+                    </div>
+                    <div class="grid grid-cols-7 gap-2">
+                        @for($date = $calendarStart; $date->lte($calendarEnd); $date = $date->addDay())
+                            @php($events = $calendarSchedules->get($date->format('Y-m-d'), collect()))
+                            <div data-calendar-date="{{ $date->format('Y-m-d') }}" class="min-w-0 min-h-28 rounded-lg border border-border p-2 {{ $date->month !== $month->month ? 'bg-surface text-text-muted' : 'text-text' }}">
+                                <time datetime="{{ $date->format('Y-m-d') }}" class="text-sm {{ $date->isToday() ? 'font-bold text-primary' : '' }}">{{ $date->day }}</time>
+                                @if($date->month === $month->month)
+                                    @foreach($events->take(2) as $event)
+                                        @include('schedules.partials.calendar-event', ['event' => $event])
+                                    @endforeach
+                                    @if($events->count() > 2)
+                                        <details data-calendar-more="desktop-{{ $date->format('Y-m-d') }}">
+                                            <summary class="mt-2 cursor-pointer text-xs font-medium text-primary">Ver {{ $events->count() - 2 }} más</summary>
+                                            @foreach($events->skip(2) as $event)
+                                                @include('schedules.partials.calendar-event', ['event' => $event])
+                                            @endforeach
+                                        </details>
                                     @endif
-                                </div>
-                            @endfor
-                        </div>
+                                @endif
+                            </div>
+                        @endfor
                     </div>
                 </div>
             </div>

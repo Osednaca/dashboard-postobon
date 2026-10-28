@@ -95,3 +95,20 @@ test('view changes also update current pagination links', () => browser(async st
     assert.equal(new URL(link.href).searchParams.get('view'), 'calendar');
     assert.equal(new URL(link.href).searchParams.get('status'), 'failed');
 }));
+
+
+test('refresh preserves expanded days without opening other dates or layouts', () => browser(async (state, _timers, results) => {
+    const open = { dataset: { calendarMore: 'mobile-2026-10-17' }, open: true };
+    const restored = { dataset: { calendarMore: 'mobile-2026-10-17' }, open: false };
+    const anotherDay = { dataset: { calendarMore: 'mobile-2026-10-18' }, open: false };
+    const desktopDay = { dataset: { calendarMore: 'desktop-2026-10-17' }, open: false };
+    results.querySelectorAll = selector => selector === '[data-calendar-more][open]'
+        ? [open] : [restored, anotherDay, desktopDay];
+    globalThis.fetch = async () => ({ ok: true, text: async () => 'updated' });
+
+    await state.refresh();
+
+    assert.equal(restored.open, true);
+    assert.equal(anotherDay.open, false);
+    assert.equal(desktopDay.open, false);
+}));
