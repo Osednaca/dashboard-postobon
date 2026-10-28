@@ -37,7 +37,15 @@ export function createScheduleIndex(initialView = 'list') {
                 const page = new DOMParser().parseFromString(await response.text(), 'text/html');
                 const results = page.querySelector('[data-schedule-results]');
                 if (!results) throw new Error('Respuesta inesperada');
+                // Keep expanded days open when the automatic status refresh replaces the markup.
+                const expandedDays = new Set(Array.from(
+                    this.$refs.results.querySelectorAll('[data-calendar-more][open]'),
+                    details => details.dataset.calendarMore,
+                ));
                 this.$refs.results.innerHTML = results.innerHTML;
+                this.$refs.results.querySelectorAll('[data-calendar-more]').forEach(details => {
+                    details.open = expandedDays.has(details.dataset.calendarMore);
+                });
                 this.refreshError = false;
             } catch {
                 this.refreshError = true;

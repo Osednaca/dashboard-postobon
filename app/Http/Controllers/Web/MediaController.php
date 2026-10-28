@@ -10,6 +10,7 @@ use App\Http\Requests\UploadMediaRequest;
 use App\Models\Media;
 use App\Services\MediaService;
 use App\Services\Z2\Z2VideoService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -64,7 +65,7 @@ class MediaController extends Controller
     /**
      * Store a newly created media.
      */
-    public function store(StoreMediaRequest $request): RedirectResponse
+    public function store(StoreMediaRequest $request): RedirectResponse|JsonResponse
     {
         $this->authorize('create', Media::class);
 
@@ -104,10 +105,20 @@ class MediaController extends Controller
                 Log::warning('Media saved locally but Z2 cloud upload failed', ['media_id' => $media->id]);
             }
 
+            if ($request->expectsJson()) {
+                $request->session()->flash('success', 'Medio creado exitosamente.');
+
+                return response()->json(['redirect' => route('media.index')]);
+            }
+
             return redirect()->route('media.index')
                 ->with('success', 'Medio creado exitosamente.');
         } catch (\Exception $e) {
             Log::error('Error al crear medio: '.$e->getMessage());
+
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Ocurrió un error al crear el medio. Por favor intente nuevamente.'], 500);
+            }
 
             return back()->with('error', 'Ocurrió un error al crear el medio. Por favor intente nuevamente.');
         }

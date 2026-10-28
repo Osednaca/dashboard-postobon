@@ -55,6 +55,11 @@ class DeviceListLayoutTest extends TestCase
         $xpath = new \DOMXPath($document);
         $this->assertSame(7, $xpath->query('//table[contains(@class,"device-list-table")]/thead/tr/th')->length);
         $this->assertSame(3, $xpath->query('//input[@data-fleet-selector]')->length);
+        $this->assertSame(3, $xpath->query('//tr[@data-device-row]/td[contains(@class,"device-cell-name")]//a[contains(@class,"device-name") and .//span[contains(@class,"device-detail-hint")]]')->length);
+        $this->assertSame(3, $xpath->query('//tr[@data-device-row]/td[contains(@class,"device-cell-select")]/input[@data-fleet-selector]')->length);
+        $this->assertSame(3, $xpath->query('//tr[@data-device-row]/td[contains(@class,"device-cell-actions")]//button[contains(@class,"device-more-action")]')->length);
+        $this->assertSame(1, $xpath->query('//tr[@data-device-row="z2:AABB"]//a[contains(@class,"device-name") and @href="'.route('devices.show', $device).'"]')->length);
+        $this->assertSame(1, $xpath->query('//tr[@data-device-row="wl35:wl35-a"]//a[contains(@class,"device-name") and @href="'.route('devices.wl35.show', 'wl35-a').'"]')->length);
         $this->assertSame(3, $xpath->query('//tr[@data-device-row]/td[contains(@class,"device-cell-status")]//span[@role="status"]')->length);
         $this->assertSame(2, $xpath->query('//form[input[@name="command" and @value="bluetooth"] and input[@name="targets[]" and @value="wl35:wl35-a"] and input[@name="value"]]')->length);
         $this->assertStringContainsString('operatingLabels[rows[0].status]', $html);

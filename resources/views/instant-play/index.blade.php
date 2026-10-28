@@ -60,8 +60,8 @@
         </div>
     @endif
 
-    <section x-show="playback.status !== 'idle'" x-cloak
-             class="mb-6 overflow-hidden rounded-xl border border-border bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
+    <section x-ref="playbackStatus" x-show="playback.status !== 'idle'" x-cloak
+             class="scroll-mt-24 mb-6 overflow-hidden rounded-xl border border-border bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
              aria-live="polite" aria-atomic="true">
         <div class="flex items-start gap-4 p-5 sm:p-6">
             <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
@@ -135,7 +135,7 @@
 
                                     {{-- Device info --}}
                                     <button type="button" class="flex-1 min-w-0 text-left {{ $item['online'] ? 'cursor-pointer' : 'cursor-not-allowed' }}"
-                                         @if($item['online']) @click="if (mode === 'single' || mode === 'campaign') selectedDevice = {{ Js::from($key) }}" @endif>
+                                         @if($item['online']) @click="selectDevice({{ Js::from($key) }})" @endif>
                                         <div class="flex items-center gap-2 mb-1">
                                             <h3 class="font-semibold text-text text-sm truncate">{{ $item['name'] }}</h3>
                                             <span class="rounded-md px-1.5 py-0.5 text-[10px] font-bold tracking-wide {{ $item['type'] === 'wl35' ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-700' }}">{{ $item['type'] === 'wl35' ? '35' : '42' }}</span>
@@ -213,7 +213,7 @@
         <div class="lg:col-span-1 space-y-6">
             {{-- Single play / Campaign play --}}
             <template x-if="mode === 'single' || mode === 'campaign'">
-                <div class="bg-white rounded-xl border border-border shadow-[0_1px_3px_rgba(0,0,0,0.04)] sticky top-6">
+                <div x-ref="playbackForm" class="scroll-mt-24 bg-white rounded-xl border border-border shadow-[0_1px_3px_rgba(0,0,0,0.04)] sticky top-6">
                     {{-- Panel header --}}
                     <div class="px-6 py-4 border-b border-border">
                         <h2 class="text-lg font-semibold text-text flex items-center gap-2">
@@ -456,6 +456,20 @@
                 this.startPlaybackPolling();
             },
 
+            selectDevice(key) {
+                if (this.mode !== 'single' && this.mode !== 'campaign') return;
+                this.selectedDevice = key;
+                if (this.mode === 'single') this.scrollOnMobile('playbackForm');
+            },
+
+            scrollOnMobile(ref) {
+                if (!window.matchMedia('(max-width: 1023px)').matches) return;
+                this.$nextTick(() => {
+                    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                    this.$refs[ref]?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+                });
+            },
+
             async submitPlayback(event) {
                 event.preventDefault();
                 if (this.submitting) return;
@@ -474,6 +488,7 @@
                     elapsed: 0,
                 };
                 this.startPlaybackClock();
+                if (this.mode === 'single') this.scrollOnMobile('playbackStatus');
 
                 try {
                     const response = await fetch(form.action, {

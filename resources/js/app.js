@@ -11,6 +11,7 @@ import { createCampaignMediaSelector } from './campaign-media-selector';
 import { createCampaignTargetSelector } from './campaign-target-selector';
 import { createGroupDeviceSelector } from './group-device-selector';
 import { createScheduleIndex } from './schedule-index';
+import { createMediaUpload } from './media-upload';
 
 window.Alpine = Alpine;
 Alpine.data('devicePreviews', createDevicePreviews);
@@ -23,6 +24,7 @@ Alpine.data('campaignMediaSelector', createCampaignMediaSelector);
 Alpine.data('campaignTargetSelector', createCampaignTargetSelector);
 Alpine.data('groupDeviceSelector', createGroupDeviceSelector);
 Alpine.data('scheduleIndex', createScheduleIndex);
+Alpine.data('mediaUpload', createMediaUpload);
 Alpine.store('mediaDurations', createMediaDurationStore());
 
 Alpine.start();
