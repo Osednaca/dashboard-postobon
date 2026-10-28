@@ -8,6 +8,7 @@ Route::middleware(['mobile.ability:onboarding:create', 'throttle:60,1,mobile-onb
     Route::get('device-onboardings/{onboarding}', [DeviceOnboardingController::class, 'show'])->name('onboardings.show');
     Route::patch('device-onboardings/{onboarding}', [DeviceOnboardingController::class, 'update'])->name('onboardings.update');
     Route::post('device-onboardings/{onboarding}/events', [DeviceOnboardingController::class, 'event'])->name('onboardings.events');
+    Route::post('device-onboardings/{onboarding}/register', [DeviceOnboardingController::class, 'register'])->name('onboardings.register');
     Route::post('device-onboardings/{onboarding}/resume-verification', [DeviceOnboardingController::class, 'resumeVerification'])->name('onboardings.resume-verification');
     Route::post('device-onboardings/{onboarding}/complete', [DeviceOnboardingController::class, 'complete'])->name('onboardings.complete');
     Route::post('device-onboardings/{onboarding}/cancel', [DeviceOnboardingController::class, 'cancel'])->name('onboardings.cancel');

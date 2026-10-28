@@ -36,7 +36,7 @@ class DeviceOnboardingRequest extends FormRequest
         ];
         if ($this->isMethod('POST')) {
             $rules['device_type'] = ['required', Rule::in(['z2'])];
-            $rules['expected_identifier'] = ['required', 'string', 'regex:/\A[A-F0-9]{12}\z/'];
+            $rules['expected_identifier'] = ['sometimes', 'nullable', 'string', 'regex:/\A[A-F0-9]{12}\z/'];
             $rules['cloud_domain'] = ['sometimes', 'nullable', 'string', 'max:255', new FirmwareCloudDomain];
         }
 

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Mobile\DeviceOnboardingActionRequest;
 use App\Http\Requests\Mobile\DeviceOnboardingEventRequest;
 use App\Http\Requests\Mobile\DeviceOnboardingRequest;
+use App\Http\Requests\Mobile\RegisterDeviceOnboardingRequest;
 use App\Http\Resources\Mobile\DeviceOnboardingResource;
 use App\Models\DeviceOnboarding;
 use App\Services\Mobile\DeviceOnboardingService;
@@ -26,6 +27,11 @@ class DeviceOnboardingController extends Controller
     public function show(Request $request, DeviceOnboarding $onboarding): DeviceOnboardingResource
     {
         return new DeviceOnboardingResource($this->onboardings->status($onboarding, $request->user()));
+    }
+
+    public function register(RegisterDeviceOnboardingRequest $request, DeviceOnboarding $onboarding): DeviceOnboardingResource
+    {
+        return new DeviceOnboardingResource($this->onboardings->register($onboarding, $request->user(), $request->validated('expected_identifier')));
     }
 
     public function update(DeviceOnboardingRequest $request, DeviceOnboarding $onboarding): DeviceOnboardingResource
