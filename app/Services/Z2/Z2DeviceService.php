@@ -6,6 +6,8 @@ use App\Models\Device;
 use App\Models\DeviceHeartbeat;
 use App\Models\Group;
 use App\Models\Media;
+use App\Services\CampaignTargetCatalog;
+use App\Services\Fleet\DeviceMutationLock;
 use App\Services\Fleet\MediaPreviewSource;
 use App\Services\PrivateCloud\PrivateCloudClient;
 use Illuminate\Support\Carbon;
@@ -199,6 +201,12 @@ class Z2DeviceService
      */
     public function removeVideoFromDevice(string $mac, string $filename): bool
     {
+        return app(DeviceMutationLock::class)->run([CampaignTargetCatalog::z2Key($mac)],
+            fn (): bool => $this->removeVideoUnlocked($mac, $filename));
+    }
+
+    private function removeVideoUnlocked(string $mac, string $filename): bool
+    {
         $response = $this->client->post('/api/devices/'.$this->normalizeMac($mac).'/remove-media', ['filename' => $filename]);
 
         if ($response !== null && ($response['result'] ?? -1) === 0
@@ -308,6 +316,12 @@ class Z2DeviceService
      */
     private function playCloudVideo(string $mac, string $cloudFilename): bool
     {
+        return app(DeviceMutationLock::class)->run([CampaignTargetCatalog::z2Key($mac)],
+            fn (): bool => $this->playCloudVideoUnlocked($mac, $cloudFilename));
+    }
+
+    private function playCloudVideoUnlocked(string $mac, string $cloudFilename): bool
+    {
         $response = $this->client->post('/api/devices/'.$this->normalizeMac($mac).'/play', ['filename' => $cloudFilename]);
 
         if ($response !== null && ($response['result'] ?? -1) === 0) {
@@ -365,6 +379,12 @@ class Z2DeviceService
      * dispositivo confirme con SdCardEmpty=1.
      */
     public function formatSd(string $mac): bool
+    {
+        return app(DeviceMutationLock::class)->run([CampaignTargetCatalog::z2Key($mac)],
+            fn (): bool => $this->formatSdUnlocked($mac));
+    }
+
+    private function formatSdUnlocked(string $mac): bool
     {
         // Capture only existing reported files; later uploads must stay visible.
         $files = $this->removals->reportedFiles($mac);

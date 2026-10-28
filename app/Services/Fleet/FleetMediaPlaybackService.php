@@ -30,6 +30,17 @@ class FleetMediaPlaybackService
         string $temporaryPath,
         ?callable $progress = null,
     ): array {
+        return app(DeviceMutationLock::class)->run($targets,
+            fn (): array => $this->playUnlocked($media, $targets, $originalName, $temporaryPath, $progress));
+    }
+
+    private function playUnlocked(
+        Media $media,
+        array $targets,
+        string $originalName,
+        string $temporaryPath,
+        ?callable $progress = null,
+    ): array {
         $report = $progress ?? static function (string $phase, int $progress): void {};
         $targets = array_values(array_unique($targets));
         $z2Targets = array_values(array_filter(

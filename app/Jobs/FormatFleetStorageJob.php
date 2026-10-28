@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\FleetOperation;
 use App\Models\Wl35DeviceMedia;
+use App\Services\Fleet\DeviceMutationLock;
 use App\Services\Fleet\RetiredDeviceJobExclusions;
 use App\Services\Fleet\UnifiedFleetClient;
 use Illuminate\Bus\Queueable;
@@ -51,15 +52,19 @@ class FormatFleetStorageJob implements ShouldQueue
                 return;
             }
             $payload['targets'] = $targets;
-            $result = $fleetClient->sendCommand($payload, true);
+            $result = app(DeviceMutationLock::class)->run($targets, function () use ($fleetClient, $payload): array {
+                $result = $fleetClient->sendCommand($payload, true);
 
-            collect($result['results'] ?? [])
-                ->filter(fn ($item): bool => is_array($item)
-                    && ($item['success'] ?? false) === true
-                    && ($item['type'] ?? null) === 'wl35')
-                ->each(function (array $item): void {
-                    Wl35DeviceMedia::where('device_id', (string) ($item['id'] ?? ''))->delete();
-                });
+                collect($result['results'] ?? [])
+                    ->filter(fn ($item): bool => is_array($item)
+                        && ($item['success'] ?? false) === true
+                        && ($item['type'] ?? null) === 'wl35')
+                    ->each(function (array $item): void {
+                        Wl35DeviceMedia::where('device_id', (string) ($item['id'] ?? ''))->delete();
+                    });
+
+                return $result;
+            });
 
             $operation->update([
                 'status' => 'completed',
