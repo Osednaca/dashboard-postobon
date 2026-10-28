@@ -35,7 +35,23 @@ Crear requiere `name` (máx.255), `business_type_id` válido y `address` (máx.5
 
 ## Tipos de negocio
 
-`GET/POST /business-types`, `PATCH/DELETE /business-types/{id}`; ability `business-types:manage` y Policies existentes. Recurso `{id,name,establishments_count}`. Nombre obligatorio, único y máx.120; lista con `search` y paginación. Borrar un tipo usado responde 409 `business_type_has_establishments`. Las escrituras de ambos catálogos se auditan por actor/entidad sin copiar los campos de entrada.
+`GET /business-types`, `PATCH/DELETE /business-types/{id}`; ability `business-types:manage` y Policies existentes. La app no puede crear tipos: POST devuelve405; la administración web conserva esa función. Recurso `{id,name,establishments_count}`. Nombre obligatorio, único y máx.120; lista con `search` y paginación. Borrar un tipo usado responde 409 `business_type_has_establishments`. Las escrituras de ambos catálogos se auditan por actor/entidad sin copiar los campos de entrada.
+
+### Selector de ubicación móvil
+
+`GET /establishments/location-picker` devuelve HTML autenticado para WebView, con ability `establishments:manage`. Query: `nonce` UUID requerido, `address` opcional (máx.500), `latitude` y `longitude` opcionales pero en pareja y dentro de rangos geográficos. La ruta está declarada antes de `{establishment}`. El bearer se envía únicamente en la carga inicial; nunca en URL, HTML ni mensajes. La respuesta usa `Cache-Control: no-store, private`.
+
+Usa `GOOGLE_MAPS_API_KEY`/`services.google_maps.key`. El usuario confirmó que Google todavía no está configurado en producción. Antes de probar el selector:
+
+1. En Google Cloud, usar un proyecto con facturación habilitada y activar **Maps JavaScript API**, **Places API (New)** y **Geocoding API**.
+2. Crear una clave de navegador con restricción de aplicación **Sitios web / referentes HTTP**, autorizando `https://fan.finespublicidad.com/*`. Restringir sus APIs a las tres anteriores. No usar claves privilegiadas ni sin restricciones.
+3. Guardar esa clave en `GOOGLE_MAPS_API_KEY` del servidor, regenerar configuración (`php artisan config:cache`) y confirmar Maps/Places desde la app. El servidor proporciona la clave pública de navegador dentro del HTML; nunca incluye el token de sesión móvil.
+
+El picker usa `PlaceAutocompleteElement`, evento `gmp-select` y `Place.fetchFields` con campos `formattedAddress` y `location`. No usa `google.maps.places.Autocomplete`: Google restringió ese widget legado para nuevos clientes desde el1de marzo de2025. Fuentes oficiales: [widget nuevo y requisitos](https://developers.google.com/maps/documentation/javascript/place-autocomplete-new), [referencia y retirada para nuevos clientes](https://developers.google.com/maps/documentation/javascript/reference/places-widget), [restricciones de claves](https://developers.google.com/maps/api-security-best-practices). Esta corrección corresponde al picker móvil; no modifica el formulario web legado.
+
+Sin clave o ante fallo Google, se muestra un mensaje de configuración/conectividad; nunca se guarda el centro inicial como selección. Un toque/arrastre limpia la dirección anterior y bloquea confirmar durante geocodificación; si falla, pide escribir la dirección del punto elegido sin conservar un texto antiguo.
+
+Autocomplete, toque de mapa y arrastre del marcador eligen ubicación. Solo el botón «Usar ubicación» emite JSON `{type:"location-selected",nonce,address,latitude,longitude}`. Los fallos emiten `{type:"location-error",nonce,message}`. La app debe validar URL de origen, nonce, forma y rangos antes de aplicar los datos; bloquea navegación fuera del picker y conserva la atribución Google. Edición puede precargar coordenadas, sin confirmar automáticamente. No hay pruebas reales de Google/credenciales en la suite aislada.
 
 Verificación de catálogos/lista: `php artisan test --compact --bootstrap=storage/framework/testing/isolated-suite-bootstrap.php --filter='MobileDeviceTest|MobileEstablishmentTest|MobileBusinessTypeTest'`. Los tests simulan las fuentes privadas y no envían órdenes ni peticiones remotas reales.
 

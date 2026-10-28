@@ -22,9 +22,9 @@ class MobileBusinessTypeTest extends TestCase
 
     public function test_catalog_crud_unique_name_and_linked_delete_rules(): void
     {
-        $response = $this->postJson('/api/mobile/v1/business-types', ['name' => 'Tienda'])->assertCreated();
-        $id = $response->json('data.id');
-        $this->postJson('/api/mobile/v1/business-types', ['name' => 'Tienda'])->assertUnprocessable();
+        $this->postJson('/api/mobile/v1/business-types', ['name' => 'Tienda'])->assertStatus(405);
+        $this->assertDatabaseMissing('business_types', ['name' => 'Tienda']);
+        $id = BusinessType::create(['name' => 'Tienda'])->id;
         $this->patchJson('/api/mobile/v1/business-types/'.$id, ['name' => 'Tienda'])->assertOk();
         $this->patchJson('/api/mobile/v1/business-types/'.$id, ['name' => 'Minimercado'])->assertOk();
         $this->getJson('/api/mobile/v1/business-types?search=Minimercado')->assertOk()

@@ -150,7 +150,7 @@ class DeviceOnboardingService
                 $this->fail('onboarding_locked', 'Vuelve a preparar una instalación para cambiar datos después del envío.');
             }
             if ((int) ($data['play_mode'] ?? $session->play_mode) === 0 && (int) ($data['sync_class'] ?? $session->sync_class) !== 0) {
-                $this->fail('invalid_sync_class', 'El modo individual utiliza la clase A (0).', 422);
+                $this->fail('invalid_sync_class', 'El modo individual utiliza la clase 0.', 422);
             }
             if (isset($data['establishment_id'])) {
                 Establishment::whereKey($data['establishment_id'])->lockForUpdate()->firstOrFail();
@@ -420,7 +420,8 @@ class DeviceOnboardingService
 
         return isset($snapshot['playMode'], $snapshot['deviceClass'])
             && in_array($snapshot['playMode'], [0, 1, '0', '1'], true)
-            && (is_int($snapshot['deviceClass']) || (is_string($snapshot['deviceClass']) && preg_match('/\A(?:[0-9]|1[0-4])\z/', $snapshot['deviceClass'])))
+            && (is_int($snapshot['deviceClass']) || (is_string($snapshot['deviceClass']) && preg_match('/\A(?:0|[1-9][0-9]{0,9})\z/', $snapshot['deviceClass'])))
+            && $snapshot['deviceClass'] >= 0 && $snapshot['deviceClass'] <= 2147483647
             && (int) $snapshot['playMode'] === $session->play_mode
             && (int) $snapshot['deviceClass'] === $session->sync_class;
     }

@@ -137,7 +137,7 @@ class MobileOnboardingTest extends TestCase
     public function test_invalid_class_mode_identity_name_and_secret_fields_are_rejected(): void
     {
         foreach ([
-            ['sync_class' => 15], ['sync_class' => -1], ['play_mode' => 2],
+            ['sync_class' => 2147483648], ['sync_class' => -1], ['play_mode' => 2],
             ['play_mode' => 0, 'sync_class' => 6], ['expected_identifier' => 'not-a-mac'],
             ['name' => 'Entrada&Domain=evil'], ['name' => str_repeat('🎈', 40)],
             ['wifi_password' => 'do-not-store'], ['cloud_domain' => 'https://evil.test:9910'],
