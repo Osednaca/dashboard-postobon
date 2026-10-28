@@ -20,22 +20,29 @@ class UpdateGroupRequest extends FormRequest
             'description' => ['nullable', 'string', 'max:1000'],
             'device_keys' => ['sometimes', 'array', 'max:10000'],
             'device_keys.*' => ['required', 'string', 'max:255'],
+            'remove_device_keys' => ['sometimes', 'array', 'max:10000'],
+            'remove_device_keys.*' => ['required', 'string', 'max:255'],
         ];
     }
 
     public function after(): array
     {
         return [function (Validator $validator): void {
-            if ($validator->errors()->isNotEmpty() || ! $this->has('device_keys')) {
+            if ($validator->errors()->isNotEmpty() || (! $this->has('device_keys') && ! $this->has('remove_device_keys'))) {
                 return;
             }
 
             $available = array_column(app(GroupCreationService::class)->devices(), 'key');
-            foreach ($this->input('device_keys', []) as $key) {
-                if (! in_array($key, $available, true)) {
-                    $validator->errors()->add('device_keys', 'Selecciona únicamente dispositivos existentes.');
-                    break;
+            foreach (['device_keys', 'remove_device_keys'] as $field) {
+                foreach ($this->input($field, []) as $key) {
+                    if (! in_array($key, $available, true)) {
+                        $validator->errors()->add($field, 'Selecciona únicamente dispositivos existentes.');
+                        break;
+                    }
                 }
+            }
+            if (array_intersect($this->input('device_keys', []), $this->input('remove_device_keys', []))) {
+                $validator->errors()->add('remove_device_keys', 'Un dispositivo no se puede añadir y quitar a la vez.');
             }
         }];
     }

@@ -65,12 +65,28 @@ class GroupCreationService
         });
     }
 
-    /** Add selected members without detaching existing members or changing their settings. */
+    /** Add selected members and remove only explicitly selected current members. */
     public function update(Group $group, array $data, int $userId): Group
     {
         return DB::transaction(function () use ($group, $data, $userId): Group {
             $group = Group::whereKey($group->id)->lockForUpdate()->firstOrFail();
             $changes = [];
+            foreach (array_unique($data['remove_device_keys'] ?? []) as $key) {
+                [$type, $id] = array_pad(explode(':', $key, 2), 2, null);
+                $device = match ($type) {
+                    'z2' => Device::whereKey($id)->lockForUpdate()->first(),
+                    'wl35' => Wl35DeviceProfile::where('device_id', $id)->lockForUpdate()->first(),
+                    default => null,
+                };
+                // A stale form must not unlink a device moved to another group meanwhile.
+                if ($device === null || $device->group_id !== $group->id) {
+                    continue;
+                }
+
+                $changes[] = ['device_key' => $key, 'previous_group_id' => $group->id, 'action' => 'removed'];
+                $device->group_id = null;
+                $device->save();
+            }
             foreach (array_unique($data['device_keys'] ?? []) as $key) {
                 [$type, $id] = array_pad(explode(':', $key, 2), 2, null);
                 $device = match ($type) {
