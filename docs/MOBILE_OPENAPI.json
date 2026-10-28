@@ -910,7 +910,7 @@
       "post": {
         "operationId": "mobileOperation18",
         "summary": "Preparar sesión Z2",
-        "description": "Ability onboarding:create;60 requests/minute. Enabled by default, preserve existing network.cfg when cloud_domain omitted/null/blank. Explicit custom target requires validated public enrollment identifier (422 otherwise). New sessions may be explicitly administratively disabled (503). Source baseline must be available. Profile/target frozen; idempotency includes custom target.",
+        "description": "Ability onboarding:create;60 requests/minute. Omitted/null expected_identifier prepares awaiting_identity without telemetry or MAC reservation; explicit MAC retains legacy prepared/reservation behavior and requires source baseline. Enabled by default; preserve network.cfg when cloud_domain omitted/null/blank. Explicit target requires validated public enrollment identifier. Original intent/profile/target and creation fingerprint remain frozen for deferred identity; idempotent creation replay keeps original null MAC even after register.",
         "parameters": [
           {
             "$ref": "#/components/parameters/IdempotencyKey"
@@ -1369,6 +1369,79 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/EmptyAction"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/device-onboardings/{onboarding}/register": {
+      "parameters": [
+        {
+          "name": "onboarding",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "mobileOnboardingRegister",
+        "summary": "Register the detected MAC after offline Wi-Fi configuration",
+        "description": "For awaiting_identity or expired unidentified preparations, binds identity once and starts awaiting_online with fresh server heartbeat baseline; expired preparations receive a new bounded verification window. Preserves original intent/profile/creation fingerprint. Same-MAC replay returns current state including completed, without baseline/deadline renewal; different MAC conflicts. Cancelled/failed sessions cannot revive. Rejects assigned/deleted devices and live reservations after physical configuration. Already-bound expired sessions use resume-verification. No device commands or Wi-Fi secrets. Requires owner/superadmin and onboarding:create ability.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Identity registered for fresh verification, or unchanged same-MAC replay including completed sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Onboarding"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingRegistration"
               }
             }
           }
@@ -2045,9 +2118,16 @@
             ]
           },
           "expected_identifier": {
-            "type": "string",
-            "pattern": "^[A-F0-9]{12}$",
-            "description": "MAC normalized to uppercase without colons/hyphens before validation."
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-F0-9]{12}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional normalized MAC. Omitted/null prepares awaiting_identity without telemetry or reservation. Preserve this original creation payload and idempotency key after later registration."
           },
           "name": {
             "type": "string",
@@ -2086,7 +2166,6 @@
         },
         "required": [
           "device_type",
-          "expected_identifier",
           "name",
           "establishment_id",
           "play_mode",
@@ -2164,6 +2243,7 @@
           "status": {
             "type": "string",
             "enum": [
+              "awaiting_identity",
               "prepared",
               "local_connected",
               "awaiting_online",
@@ -2181,7 +2261,15 @@
             ]
           },
           "expected_identifier": {
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null until deferred identity registration; immutable once bound."
           },
           "name": {
             "type": "string"
@@ -2265,7 +2353,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Frozen public snapshot only for unexpired awaiting_identity/prepared/local_connected states; null during verification and terminal states."
           },
           "last_result_code": {
             "anyOf": [
@@ -2482,6 +2571,20 @@
         },
         "required": [],
         "description": "Partial update; supplied required fields cannot be blank. Latitude and longitude remain paired."
+      },
+      "OnboardingRegistration": {
+        "type": "object",
+        "properties": {
+          "expected_identifier": {
+            "type": "string",
+            "pattern": "^[A-F0-9]{12}$",
+            "description": "Required MAC; colon/hyphen inputs normalized before validation."
+          }
+        },
+        "required": [
+          "expected_identifier"
+        ],
+        "additionalProperties": false
       }
     }
   },

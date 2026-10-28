@@ -10,7 +10,7 @@ class DeviceOnboardingResource extends JsonResource
     public function toArray(Request $request): array
     {
         $profile = null;
-        if (in_array($this->status, ['prepared', 'local_connected'], true)) {
+        if (in_array($this->status, ['awaiting_identity', 'prepared', 'local_connected'], true) && ! $this->expires_at->isPast()) {
             $profile = $this->provisioning_profile;
         }
 

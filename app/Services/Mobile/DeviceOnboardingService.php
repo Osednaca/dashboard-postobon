@@ -23,6 +23,7 @@ class DeviceOnboardingService
 
     public function prepare(User $actor, array $data, string $key): DeviceOnboarding
     {
+        $data['expected_identifier'] = $data['expected_identifier'] ?? null;
         $data['cloud_domain'] = $data['cloud_domain'] ?? null;
         $fingerprint = [
             $data['device_type'], $data['expected_identifier'], $data['name'],
@@ -41,7 +42,7 @@ class DeviceOnboardingService
         }
 
         $profile = $this->profile->get($data['cloud_domain']);
-        $snapshot = $this->telemetry->find($data['expected_identifier'], true);
+        $snapshot = $data['expected_identifier'] !== null ? $this->telemetry->find($data['expected_identifier'], true) : null;
         try {
             return DB::transaction(function () use ($actor, $data, $key, $hash, $snapshot, $profile): DeviceOnboarding {
                 // Serializes same-actor idempotency while unique indexes protect different actors.
@@ -53,19 +54,15 @@ class DeviceOnboardingService
                     return $existing;
                 }
                 Establishment::whereKey($data['establishment_id'])->lockForUpdate()->firstOrFail();
-                $this->rejectAssigned($data['expected_identifier']);
-                DeviceOnboarding::where('active_identifier', $data['expected_identifier'])
-                    ->where('expires_at', '<=', now())
-                    ->update(['active_identifier' => null, 'status' => 'expired']);
-                if (DeviceOnboarding::where('active_identifier', $data['expected_identifier'])->exists()) {
-                    $this->fail('onboarding_in_progress', 'Este ventilador ya tiene una instalación en curso.');
+                if ($data['expected_identifier'] !== null) {
+                    $this->reserveIdentifier($data['expected_identifier']);
                 }
                 $session = DeviceOnboarding::create([
                     ...$data,
                     'uuid' => (string) Str::uuid(),
                     'user_id' => $actor->id,
                     'active_identifier' => $data['expected_identifier'],
-                    'status' => 'prepared',
+                    'status' => $data['expected_identifier'] === null ? 'awaiting_identity' : 'prepared',
                     'idempotency_key' => $key,
                     'request_hash' => $hash,
                     'provisioning_profile' => $profile,
@@ -91,6 +88,53 @@ class DeviceOnboardingService
 
                 return $existing;
             }
+            $this->fail('onboarding_in_progress', 'Este ventilador ya tiene una instalación en curso.');
+        }
+    }
+
+    public function register(DeviceOnboarding $session, User $actor, string $identifier): DeviceOnboarding
+    {
+        $this->authorize($session, $actor);
+        if (! $this->needsIdentityRegistration($session, $identifier)) {
+            return $session;
+        }
+        // Failure here must leave the original offline preparation recoverable.
+        $snapshot = $this->telemetry->find($identifier, true);
+
+        try {
+            return DB::transaction(function () use ($session, $actor, $identifier, $snapshot): DeviceOnboarding {
+                User::whereKey($actor->id)->lockForUpdate()->firstOrFail();
+                $session = DeviceOnboarding::whereKey($session->id)->lockForUpdate()->firstOrFail();
+                $this->authorize($session, $actor);
+                // Serialize concurrent retries, including a response lost after commit.
+                if (! $this->needsIdentityRegistration($session, $identifier)) {
+                    return $session;
+                }
+                $establishment = Establishment::whereKey($session->establishment_id)->lockForUpdate()->first();
+                if (! $establishment) {
+                    $this->fail('establishment_unavailable', 'El establecimiento ya no está disponible.');
+                }
+                $this->reserveIdentifier($identifier, $session->id);
+                $session->forceFill([
+                    'expected_identifier' => $identifier,
+                    'active_identifier' => $identifier,
+                    'status' => 'awaiting_online',
+                    'configuration_reported_at' => now(),
+                    'verification_baseline_at' => now(),
+                    'baseline_heartbeat_count' => $this->count($snapshot),
+                    'baseline_last_seen_at' => $this->telemetry->seenAt($snapshot),
+                    'expires_at' => $session->expires_at->isPast()
+                        ? now()->addMinutes(max(1, (int) config('mobile_onboarding.session_minutes', 30))) : $session->expires_at,
+                    'last_result_code' => null,
+                ])->save();
+                $this->audit->log('mobile_onboarding_identity_registered', 'DeviceOnboarding', $session->id, $actor->id, [
+                    'session_uuid' => $session->uuid,
+                    'expected_identifier' => $identifier,
+                ]);
+
+                return $session;
+            }, 3);
+        } catch (UniqueConstraintViolationException) {
             $this->fail('onboarding_in_progress', 'Este ventilador ya tiene una instalación en curso.');
         }
     }
@@ -124,6 +168,7 @@ class DeviceOnboardingService
     public function event(DeviceOnboarding $session, User $actor, array $data): DeviceOnboarding
     {
         $this->authorize($session, $actor);
+        $this->requireIdentity($session);
         // A replay must not reset the baseline and require endlessly newer heartbeats.
         if ($data['event'] === 'configuration_sent' && $session->configuration_reported_at) {
             return $this->status($session, $actor);
@@ -169,7 +214,7 @@ class DeviceOnboardingService
     public function status(DeviceOnboarding $session, User $actor): DeviceOnboarding
     {
         $this->authorize($session, $actor);
-        $snapshot = $session->establishment_id !== null && in_array($session->status, ['awaiting_online', 'ready_to_complete'], true) && ! $session->expires_at->isPast()
+        $snapshot = $session->expected_identifier !== null && $session->establishment_id !== null && in_array($session->status, ['awaiting_online', 'ready_to_complete'], true) && ! $session->expires_at->isPast()
             ? $this->telemetry->find($session->expected_identifier) : null;
 
         return DB::transaction(function () use ($session, $snapshot): DeviceOnboarding {
@@ -192,6 +237,7 @@ class DeviceOnboardingService
     public function resumeVerification(DeviceOnboarding $session, User $actor): DeviceOnboarding
     {
         $this->authorize($session, $actor);
+        $this->requireIdentity($session);
         if (! $this->needsVerificationRenewal($session)) {
             return $session;
         }
@@ -245,6 +291,7 @@ class DeviceOnboardingService
     public function complete(DeviceOnboarding $session, User $actor): DeviceOnboarding
     {
         $this->authorize($session, $actor);
+        $this->requireIdentity($session);
         if ($session->status === 'completed') {
             return $session;
         }
@@ -326,6 +373,15 @@ class DeviceOnboardingService
             if ($this->invalidateMissingEstablishment($session)) {
                 return $session;
             }
+            if ($session->expected_identifier === null) {
+                $session->forceFill(['status' => 'cancelled', 'active_identifier' => null])->save();
+                $this->audit->log('mobile_onboarding_cancelled', 'DeviceOnboarding', $session->id, $actor->id, [
+                    'session_uuid' => $session->uuid,
+                    'configuration_already_sent' => false,
+                ]);
+
+                return $session;
+            }
             // Recovery must be able to discard an expired attempt without reopening it.
             // A completed installation remains immutable even after its old expiry time.
             if ($session->status !== 'completed' && ($session->status === 'expired' || $session->expires_at->isPast())) {
@@ -362,6 +418,47 @@ class DeviceOnboardingService
             && (is_int($snapshot['deviceClass']) || (is_string($snapshot['deviceClass']) && preg_match('/\A(?:[0-9]|1[0-4])\z/', $snapshot['deviceClass'])))
             && (int) $snapshot['playMode'] === $session->play_mode
             && (int) $snapshot['deviceClass'] === $session->sync_class;
+    }
+
+    private function requireIdentity(DeviceOnboarding $session): void
+    {
+        if ($session->expected_identifier === null) {
+            $this->fail('onboarding_identity_required', 'Registra la MAC detectada antes de comprobar la conexión.');
+        }
+    }
+
+    private function needsIdentityRegistration(DeviceOnboarding $session, string $identifier): bool
+    {
+        if (in_array($session->status, ['cancelled', 'failed'], true)) {
+            $this->fail('onboarding_inactive', 'Esta instalación finalizó y no se puede retomar.');
+        }
+        if ($session->expected_identifier !== null) {
+            if ($session->expected_identifier !== $identifier) {
+                $this->fail('onboarding_identity_conflict', 'Esta instalación ya está vinculada a otra MAC.');
+            }
+
+            return false;
+        }
+        if (! in_array($session->status, ['awaiting_identity', 'expired'], true)) {
+            $this->fail('invalid_transition', 'No se puede registrar la identidad en el estado actual.');
+        }
+        if ($session->establishment_id === null) {
+            $this->fail('establishment_unavailable', 'El establecimiento ya no está disponible.');
+        }
+
+        return true;
+    }
+
+    private function reserveIdentifier(string $identifier, ?int $sessionId = null): void
+    {
+        $this->rejectAssigned($identifier);
+        $reservations = DeviceOnboarding::where('active_identifier', $identifier)
+            ->when($sessionId !== null, fn ($query) => $query->whereKeyNot($sessionId));
+        (clone $reservations)->where('expires_at', '<=', now())
+            ->update(['active_identifier' => null, 'status' => 'expired']);
+        if ($reservations->exists()) {
+            $this->fail('onboarding_in_progress', 'Este ventilador ya tiene una instalación en curso.');
+        }
     }
 
     private function rejectAssigned(string $identifier): ?Device

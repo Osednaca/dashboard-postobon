@@ -26,7 +26,8 @@ Toda respuesta de sesión usa `{ "data": { ... } }`. El `id` público es un UUID
 
 | Método y ruta | Entrada / resultado |
 |---|---|
-| `POST /device-onboardings` | `device_type:"z2"`, `expected_identifier`, `name`, `establishment_id`, `play_mode`, `sync_class`, `cloud_domain` opcional; header `Idempotency-Key` de 8–100 caracteres ASCII alfanuméricos o `._:-`; respuesta201 |
+| `POST /device-onboardings` | `device_type:"z2"`, `name`, `establishment_id`, `play_mode`, `sync_class`, `expected_identifier` y `cloud_domain` opcionales; MAC omitida/null prepara en `awaiting_identity`; header `Idempotency-Key` de 8–100 caracteres ASCII alfanuméricos o `._:-`; respuesta201 |
+| `POST /device-onboardings/{uuid}/register` | Solo `{expected_identifier:"9097D5E3A25C"}`; tras configurar localmente, vincula la MAC una vez y comienza verificación con baseline del servidor; respuesta200 |
 | `PATCH /device-onboardings/{uuid}` | Solo `name`, `establishment_id`, `play_mode`, `sync_class`; permitido antes de enviar configuración |
 | `GET /device-onboardings/{uuid}` | Consulta estado y evidencia disponible; no emite comandos al equipo |
 | `POST /device-onboardings/{uuid}/events` | `{event:"local_connected"|"configuration_sent", result_code?:"sent"|"readback_verified"|"connection_failed"|"response_unknown"}` |
@@ -72,7 +73,7 @@ DTO de sesión:
 }
 ```
 
-El perfil se devuelve solo en `prepared`/`local_connected`; después es `null`. El identificador de resultado final usa `z2:<id local>`. `verification` solo aparece al completar y vale `private_cloud_fresh_heartbeat_and_reported_mode`. Describe evidencia de conexión y modo reportado; no garantiza sincronía de fotogramas ni que el nombre físico haya persistido.
+El perfil se devuelve solo en `awaiting_identity`/`prepared`/`local_connected` vigentes; después es `null`. En `awaiting_identity`, `expected_identifier` es explícitamente `null`. El identificador de resultado final usa `z2:<id local>`. `verification` solo aparece al completar y vale `private_cloud_fresh_heartbeat_and_reported_mode`. Describe evidencia de conexión y modo reportado; no garantiza sincronía de fotogramas ni que el nombre físico haya persistido.
 
 El destino y perfil público se guardan como snapshot al preparar. Cambiar ajustes móviles o configuración de servidor después no cambia los comandos de una sesión pendiente. La idempotencia incluye el destino explícito; omisión/null/vacío equivalen a conservar y reutilizan la misma solicitud. Si la clave se repite con otro destino, responde409. Un registro histórico anterior a la migración puede no tener snapshot: se devuelve perfil `null`, sin inventar los comandos anteriores; si aún no se configuró, cancelar y preparar otra sesión. Las sesiones ya enviadas pueden seguir verificándose.
 
@@ -83,6 +84,22 @@ Si se elimina el establecimiento mientras la instalación está pendiente, la si
 En la API de establecimientos, `wifi_ssid` y `wifi_password` son campos sensibles a los espacios: se conservan sus caracteres iniciales/finales al crear o actualizar, con la contraseña cifrada y solo escritura. Se aplica la misma excepción de normalización al formulario web. Otros campos, como nombre y dirección, conservan el recorte ordinario de espacios. Una contraseña vacía en edición mantiene la clave anterior, según el contrato existente. El onboarding nunca guarda esas credenciales de forma implícita.
 
 ## Secuencia y evidencia
+
+### Instalación con una sola visita al Wi-Fi del ventilador
+
+1. Con Internet, preparar establecimiento, nombre y modo/clase con `expected_identifier:null` (u omitirlo). La API devuelve `awaiting_identity`, intención y perfil originales, con plazo de30 minutos. No consulta telemetría ni reserva ninguna MAC. La app conserva la respuesta y la solicitud original con su clave de idempotencia; el servidor rechaza PATCH sobre esta preparación para mantenerla inmutable.
+2. En el AP del ventilador, detectar MAC y configurar nombre, modo/clase y Wi-Fi usando el perfil guardado, dentro de su vigencia. La app conserva la MAC separada de la solicitud original antes de cualquier escritura física. La contraseña permanece en memoria. No necesita llamadas a la API durante esta visita y no reenvía automáticamente comandos cuyo resultado sea incierto.
+3. De vuelta en Internet, llamar a `register` solo después de enviar Wi-Fi, o si quedó un envío incierto con intento de Wi-Fi registrado. El servidor comprueba asignación/reserva, vincula la MAC y captura el contador actual y hora del servidor. Después se consulta/completa con la misma evidencia fresca descrita abajo. El nombre y establecimiento se guardan en inventario únicamente al completar.
+
+El endpoint `register` usa la misma autorización de propietario/superadmin y habilidad `onboarding:create`. Rechaza cualquier campo adicional, contraseñas o supuestas pruebas `online`. Una MAC ya asignada o borrada responde409 `device_already_assigned`; otra reserva vigente responde409 `onboarding_in_progress`. Este conflicto puede aparecer **después de configurar físicamente** el equipo: se conserva la recuperación y no se reasigna ni se revierte automáticamente su Wi-Fi.
+
+La primera vinculación es inmutable. Repetir la misma MAC normalizada devuelve la sesión, incluso completada, sin consultar telemetría ni mover baseline/plazo. Otra MAC responde409 `onboarding_identity_conflict`. La solicitud de preparación conserva su fingerprint original sin MAC: repetirla con la misma clave devuelve la sesión vinculada; añadir la MAC a ese cuerpo de preparación produce409 `idempotency_conflict`.
+
+Si la preparación sin MAC expiró después del envío local, `register` permite iniciar únicamente verificación con un plazo nuevo y baseline fresca, conservando nombre/establecimiento/modo/perfil originales. No devuelve perfil ni autoriza reenviar Wi-Fi. Si expiró antes de configurar, la app debe cancelar y preparar otra sesión con Internet; nunca reutilizar comandos de un perfil vencido. Una sesión ya vinculada y expirada usa `resume-verification`, no renueva por repetir `register`. Cancelar una preparación sin MAC, incluso vencida, guarda `cancelled`; canceladas/fallidas nunca reviven. Sin MAC, eventos, complete y resume-verification responden409 `onboarding_identity_required`; GET no consulta la nube.
+
+### Compatibilidad con sesiones anteriores
+
+Las solicitudes que incluyen MAC conservan el flujo anterior, sus reservas, fingerprints y endpoints. Las apps anteriores pueden terminar sus sesiones existentes:
 
 1. Con Internet, crear sesión para MAC, establecimiento, nombre y modo/clase. Sesión de30 minutos, configurable en `config/mobile_onboarding.php`.
 2. Conectar el teléfono al AP del equipo y comprobar su identidad por el método físico/local validado. Enviar comandos solo en la app nativa. Guardar la contraseña únicamente en memoria.
@@ -106,7 +123,26 @@ Repetir la acción durante `awaiting_online`/`ready_to_complete` vigente devuelv
 
 ## Verificación local
 
+### Despliegue del flujo sin MAC
+
+Desplegar primero la API y ejecutar en el servidor, desde el repositorio actualizado:
+
+```sh
+php artisan migrate --force
+php artisan optimize:clear
+php artisan route:cache
+php artisan config:cache
+php artisan route:list --name=mobile.onboardings.register
+```
+
+La migración `2026_10_28_000001_allow_unidentified_device_onboardings` permite null en `expected_identifier`; no cambia las identidades existentes ni la reserva única `active_identifier`. Reiniciar los procesos persistentes según el procedimiento habitual del servidor. Entregar la app nueva después de confirmar migración/ruta. Una API anterior rechaza la preparación sin MAC antes de cualquier escritura al ventilador.
+
+El rollback de esta migración se detiene si existen sesiones sin MAC, incluidas canceladas/expiradas: no elimina datos ni inventa identidades para restaurar NOT NULL. Conservar la migración aplicada durante una reversión de código; no borrar recuperaciones para forzar el rollback. Los comandos de despliegue son instrucciones, no se ejecutaron como parte de la verificación local.
+
+### Pruebas aisladas
+
 ```text
+php artisan test --compact --bootstrap=storage/framework/testing/isolated-suite-bootstrap.php tests/Feature/MobileOnboardingDeferredIdentityTest.php
 php artisan test --compact --bootstrap=storage/framework/testing/isolated-suite-bootstrap.php tests/Feature/MobileOnboardingTest.php
 php artisan test --compact --bootstrap=storage/framework/testing/isolated-suite-bootstrap.php tests/Feature/MobileOnboardingCloudTargetTest.php
 ```
