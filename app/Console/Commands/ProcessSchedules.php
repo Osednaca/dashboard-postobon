@@ -7,6 +7,7 @@ use App\Models\Media;
 use App\Models\Schedule;
 use App\Models\Wl35DeviceMedia;
 use App\Models\Wl35DeviceProfile;
+use App\Services\Fleet\DeviceMutationLock;
 use App\Services\Fleet\FleetMediaPlaybackService;
 use App\Services\Fleet\UnifiedFleetClient;
 use App\Services\ScheduleRecurrenceService;
@@ -198,24 +199,28 @@ class ProcessSchedules extends Command
                         'format_sd' => $this->z2DeviceService->formatSd($target['id']),
                     };
                 } else {
-                    $payload = ['command' => $schedule->type === 'format_sd' ? 'format_sd' : 'power',
-                        'targets' => [$key]];
-                    if ($payload['command'] === 'power') {
-                        $payload['value'] = $schedule->type === 'power_on';
-                    }
-                    $response = app(UnifiedFleetClient::class)->sendCommand($payload, $schedule->type === 'format_sd');
-                    $results = $response['results'] ?? null;
-                    $result = is_array($results) && array_is_list($results) && count($results) === 1 ? $results[0] : null;
-                    $accepted = is_array($result)
-                        && (! array_key_exists('success', $response) || $response['success'] === true)
-                        && (! array_key_exists('command', $response) || $response['command'] === $payload['command'])
-                        && ($result['key'] ?? null) === $key
-                        && ($result['type'] ?? null) === 'wl35'
-                        && ($result['id'] ?? null) === $target['id']
-                        && ($result['success'] ?? null) === true;
-                    if ($accepted && $schedule->type === 'format_sd') {
-                        Wl35DeviceMedia::where('device_id', $target['id'])->delete();
-                    }
+                    $accepted = app(DeviceMutationLock::class)->run([$key], function () use ($schedule, $key, $target): bool {
+                        $payload = ['command' => $schedule->type === 'format_sd' ? 'format_sd' : 'power',
+                            'targets' => [$key]];
+                        if ($payload['command'] === 'power') {
+                            $payload['value'] = $schedule->type === 'power_on';
+                        }
+                        $response = app(UnifiedFleetClient::class)->sendCommand($payload, $schedule->type === 'format_sd');
+                        $results = $response['results'] ?? null;
+                        $result = is_array($results) && array_is_list($results) && count($results) === 1 ? $results[0] : null;
+                        $accepted = is_array($result)
+                            && (! array_key_exists('success', $response) || $response['success'] === true)
+                            && (! array_key_exists('command', $response) || $response['command'] === $payload['command'])
+                            && ($result['key'] ?? null) === $key
+                            && ($result['type'] ?? null) === 'wl35'
+                            && ($result['id'] ?? null) === $target['id']
+                            && ($result['success'] ?? null) === true;
+                        if ($accepted && $schedule->type === 'format_sd') {
+                            Wl35DeviceMedia::where('device_id', $target['id'])->delete();
+                        }
+
+                        return $accepted;
+                    });
                 }
                 Log::info('Scheduled control recipient result', ['schedule_id' => $schedule->id,
                     'type' => $schedule->type, 'group_id' => $schedule->group_id,
@@ -350,15 +355,7 @@ class ProcessSchedules extends Command
             return false;
         }
 
-        try {
-            app(Z2CampaignSyncService::class)->activate($schedule->campaign);
-        } catch (Throwable $exception) {
-            $schedule->campaign->update(['status' => 'active']);
-            Log::warning('Campaign activated locally but cloud sync failed', [
-                'campaign_id' => $schedule->campaign->id,
-                'error' => $exception->getMessage(),
-            ]);
-        }
+        app(Z2CampaignSyncService::class)->activate($schedule->campaign);
 
         return true;
     }

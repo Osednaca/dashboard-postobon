@@ -2,199 +2,50 @@
 
 namespace App\Services\Z2;
 
-use App\Jobs\PlayFleetMediaJob;
 use App\Models\Campaign;
 use App\Models\Device;
-use App\Models\FleetUpload;
-use App\Models\Group;
+use App\Services\Campaigns\CampaignLifecycle;
 use App\Services\CampaignTargetCatalog;
-use App\Services\Fleet\MediaPreviewSource;
-use App\Services\Fleet\QueueTargetLock;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 
+/** Compatibility facade: all entry points share the durable campaign lifecycle. */
 class Z2CampaignSyncService
 {
-    private Z2PlaylistService $playlistService;
+    public function __construct(private CampaignLifecycle $lifecycle) {}
 
-    public function __construct(Z2PlaylistService $playlistService)
-    {
-        $this->playlistService = $playlistService;
-    }
-
-    /**
-     * Publish campaign to specific devices.
-     */
     public function publishToDevices(Campaign $campaign, array $deviceIds): bool
     {
-        if ($campaign->target_devices !== null) {
-            return $this->queueExplicitRecipients($campaign);
+        if ($campaign->target_devices === null && $deviceIds !== []) {
+            $campaign->update(['target_devices' => Device::whereKey($deviceIds)->get()->map(fn ($d) => CampaignTargetCatalog::z2Key($d->mac_address))->unique()->values()->all()]);
         }
-        $success = true;
-
-        foreach ($deviceIds as $deviceId) {
-            if (in_array((int) $deviceId, $this->excludedDeviceIds($campaign), true)) {
-                continue;
-            }
-            $device = Device::find($deviceId);
-            if (! $device) {
-                continue;
-            }
-
-            // Get campaign media
-            $media = $campaign->media()->first();
-            if (! $media) {
-                Log::warning('[PrivateCloud] Campaign has no media', ['campaign' => $campaign->id]);
-
-                continue;
-            }
-
-            $result = $this->playlistService->assignVideoToDevice(
-                $device->mac_address,
-                $media->file_path
-            );
-
-            if (! $result) {
-                $success = false;
-            }
+        $this->lifecycle->assertQueueConfiguration();
+        if ($campaign->status === 'active') {
+            $this->lifecycle->snapshot($campaign);
+        } else {
+            $this->lifecycle->activate($campaign);
         }
 
-        if ($success) {
-            $campaign->update(['status' => 'active']);
-        }
+        return true;
+    }
 
-        return $success;
+    public function publishToGroups(Campaign $campaign, array $groupIds): bool
+    {
+        return $this->publishToDevices($campaign, Device::whereIn('group_id', $groupIds)->pluck('id')->all());
     }
 
     public function validateRecipients(Campaign $campaign): void
     {
         if ($campaign->target_devices !== null) {
-            app(CampaignTargetCatalog::class)->validatedKeys($this->eligibleTargets($campaign));
+            app(CampaignTargetCatalog::class)->validatedKeys($campaign->target_devices);
         }
     }
 
-    private function queueExplicitRecipients(Campaign $campaign): bool
-    {
-        $targets = app(CampaignTargetCatalog::class)->validatedKeys($this->eligibleTargets($campaign));
-        if ($targets === []) {
-            return true;
-        }
-        $media = $campaign->media()->first();
-        if ($media === null) {
-            return true;
-        }
-        if (! str_starts_with($media->mime_type, 'video/') || app(MediaPreviewSource::class)->resolve($media) === null) {
-            throw new \RuntimeException('La campaña necesita un video disponible antes de publicarse.');
-        }
-        $connection = config('queue.default');
-        $driver = config('queue.connections.'.$connection.'.driver');
-        if (! in_array($driver, ['database', 'redis'], true)
-            || (int) config('queue.connections.'.$connection.'.retry_after') <= 1900) {
-            throw new \RuntimeException('La publicación de campañas requiere una cola asíncrona con retry_after mayor a 1900 segundos.');
-        }
-        $id = (string) Str::uuid();
-        $name = basename((string) ($media->original_name ?: $media->name));
-        if (! str_ends_with(mb_strtolower($name), '.mp4')) {
-            $name .= '.mp4';
-        }
-        $upload = app(QueueTargetLock::class)->create($targets, function (array $allowed) use ($campaign, $id, $media, $name) {
-            // Retirement may have committed while this request waited for device locks.
-            $allowed = array_values(array_intersect($allowed, $this->eligibleTargets($campaign->fresh())));
-            if ($allowed === []) {
-                return null;
-            }
-
-            return FleetUpload::create([
-                'id' => $id, 'user_id' => auth()->id() ?? $campaign->created_by,
-                'source_media_id' => $media->id, 'original_name' => Str::limit($name, 250, ''),
-                'file_path' => 'fleet-uploads/'.$id.'.mp4', 'targets' => $allowed,
-                'play_after_upload' => true, 'status' => 'queued', 'phase' => 'queued', 'progress' => 10,
-            ]);
-        });
-        if ($upload === null) {
-            return true;
-        }
-        try {
-            PlayFleetMediaJob::dispatch($id);
-        } catch (\Throwable $exception) {
-            $upload->delete();
-            throw $exception;
-        }
-
-        return true;
-    }
-
-    /**
-     * Publish campaign to groups.
-     */
-    public function publishToGroups(Campaign $campaign, array $groupIds): bool
-    {
-        $success = true;
-
-        foreach ($groupIds as $groupId) {
-            $group = Group::find($groupId);
-            if (! $group) {
-                continue;
-            }
-
-            $media = $campaign->media()->first();
-            if (! $media) {
-                continue;
-            }
-
-            $excluded = $this->excludedDeviceIds($campaign);
-            if ($excluded === []) {
-                if (! $this->playlistService->assignVideoToGroup($group->id, $media->file_path)) {
-                    $success = false;
-                }
-
-                continue;
-            }
-            // assignVideoToGroup itself iterates local devices and calls this same
-            // per-device method; apply only the additional retirement filter.
-            $devices = Device::where('group_id', $group->id)->whereNotIn('id', $excluded)->get();
-            foreach ($devices as $device) {
-                if (! $this->playlistService->assignVideoToDevice($device->mac_address, $media->file_path)) {
-                    $success = false;
-                }
-            }
-        }
-
-        if ($success) {
-            $campaign->update(['status' => 'active']);
-        }
-
-        return $success;
-    }
-
-    private function excludedDeviceIds(Campaign $campaign): array
-    {
-        return DB::table('device_retirement_exclusions')->where('scope', 'campaign')
-            ->where('resource_id', (string) $campaign->id)->pluck('device_id')->map(fn ($id) => (int) $id)->all();
-    }
-
-    private function eligibleTargets(Campaign $campaign): array
-    {
-        $excluded = Device::withTrashed()->whereIn('id', $this->excludedDeviceIds($campaign))->pluck('mac_address')
-            ->filter()->map(fn ($mac) => CampaignTargetCatalog::z2Key($mac))->all();
-
-        return array_values(array_diff($campaign->target_devices ?? [], $excluded));
-    }
-
-    /**
-     * Activate campaign in cloud.
-     */
     public function activate(Campaign $campaign): bool
     {
-        $campaign->update(['status' => 'active']);
+        $this->lifecycle->activate($campaign);
 
         return true;
     }
 
-    /**
-     * Pause campaign in cloud.
-     */
     public function pause(Campaign $campaign): bool
     {
         $campaign->update(['status' => 'paused']);
@@ -202,12 +53,9 @@ class Z2CampaignSyncService
         return true;
     }
 
-    /**
-     * Finish campaign in cloud.
-     */
     public function finish(Campaign $campaign): bool
     {
-        $campaign->update(['status' => 'finished']);
+        $this->lifecycle->finish($campaign);
 
         return true;
     }

@@ -50,3 +50,6 @@ Schedule::call(fn () => FleetOperation::where('created_at', '<', now()->subDays(
 
 Schedule::call(fn () => app(CompressedMediaPreview::class)->prune())
     ->name('media-preview:prune')->dailyAt('03:40')->withoutOverlapping();
+
+// Sub-minute orchestration only; slow transfers run on dedicated campaign workers.
+Schedule::command('campaigns:process')->everySecond()->withoutOverlapping();

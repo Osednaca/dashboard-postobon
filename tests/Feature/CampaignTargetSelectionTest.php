@@ -2,19 +2,19 @@
 
 namespace Tests\Feature;
 
-use App\Jobs\PlayFleetMediaJob;
+use App\Jobs\ProcessCampaignDeviceJob;
 use App\Models\Campaign;
+use App\Models\CampaignDeviceFile;
 use App\Models\Device;
 use App\Models\DeviceCampaign;
-use App\Models\FleetUpload;
 use App\Models\Group;
 use App\Models\Location;
 use App\Models\Media;
 use App\Models\User;
 use App\Models\Wl35DeviceProfile;
+use App\Services\Campaigns\CampaignLifecycle;
 use App\Services\CampaignTargetCatalog;
 use App\Services\Z2\Z2CampaignSyncService;
-use App\Services\Z2\Z2PlaylistService;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Js;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -34,6 +35,7 @@ class CampaignTargetSelectionTest extends TestCase
         parent::setUp();
         Http::preventStrayRequests();
         Bus::fake();
+        config(['cache.default' => 'database', 'queue.default' => 'database', 'queue.connections.database.retry_after' => 2000]);
         Storage::fake('public');
         $this->actingAs(User::factory()->admin()->create());
     }
@@ -53,7 +55,7 @@ class CampaignTargetSelectionTest extends TestCase
         $path = 'media/'.Str::uuid().'.mp4';
         Storage::disk('public')->put($path, 'local fixture');
 
-        return Media::factory()->video()->create(['file_path' => $path, 'original_name' => 'fixture.mp4']);
+        return Media::factory()->video()->create(['file_path' => $path, 'original_name' => 'fixture.mp4', 'duration' => 10]);
     }
 
     public function test_catalog_is_local_deduplicated_safe_and_uses_profile_then_location_city(): void
@@ -156,38 +158,60 @@ class CampaignTargetSelectionTest extends TestCase
         $this->assertCount(0, app(CampaignTargetCatalog::class)->forCampaign($campaign));
     }
 
-    public function test_publication_queues_only_exact_mixed_targets_and_first_ordered_video(): void
+    public function test_publication_records_every_ordered_video_for_exact_mixed_targets(): void
     {
-        [$z2, , $third] = $this->fleet();
-        $campaign = Campaign::factory()->create(['target_devices' => ['wl35:fan-cali', 'z2:AABB']]);
+        [, , $third] = $this->fleet();
+        $campaign = Campaign::factory()->draft()->create(['target_devices' => ['wl35:fan-cali', 'z2:AABB']]);
         $first = $this->video();
         $second = $this->video();
         $campaign->media()->attach([$second->id => ['order' => 2], $first->id => ['order' => 1]]);
-        config(['queue.default' => 'database']);
-        $this->assertTrue(app(Z2CampaignSyncService::class)->publishToDevices($campaign, [$third->id]));
-        $upload = FleetUpload::sole();
-        $this->assertSame(['wl35:fan-cali', 'z2:AABB'], $upload->targets);
-        $this->assertSame($first->id, $upload->source_media_id);
-        $this->assertTrue($upload->play_after_upload);
-        $this->assertSame('queued', $upload->status);
-        Bus::assertDispatched(PlayFleetMediaJob::class, fn ($job) => $job->fleetUploadId === $upload->id);
+        $service = app(Z2CampaignSyncService::class);
+        $this->assertTrue($service->publishToDevices($campaign, [$third->id]));
+        $this->assertTrue($service->publishToDevices($campaign->fresh(), [$third->id]));
+        $this->assertDatabaseCount('campaign_device_files', 4);
+        $this->assertDatabaseCount('campaign_deliveries', 4);
+        foreach (['wl35:fan-cali', 'z2:AABB'] as $target) {
+            $deliveries = $campaign->deliveries()->whereHas('file', fn ($query) => $query->where('target_key', $target))
+                ->with('file')->orderBy('position')->get();
+            $this->assertSame([$first->id, $second->id], $deliveries->map(fn ($delivery) => $delivery->file->media_id)->all());
+            $this->assertSame([1, 2], $deliveries->pluck('position')->all());
+            $this->assertSame(['pending', 'pending'], $deliveries->map(fn ($delivery) => $delivery->file->state)->all());
+        }
+        $this->assertSame('active', $campaign->fresh()->status);
+        $this->assertSame(0, CampaignDeviceFile::where('target_key', 'z2:CCDD')->count());
+        $this->assertDatabaseCount('fleet_uploads', 0);
+        Bus::assertNothingDispatched();
+        app(CampaignLifecycle::class)->tick();
+        Bus::assertDispatchedTimes(ProcessCampaignDeviceJob::class, 2);
+        Bus::assertDispatched(ProcessCampaignDeviceJob::class, fn ($job) => $job->target === 'wl35:fan-cali');
+        Bus::assertDispatched(ProcessCampaignDeviceJob::class, fn ($job) => $job->target === 'z2:AABB');
         Http::assertNothingSent();
     }
 
-    public function test_empty_explicit_selection_never_falls_back_and_legacy_keeps_existing_z2_path(): void
+    public function test_empty_explicit_selection_is_rejected_and_legacy_is_snapshotted_without_fallback(): void
     {
         [$z2] = $this->fleet();
-        $campaign = Campaign::factory()->create(['target_devices' => []]);
+        $campaign = Campaign::factory()->draft()->create(['target_devices' => []]);
         $media = $this->video();
         $campaign->media()->attach($media);
-        $playlist = $this->mock(Z2PlaylistService::class);
-        $playlist->shouldReceive('assignVideoToDevice')->once()->with($z2->mac_address, $media->file_path)->andReturn(true);
         $service = app(Z2CampaignSyncService::class);
-        $this->assertTrue($service->publishToDevices($campaign, [$z2->id]));
-        Bus::assertNothingDispatched();
-        $this->assertDatabaseCount('fleet_uploads', 0);
+        try {
+            $service->publishToDevices($campaign, [$z2->id]);
+            $this->fail('An explicit empty selection must not publish to legacy device IDs.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('target_devices', $exception->errors());
+        }
+        $this->assertSame('draft', $campaign->fresh()->status);
+        $this->assertDatabaseCount('campaign_device_files', 0);
         $campaign->update(['target_devices' => null]);
         $this->assertTrue($service->publishToDevices($campaign, [$z2->id]));
+        $this->assertSame(['z2:AABB'], $campaign->fresh()->target_devices);
+        $file = CampaignDeviceFile::sole();
+        $this->assertSame('z2:AABB', $file->target_key);
+        $this->assertSame($media->id, $file->media_id);
+        $this->assertSame('pending', $file->state);
+        Bus::assertNothingDispatched();
+        Http::assertNothingSent();
     }
 
     public function test_stale_target_is_rejected_before_active_callback_changes_media(): void
@@ -201,18 +225,40 @@ class CampaignTargetSelectionTest extends TestCase
         Bus::assertNothingDispatched();
     }
 
-    public function test_active_callback_queues_exact_targets_but_save_and_activation_do_not_dispatch(): void
+    public function test_activation_and_active_addition_record_all_media_without_synchronous_hardware_commands(): void
     {
         $this->fleet();
-        config(['queue.default' => 'database']);
-        $campaign = Campaign::factory()->create(['status' => 'active', 'target_devices' => ['wl35:fan-cali']]);
-        $media = $this->video();
+        $campaign = Campaign::factory()->draft()->create(['target_devices' => ['wl35:fan-cali']]);
+        $first = $this->video();
+        $second = $this->video();
+        $campaign->media()->attach($first, ['order' => 1]);
         $this->put(route('campaigns.update', $campaign), ['name' => 'Editada'])->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('campaign_deliveries', 0);
         $this->post(route('campaigns.activate', $campaign))->assertSessionHas('success');
+        $this->assertSame('active', $campaign->fresh()->status);
+        $this->assertDatabaseCount('campaign_deliveries', 1);
+        $this->post(route('campaigns.add-media', $campaign), ['campaign_id' => $campaign->id, 'media_ids' => [$second->id]])->assertSessionHas('success');
+        $this->assertDatabaseCount('campaign_deliveries', 2);
+        $expectedOrder = $campaign->media()->pluck('media.id')->all();
+        $this->assertEqualsCanonicalizing([$first->id, $second->id], $expectedOrder);
+        $this->assertSame($expectedOrder, $campaign->deliveries()->with('file')->orderBy('position')->get()->map(fn ($delivery) => $delivery->file->media_id)->all());
+        $this->assertSame(['wl35:fan-cali'], CampaignDeviceFile::distinct()->pluck('target_key')->all());
+        $this->assertDatabaseCount('fleet_uploads', 0);
         Bus::assertNothingDispatched();
-        $this->post(route('campaigns.add-media', $campaign), ['campaign_id' => $campaign->id, 'media_ids' => [$media->id]])->assertSessionHas('success');
-        $this->assertSame(['wl35:fan-cali'], FleetUpload::sole()->targets);
-        Bus::assertDispatchedTimes(PlayFleetMediaJob::class, 1);
+        Http::assertNothingSent();
+    }
+
+    public function test_technician_cannot_activate_or_create_campaign_deliveries(): void
+    {
+        $this->fleet();
+        $campaign = Campaign::factory()->draft()->create(['target_devices' => ['wl35:fan-cali']]);
+        $campaign->media()->attach($this->video(), ['order' => 1]);
+        $this->actingAs(User::factory()->create(['role' => 'tecnico']));
+        $this->post(route('campaigns.activate', $campaign))->assertForbidden();
+        $this->assertSame('draft', $campaign->fresh()->status);
+        $this->assertDatabaseCount('campaign_device_files', 0);
+        $this->assertDatabaseCount('campaign_deliveries', 0);
+        Bus::assertNothingDispatched();
         Http::assertNothingSent();
     }
 
@@ -221,15 +267,19 @@ class CampaignTargetSelectionTest extends TestCase
         return [['sync', 'video'], ['deferred', 'video'], ['background', 'video'], ['failover', 'video'], ['database', 'missing'], ['database', 'image'], ['redis', 'video']];
     }
 
-    public function test_removing_last_media_is_a_successful_local_change_without_a_physical_stop_order(): void
+    public function test_removing_last_media_releases_its_durable_delivery_for_cleanup(): void
     {
         $this->fleet();
-        $campaign = Campaign::factory()->create(['status' => 'active', 'target_devices' => ['wl35:fan-cali']]);
+        $campaign = Campaign::factory()->active()->create(['target_devices' => ['wl35:fan-cali']]);
         $media = $this->video();
         $campaign->media()->attach($media);
+        app(Z2CampaignSyncService::class)->activate($campaign);
+        $this->assertDatabaseCount('campaign_deliveries', 1);
         $this->post(route('campaigns.remove-media', [$campaign, $media]))->assertSessionHas('success');
         $this->assertCount(0, $campaign->fresh()->media);
         $this->assertSame('active', $campaign->fresh()->status);
+        $this->assertDatabaseCount('campaign_deliveries', 1);
+        $this->assertNotNull($campaign->deliveries()->sole()->released_at);
         $this->assertDatabaseCount('fleet_uploads', 0);
         Bus::assertNothingDispatched();
         Http::assertNothingSent();
@@ -240,13 +290,19 @@ class CampaignTargetSelectionTest extends TestCase
     {
         $this->fleet();
         config(['queue.default' => $queue]);
-        $campaign = Campaign::factory()->create(['target_devices' => ['z2:AABB']]);
+        $campaign = Campaign::factory()->draft()->create(['target_devices' => ['z2:AABB']]);
         $media = $kind === 'video' ? $this->video() : Media::factory()->create(['file_path' => 'media/missing.mp4', 'mime_type' => $kind === 'image' ? 'image/png' : 'video/mp4']);
         $campaign->media()->attach($media);
         try {
             app(Z2CampaignSyncService::class)->publishToDevices($campaign, []);
             $this->fail('La publicación debería fallar antes de encolarse.');
-        } catch (\RuntimeException) {
+        } catch (\RuntimeException|ValidationException $exception) {
+            $this->assertSame('draft', $campaign->fresh()->status);
+            $this->assertDatabaseCount('campaign_deliveries', 0);
+            $this->assertDatabaseCount('campaign_device_files', 0);
+            if ($exception instanceof ValidationException) {
+                $this->assertArrayHasKey('media_ids', $exception->errors());
+            }
             $this->assertDatabaseCount('fleet_uploads', 0);
             Bus::assertNothingDispatched();
         }

@@ -13,7 +13,7 @@ class Wl35DeviceMedia extends Model
         'device_id',
         'media_id',
         'video_index',
-        'filename',
+        'filename', 'upload_identity',
     ];
 
     protected function casts(): array

@@ -28,6 +28,7 @@ class Campaign extends Model
         'audience_business_type_ids',
         'audience_establishment_id',
         'created_by',
+        'lifecycle_error',
     ];
 
     protected function casts(): array
@@ -42,6 +43,11 @@ class Campaign extends Model
             'audience_business_type_ids' => 'array',
             'audience_establishment_id' => 'integer',
         ];
+    }
+
+    public function deliveries(): HasMany
+    {
+        return $this->hasMany(CampaignDelivery::class);
     }
 
     public function creator(): BelongsTo

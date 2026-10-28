@@ -4,9 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\BusinessType;
 use App\Models\Campaign;
+use App\Models\CampaignDeviceFile;
 use App\Models\Device;
 use App\Models\Establishment;
-use App\Models\FleetUpload;
 use App\Models\Group;
 use App\Models\Media;
 use App\Models\User;
@@ -30,6 +30,7 @@ class CampaignAudienceTest extends TestCase
         parent::setUp();
         Http::preventStrayRequests();
         Bus::fake();
+        config(['cache.default' => 'database', 'queue.default' => 'database', 'queue.connections.database.retry_after' => 2000]);
         Storage::fake('public');
         $this->actingAs(User::factory()->create(['role' => 'campanas']));
     }
@@ -111,7 +112,10 @@ class CampaignAudienceTest extends TestCase
         $campaign->media()->attach($media);
         config(['queue.default' => 'database']);
         app(Z2CampaignSyncService::class)->publishToDevices($campaign->fresh(), []);
-        $this->assertSame(['z2:AABB', 'wl35:all35'], FleetUpload::sole()->targets);
+        $this->assertEqualsCanonicalizing(['z2:AABB', 'wl35:all35'], CampaignDeviceFile::pluck('target_key')->all());
+        $this->assertDatabaseCount('campaign_deliveries', 2);
+        $this->assertSame([$media->id], CampaignDeviceFile::distinct()->pluck('media_id')->all());
+        $this->assertDatabaseCount('fleet_uploads', 0);
 
         $this->patchJson(route('api.campaigns.update', $campaign), ['audience_mode' => 'all'])->assertOk();
         $this->assertSame(['z2:AABB', 'z2:CCDD', 'wl35:all35'], $campaign->fresh()->target_devices);
@@ -266,10 +270,22 @@ class CampaignAudienceTest extends TestCase
         Device::factory()->create(['mac_address' => 'FF:AA', 'group_id' => $f['medellin']->id, 'establishment_id' => $f['oxxoStore']->id]);
         Storage::disk('public')->put('media/audience.mp4', 'fixture');
         $media = Media::factory()->video()->create(['file_path' => 'media/audience.mp4']);
-        $campaign->media()->attach($media);
+        Storage::disk('public')->put('media/audience-second.mp4', 'second fixture');
+        $second = Media::factory()->video()->create(['file_path' => 'media/audience-second.mp4']);
+        $campaign->media()->attach([$media->id => ['order' => 1], $second->id => ['order' => 2]]);
         config(['queue.default' => 'database']);
         app(Z2CampaignSyncService::class)->publishToDevices($campaign, []);
-        $this->assertSame(['z2:AABB', 'wl35:oxxo35'], FleetUpload::sole()->targets);
+        $this->assertEqualsCanonicalizing(['z2:AABB', 'wl35:oxxo35'], CampaignDeviceFile::distinct()->pluck('target_key')->all());
+        $this->assertDatabaseCount('campaign_device_files', 4);
+        $this->assertDatabaseCount('campaign_deliveries', 4);
+        foreach (['z2:AABB', 'wl35:oxxo35'] as $target) {
+            $deliveries = $campaign->deliveries()->whereHas('file', fn ($query) => $query->where('target_key', $target))
+                ->with('file')->orderBy('position')->get();
+            $this->assertSame([$media->id, $second->id], $deliveries->map(fn ($delivery) => $delivery->file->media_id)->all());
+        }
+        $this->assertSame(0, CampaignDeviceFile::where('target_key', 'z2:FFAA')->count());
+        $this->assertDatabaseCount('fleet_uploads', 0);
+        Bus::assertNothingDispatched();
         Http::assertNothingSent();
     }
 
