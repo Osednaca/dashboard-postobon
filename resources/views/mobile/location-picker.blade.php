@@ -15,12 +15,13 @@
         button:disabled { opacity: .45; }
         #map { flex: 1; min-height: 240px; border-radius: 12px; }
         #status { margin: 0; font-size: 14px; color: #475569; }
-        .pac-container { z-index: 1000; }
+        #place-search { width: 100%; }
     </style>
 </head>
 <body>
 <main>
-    <label for="address">Buscar dirección</label>
+    <div id="place-search" aria-label="Buscar dirección o establecimiento"></div>
+    <label for="address">Dirección de la ubicación seleccionada</label>
     <input id="address" maxlength="500" value="{{ $address }}" autocomplete="off" placeholder="Dirección o nombre del lugar">
     <p id="status" role="status">Busca una dirección o toca el mapa para ubicar el establecimiento.</p>
     <div id="map" aria-label="Mapa de ubicación"></div>
@@ -63,7 +64,9 @@
         });
         const marker = new google.maps.Marker({ position: center, map: existing ? map : null, draggable: true });
         const geocoder = new google.maps.Geocoder();
-        const autocomplete = new google.maps.places.Autocomplete(address, { fields: ['geometry', 'formatted_address', 'name'] });
+        const autocomplete = new google.maps.places.PlaceAutocompleteElement();
+        autocomplete.setAttribute('aria-label', 'Buscar dirección o establecimiento');
+        document.getElementById('place-search').appendChild(autocomplete);
         if (existing) selected = { latitude: initial.latitude, longitude: initial.longitude };
         refresh();
         function choose(point, label) {
@@ -98,13 +101,31 @@
                 refresh();
             });
         }
-        autocomplete.addListener('place_changed', () => {
-            const place = autocomplete.getPlace();
-            if (!place.geometry?.location) { selected = null; refresh(); return; }
-            map.panTo(place.geometry.location);
-            map.setZoom(17);
-            choose(place.geometry.location, place.formatted_address || place.name);
+        autocomplete.addEventListener('gmp-select', async ({ placePrediction }) => {
+            const request = ++lookup;
+            selected = null;
+            manualAddress = false;
+            geocoding = true;
+            address.value = '';
+            status.textContent = 'Consultando la ubicación seleccionada…';
+            refresh();
+            try {
+                const place = placePrediction.toPlace();
+                await place.fetchFields({ fields: ['formattedAddress', 'location'] });
+                if (request !== lookup) return;
+                geocoding = false;
+                if (!place.location) throw new Error('missing_location');
+                map.panTo(place.location);
+                map.setZoom(17);
+                choose(place.location, place.formattedAddress);
+            } catch {
+                if (request !== lookup) return;
+                geocoding = false;
+                refresh();
+                failure('No se pudo consultar ese lugar. Reintenta la búsqueda o ubícalo tocando el mapa.');
+            }
         });
+        autocomplete.addEventListener('gmp-error', () => failure('Google Places no está disponible. Revisa Places API (New), la clave y la facturación del proyecto.'));
         map.addListener('click', (event) => { if (event.latLng) choose(event.latLng); });
         marker.addListener('dragend', (event) => { if (event.latLng) choose(event.latLng); });
     };
