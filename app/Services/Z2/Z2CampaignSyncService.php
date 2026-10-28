@@ -9,6 +9,8 @@ use App\Models\FleetUpload;
 use App\Models\Group;
 use App\Services\CampaignTargetCatalog;
 use App\Services\Fleet\MediaPreviewSource;
+use App\Services\Fleet\QueueTargetLock;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -32,6 +34,9 @@ class Z2CampaignSyncService
         $success = true;
 
         foreach ($deviceIds as $deviceId) {
+            if (in_array((int) $deviceId, $this->excludedDeviceIds($campaign), true)) {
+                continue;
+            }
             $device = Device::find($deviceId);
             if (! $device) {
                 continue;
@@ -65,13 +70,13 @@ class Z2CampaignSyncService
     public function validateRecipients(Campaign $campaign): void
     {
         if ($campaign->target_devices !== null) {
-            app(CampaignTargetCatalog::class)->validatedKeys($campaign->target_devices);
+            app(CampaignTargetCatalog::class)->validatedKeys($this->eligibleTargets($campaign));
         }
     }
 
     private function queueExplicitRecipients(Campaign $campaign): bool
     {
-        $targets = app(CampaignTargetCatalog::class)->validatedKeys($campaign->target_devices);
+        $targets = app(CampaignTargetCatalog::class)->validatedKeys($this->eligibleTargets($campaign));
         if ($targets === []) {
             return true;
         }
@@ -93,12 +98,23 @@ class Z2CampaignSyncService
         if (! str_ends_with(mb_strtolower($name), '.mp4')) {
             $name .= '.mp4';
         }
-        $upload = FleetUpload::create([
-            'id' => $id, 'user_id' => auth()->id() ?? $campaign->created_by,
-            'source_media_id' => $media->id, 'original_name' => Str::limit($name, 250, ''),
-            'file_path' => 'fleet-uploads/'.$id.'.mp4', 'targets' => $targets,
-            'play_after_upload' => true, 'status' => 'queued', 'phase' => 'queued', 'progress' => 10,
-        ]);
+        $upload = app(QueueTargetLock::class)->create($targets, function (array $allowed) use ($campaign, $id, $media, $name) {
+            // Retirement may have committed while this request waited for device locks.
+            $allowed = array_values(array_intersect($allowed, $this->eligibleTargets($campaign->fresh())));
+            if ($allowed === []) {
+                return null;
+            }
+
+            return FleetUpload::create([
+                'id' => $id, 'user_id' => auth()->id() ?? $campaign->created_by,
+                'source_media_id' => $media->id, 'original_name' => Str::limit($name, 250, ''),
+                'file_path' => 'fleet-uploads/'.$id.'.mp4', 'targets' => $allowed,
+                'play_after_upload' => true, 'status' => 'queued', 'phase' => 'queued', 'progress' => 10,
+            ]);
+        });
+        if ($upload === null) {
+            return true;
+        }
         try {
             PlayFleetMediaJob::dispatch($id);
         } catch (\Throwable $exception) {
@@ -127,13 +143,21 @@ class Z2CampaignSyncService
                 continue;
             }
 
-            $result = $this->playlistService->assignVideoToGroup(
-                $group->id,
-                $media->file_path
-            );
+            $excluded = $this->excludedDeviceIds($campaign);
+            if ($excluded === []) {
+                if (! $this->playlistService->assignVideoToGroup($group->id, $media->file_path)) {
+                    $success = false;
+                }
 
-            if (! $result) {
-                $success = false;
+                continue;
+            }
+            // assignVideoToGroup itself iterates local devices and calls this same
+            // per-device method; apply only the additional retirement filter.
+            $devices = Device::where('group_id', $group->id)->whereNotIn('id', $excluded)->get();
+            foreach ($devices as $device) {
+                if (! $this->playlistService->assignVideoToDevice($device->mac_address, $media->file_path)) {
+                    $success = false;
+                }
             }
         }
 
@@ -142,6 +166,20 @@ class Z2CampaignSyncService
         }
 
         return $success;
+    }
+
+    private function excludedDeviceIds(Campaign $campaign): array
+    {
+        return DB::table('device_retirement_exclusions')->where('scope', 'campaign')
+            ->where('resource_id', (string) $campaign->id)->pluck('device_id')->map(fn ($id) => (int) $id)->all();
+    }
+
+    private function eligibleTargets(Campaign $campaign): array
+    {
+        $excluded = Device::withTrashed()->whereIn('id', $this->excludedDeviceIds($campaign))->pluck('mac_address')
+            ->filter()->map(fn ($mac) => CampaignTargetCatalog::z2Key($mac))->all();
+
+        return array_values(array_diff($campaign->target_devices ?? [], $excluded));
     }
 
     /**

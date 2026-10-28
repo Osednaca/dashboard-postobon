@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\FleetOperation;
 use App\Models\Wl35DeviceMedia;
+use App\Services\Fleet\RetiredDeviceJobExclusions;
 use App\Services\Fleet\UnifiedFleetClient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -41,7 +42,16 @@ class FormatFleetStorageJob implements ShouldQueue
         ]);
 
         try {
-            $result = $fleetClient->sendCommand($operation->payload, true);
+            $payload = $operation->payload;
+            [$targets, $skipped] = app(RetiredDeviceJobExclusions::class)->filter('fleet_operation', $operation->id, $payload['targets'] ?? []);
+            if ($targets === []) {
+                $operation->update(['status' => 'completed', 'progress' => 100,
+                    'result' => ['results' => [], 'skipped_targets' => $skipped], 'completed_at' => now()]);
+
+                return;
+            }
+            $payload['targets'] = $targets;
+            $result = $fleetClient->sendCommand($payload, true);
 
             collect($result['results'] ?? [])
                 ->filter(fn ($item): bool => is_array($item)
@@ -54,7 +64,7 @@ class FormatFleetStorageJob implements ShouldQueue
             $operation->update([
                 'status' => 'completed',
                 'progress' => 100,
-                'result' => $result,
+                'result' => array_merge($result, ['skipped_targets' => $skipped]),
                 'completed_at' => now(),
             ]);
         } catch (Throwable $exception) {

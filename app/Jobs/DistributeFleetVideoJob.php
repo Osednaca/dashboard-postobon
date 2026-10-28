@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\FleetUpload;
 use App\Services\Fleet\MediaSourceMaterializer;
+use App\Services\Fleet\RetiredDeviceJobExclusions;
 use App\Services\Fleet\UnifiedFleetClient;
 use App\Services\Fleet\Wl35MediaMapping;
 use Illuminate\Bus\Queueable;
@@ -44,6 +45,13 @@ class DistributeFleetVideoJob implements ShouldQueue
         ]);
 
         try {
+            [$targets, $skipped] = app(RetiredDeviceJobExclusions::class)->filter('fleet_upload', $upload->id, $upload->targets ?? []);
+            if ($targets === []) {
+                $upload->update(['status' => 'completed', 'phase' => 'completed', 'progress' => 100,
+                    'result' => ['results' => [], 'skipped_targets' => $skipped], 'completed_at' => now()]);
+
+                return;
+            }
             if ($upload->source_media_id !== null) {
                 if ($upload->sourceMedia === null) {
                     throw new \RuntimeException('El video fue eliminado antes de iniciar la carga.');
@@ -54,7 +62,7 @@ class DistributeFleetVideoJob implements ShouldQueue
             $result = $fleetClient->uploadPathAndDistribute(
                 Storage::disk('local')->path($upload->file_path),
                 $upload->original_name,
-                $upload->targets,
+                $targets,
                 function (string $phase, int $progress, array $metadata = []) use ($upload): void {
                     $upload->update([
                         'phase' => $phase,
@@ -64,14 +72,14 @@ class DistributeFleetVideoJob implements ShouldQueue
                 },
                 false,
             );
-            app(Wl35MediaMapping::class)->remember($result['results'] ?? [], $upload->targets,
+            app(Wl35MediaMapping::class)->remember($result['results'] ?? [], $targets,
                 $upload->source_media_id, $upload->original_name);
 
             $upload->update([
                 'status' => 'completed',
                 'phase' => 'completed',
                 'progress' => 100,
-                'result' => $result,
+                'result' => array_merge($result, ['skipped_targets' => $skipped]),
                 'completed_at' => now(),
             ]);
         } catch (Throwable $exception) {

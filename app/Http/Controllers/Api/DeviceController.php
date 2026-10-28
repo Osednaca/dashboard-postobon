@@ -8,11 +8,13 @@ use App\Http\Requests\StoreDeviceRequest;
 use App\Http\Requests\UpdateDeviceRequest;
 use App\Models\Campaign;
 use App\Models\Device;
+use App\Services\DeviceRetirementService;
 use App\Services\DeviceService;
 use App\Services\Z2\Z2DeviceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class DeviceController extends Controller
 {
@@ -117,15 +119,17 @@ class DeviceController extends Controller
     /**
      * Remove the specified device.
      */
-    public function destroy(Device $device): JsonResponse
+    public function destroy(Device $device, DeviceRetirementService $retirement): JsonResponse
     {
+        $this->authorize('delete', $device);
         try {
-            $this->authorize('delete', $device);
-            $this->deviceService->delete($device->id);
+            $retirement->retire($device, request()->user());
 
             return response()->json([
                 'message' => 'Dispositivo eliminado correctamente.',
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Error al eliminar el dispositivo.',

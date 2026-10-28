@@ -9,6 +9,7 @@ use App\Models\Media;
 use App\Services\Fleet\MediaPreviewSource;
 use App\Services\PrivateCloud\PrivateCloudClient;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -72,23 +73,27 @@ class Z2DeviceService
             ];
         }
 
-        // Restaurar dispositivos borrados suavemente que volvieron a aparecer
-        if (! empty($macAddresses)) {
-            $trashed = Device::onlyTrashed()->whereIn('mac_address', $macAddresses)->get();
-            foreach ($trashed as $device) {
-                $device->restore();
-                Log::info('[PrivateCloud] Restored soft-deleted device', ['mac' => $device->mac_address]);
+        DB::transaction(function () use (&$macAddresses, &$devicesToUpsert): void {
+            // Lock against explicit retirement, which must never be undone by sync.
+            $normalize = fn (string $mac): string => strtoupper(str_replace([':', '-'], '', trim($mac)));
+            $known = Device::withTrashed()
+                ->whereIn(DB::raw("UPPER(REPLACE(REPLACE(mac_address, ':', ''), '-', ''))"), array_map($normalize, $macAddresses))
+                ->orderBy('id')->lockForUpdate()->get();
+            $retired = $known->filter(fn (Device $device): bool => $device->trashed() && $device->retired_for_onboarding_at !== null)
+                ->map(fn (Device $device): string => strtoupper(str_replace([':', '-'], '', $device->mac_address)))->all();
+            foreach ($known as $device) {
+                if ($device->trashed() && $device->retired_for_onboarding_at === null) {
+                    $device->restore();
+                    Log::info('[PrivateCloud] Restored soft-deleted device', ['mac' => $device->mac_address]);
+                }
             }
-        }
-
-        if (! empty($devicesToUpsert)) {
-            // El nombre de la nube inicializa equipos nuevos; los existentes se administran en el panel.
-            Device::upsert(
-                $devicesToUpsert,
-                ['mac_address'],
-                ['firmware', 'hardware', 'rpm', 'status', 'last_heartbeat_at', 'power_status', 'bluetooth_status']
-            );
-        }
+            $macAddresses = array_values(array_filter($macAddresses, fn ($mac): bool => ! in_array($normalize($mac), $retired, true)));
+            $devicesToUpsert = array_values(array_filter($devicesToUpsert, fn ($data): bool => ! in_array($normalize($data['mac_address']), $retired, true)));
+            if ($devicesToUpsert !== []) {
+                Device::upsert($devicesToUpsert, ['mac_address'],
+                    ['firmware', 'hardware', 'rpm', 'status', 'last_heartbeat_at', 'power_status', 'bluetooth_status']);
+            }
+        }, 3);
 
         $synced = Device::whereIn('mac_address', $macAddresses)->get();
 
