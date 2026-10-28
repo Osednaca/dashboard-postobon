@@ -15,7 +15,9 @@ use App\Services\Z2\Z2DeviceService;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -143,6 +145,7 @@ class ProcessSchedules extends Command
 
         // Snapshot only persisted membership; a missing target never becomes all.
         $devices = Device::query()
+            ->whereNotIn('id', $this->excludedDeviceIds($schedule))
             ->when($scope === 'device', fn ($query) => $query->whereKey($schedule->device_id))
             ->when($scope === 'group', fn ($query) => $query->where('group_id', $schedule->group_id))
             ->get();
@@ -345,11 +348,12 @@ class ProcessSchedules extends Command
     private function targetDevices(Schedule $schedule): Collection
     {
         if ($schedule->device_id !== null) {
-            return new Collection($schedule->device !== null ? [$schedule->device] : []);
+            return Device::whereKey($schedule->device_id)->whereNotIn('id', $this->excludedDeviceIds($schedule))->get();
         }
 
         if ($schedule->group_id !== null) {
-            $devices = $schedule->group?->devices ?? new Collection;
+            $devices = $schedule->group === null ? new Collection : Device::where('group_id', $schedule->group_id)
+                ->whereNotIn('id', $this->excludedDeviceIds($schedule))->get();
 
             return $schedule->type === 'change_content'
                 ? $devices
@@ -358,9 +362,16 @@ class ProcessSchedules extends Command
 
         // Both target fields empty explicitly means "Todos" in create/edit.
         return Device::query()
+            ->whereNotIn('id', $this->excludedDeviceIds($schedule))
             ->when($schedule->type !== 'change_content', fn ($query) => $query
                 ->whereNotNull('mac_address')->where('mac_address', '!=', ''))
             ->get();
+    }
+
+    private function excludedDeviceIds(Schedule $schedule): QueryBuilder
+    {
+        return DB::table('device_retirement_exclusions')->select('device_id')
+            ->where('scope', 'schedule')->where('resource_id', (string) $schedule->id);
     }
 
     private function finishRun(

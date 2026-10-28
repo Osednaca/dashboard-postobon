@@ -15,6 +15,7 @@ use App\Models\Establishment;
 use App\Models\Group;
 use App\Models\Media;
 use App\Models\Wl35DeviceProfile;
+use App\Services\DeviceRetirementService;
 use App\Services\DeviceService;
 use App\Services\Fleet\UnifiedFleetClient;
 use App\Services\Z2\Z2DeviceService;
@@ -24,6 +25,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class DeviceController extends Controller
@@ -516,21 +518,17 @@ class DeviceController extends Controller
     /**
      * Remove the specified device.
      */
-    public function destroy(Device $device): RedirectResponse
+    public function destroy(Device $device, DeviceRetirementService $retirement): RedirectResponse
     {
         $this->authorize('delete', $device);
 
         try {
-            // 1. Unbind from Z2 cloud first
-            if ($device->mac_address && ! $this->z2DeviceService->unbindDevice($device->mac_address)) {
-                return back()->with('error', 'No se pudo eliminar el dispositivo de la nube 42.');
-            }
-
-            // 2. Delete locally
-            $this->deviceService->delete($device->id);
+            $retirement->retire($device, request()->user());
 
             return redirect()->route('devices.index')
-                ->with('success', 'Dispositivo eliminado exitosamente.');
+                ->with('success', 'Dispositivo eliminado del dashboard. Puedes registrarlo de nuevo.');
+        } catch (ValidationException $e) {
+            return back()->with('error', $e->getMessage());
         } catch (\Exception $e) {
             Log::error('Error al eliminar dispositivo: '.$e->getMessage());
 

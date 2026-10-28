@@ -10,6 +10,7 @@ use App\Models\Device;
 use App\Models\FleetUpload;
 use App\Models\Media;
 use App\Models\Wl35DeviceProfile;
+use App\Services\Fleet\QueueTargetLock;
 use App\Services\Fleet\UnifiedFleetClient;
 use App\Services\Z2\Z2DeviceService;
 use App\Services\Z2\Z2PlaylistService;
@@ -194,18 +195,18 @@ class InstantPlayController extends Controller
                 $originalName .= '.mp4';
             }
 
-            $upload = FleetUpload::create([
+            $upload = app(QueueTargetLock::class)->create($data['targets'], fn (array $allowed) => FleetUpload::create([
                 'id' => $uploadId,
                 'user_id' => $request->user()->id,
                 'source_media_id' => $media->id,
                 'original_name' => Str::limit($originalName, 250, ''),
                 'file_path' => 'fleet-uploads/'.$uploadId.'.mp4',
-                'targets' => array_values($data['targets']),
+                'targets' => $allowed,
                 'play_after_upload' => true,
                 'status' => 'queued',
                 'phase' => 'queued',
                 'progress' => 10,
-            ]);
+            ]));
 
             PlayFleetMediaJob::dispatch($upload->id);
 

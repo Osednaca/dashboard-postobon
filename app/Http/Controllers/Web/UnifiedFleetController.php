@@ -10,6 +10,7 @@ use App\Jobs\FormatFleetStorageJob;
 use App\Models\FleetOperation;
 use App\Models\FleetUpload;
 use App\Models\Media;
+use App\Services\Fleet\QueueTargetLock;
 use App\Services\Fleet\UnifiedFleetClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -96,18 +97,18 @@ class UnifiedFleetController extends Controller
                 throw new \RuntimeException('No fue posible guardar temporalmente el video recibido.');
             }
 
-            $upload = FleetUpload::create([
+            $upload = app(QueueTargetLock::class)->create($targets, fn (array $allowed) => FleetUpload::create([
                 'id' => $uploadId,
                 'user_id' => $request->user()->id,
                 'source_media_id' => $media?->id,
                 'original_name' => $originalName,
                 'file_path' => $storedPath,
-                'targets' => array_values($targets),
+                'targets' => $allowed,
                 'play_after_upload' => false,
                 'status' => 'queued',
                 'phase' => 'queued',
                 'progress' => 15,
-            ]);
+            ]));
 
             DistributeFleetVideoJob::dispatch($upload->id);
 
@@ -203,14 +204,14 @@ class UnifiedFleetController extends Controller
                 throw new \RuntimeException('El formateo en segundo plano requiere QUEUE_CONNECTION=database o redis.');
             }
 
-            $operation = FleetOperation::create([
+            $operation = app(QueueTargetLock::class)->create($payload['targets'], fn (array $allowed) => FleetOperation::create([
                 'id' => (string) Str::uuid(),
                 'user_id' => $request->user()->id,
                 'command' => 'format_sd',
-                'payload' => $payload,
+                'payload' => [...$payload, 'targets' => $allowed],
                 'status' => 'queued',
                 'progress' => 10,
-            ]);
+            ]));
 
             FormatFleetStorageJob::dispatch($operation->id);
 

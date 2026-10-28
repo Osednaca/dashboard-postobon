@@ -320,6 +320,11 @@ class DeviceOnboardingService
                 $this->fail('establishment_unavailable', 'El establecimiento ya no está disponible.');
             }
             $device = $this->rejectAssigned($session->expected_identifier);
+            if ($device !== null && $device->trashed()) {
+                // Only an explicitly retired device can return, and only after fresh verification.
+                $device->restore();
+                $device->forceFill(['retired_for_onboarding_at' => null])->save();
+            }
             if ($device === null) {
                 // Existing private-cloud sync can discover this same identity concurrently.
                 $device = Device::withTrashed()->firstOrCreate(['mac_address' => $session->expected_identifier], [
@@ -464,10 +469,14 @@ class DeviceOnboardingService
     private function rejectAssigned(string $identifier): ?Device
     {
         // Legacy inventory can store colon-delimited MACs, so compare normalized identities.
-        $device = Device::withTrashed()
+        $matches = Device::withTrashed()
             ->whereRaw("UPPER(REPLACE(REPLACE(mac_address, ':', ''), '-', '')) = ?", [$identifier])
-            ->lockForUpdate()->first();
-        if ($device && ($device->establishment_id !== null || $device->trashed())) {
+            ->lockForUpdate()->get();
+        if ($matches->count() > 1) {
+            $this->fail('device_already_assigned', 'Hay más de un registro con esta MAC. Resuelve el duplicado antes de registrar.');
+        }
+        $device = $matches->first();
+        if ($device && ($device->establishment_id !== null || ($device->trashed() && $device->retired_for_onboarding_at === null))) {
             $this->fail('device_already_assigned', 'El ventilador ya está asignado o no está disponible para registrar.');
         }
 

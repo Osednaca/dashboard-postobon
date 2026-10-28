@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\FleetUpload;
 use App\Services\Fleet\FleetMediaPlaybackService;
+use App\Services\Fleet\RetiredDeviceJobExclusions;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -42,6 +43,13 @@ class PlayFleetMediaJob implements ShouldQueue
         ]);
 
         try {
+            [$targets, $skipped] = app(RetiredDeviceJobExclusions::class)->filter('fleet_upload', $upload->id, $upload->targets ?? []);
+            if ($targets === []) {
+                $upload->update(['status' => 'completed', 'phase' => 'completed', 'progress' => 100,
+                    'result' => ['results' => [], 'skipped_targets' => $skipped], 'completed_at' => now()]);
+
+                return;
+            }
             $media = $upload->sourceMedia;
             if ($media === null) {
                 throw new \RuntimeException('El medio fue eliminado antes de iniciar la reproducción.');
@@ -49,7 +57,7 @@ class PlayFleetMediaJob implements ShouldQueue
 
             $summary = $playback->play(
                 $media,
-                $upload->targets ?? [],
+                $targets,
                 $upload->original_name,
                 $upload->file_path,
                 fn (string $phase, int $progress) => $upload->update(compact('phase', 'progress')),
@@ -58,7 +66,7 @@ class PlayFleetMediaJob implements ShouldQueue
                 'status' => 'completed',
                 'phase' => 'completed',
                 'progress' => 100,
-                'result' => $summary,
+                'result' => array_merge($summary, ['skipped_targets' => $skipped]),
                 'completed_at' => now(),
             ]);
         } catch (Throwable $exception) {
