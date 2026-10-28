@@ -63,6 +63,7 @@
 .device-identity-icon svg { width: 1.6rem; height: 1.6rem; }
 .device-name { display: block; color: #172847; font-weight: 650; line-height: 1.4; }
 .device-name:hover { color: #2d5795; text-decoration: underline; }
+.device-detail-hint { display: none; }
 .device-identifier { display: block; margin-top: .25rem; color: #5b6d87; font-size: .7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .device-address { display: block; margin-top: .25rem; color: #5b6d87; font-size: .7rem; }
 .device-list :is(.device-status-online, .device-status-offline, .device-status-powered_off) > div { width: fit-content; border-radius: 999px; padding: .3rem .55rem; }
@@ -92,7 +93,7 @@
     .device-mobile-select { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding: 1rem; border-bottom: 1px solid #e8edf5; }
     .device-list-table, .device-list-table tbody { display: block; }
     .device-list-table thead { display: none; }
-    .device-list-table tbody tr { display: grid; grid-template-columns: 1rem minmax(0, 1fr) auto; gap: .35rem .7rem; padding: 1rem; border-bottom: 1px solid #e8edf5; align-items: center; }
+    .device-list-table tbody tr { position: relative; display: grid; grid-template-columns: 1rem minmax(0, 1fr) auto; gap: .35rem .7rem; padding: 1rem; border-bottom: 1px solid #e8edf5; align-items: center; }
     .device-list-table tbody tr:last-child { border-bottom: none; }
     .device-list-table td { padding: 0; border: none; min-width: 0; }
     .device-cell-select { grid-row: 1 / 5; grid-column: 1; }
@@ -101,6 +102,10 @@
     .device-cell-establishment { grid-row: 3; grid-column: 2; color: #5b6d87; font-size: .75rem; }
     .device-cell-seen { grid-row: 4; grid-column: 2; }
     .device-cell-actions { grid-row: 1 / 5; grid-column: 3; }
+    /* The link covers the card while the selection and action controls stay above it. */
+    .device-name::after { content: ''; position: absolute; inset: 0; }
+    .device-cell-select, .device-cell-actions { position: relative; z-index: 1; }
+    .device-detail-hint { display: block; margin-top: .2rem; color: #2d5795; font-size: .7rem; font-weight: 600; }
     .device-cell-content, .device-address, .device-desktop-actions { display: none; }
     .device-identity-icon { width: 2rem; height: 2.3rem; }
     .device-identity { gap: .5rem; }

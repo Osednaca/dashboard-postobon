@@ -38,6 +38,7 @@ class RestrictedRoleLayoutTest extends TestCase
         $document = new \DOMDocument;
         @$document->loadHTML(mb_convert_encoding((string) $view, 'HTML-ENTITIES', 'UTF-8'));
         $xpath = new \DOMXPath($document);
+        $this->assertSame(2, $xpath->query('//tr[@data-device-row]/td[contains(@class,"device-cell-name")]//a[contains(@class,"device-name") and .//span[contains(@class,"device-detail-hint")]]')->length);
         $this->assertSame(0, $xpath->query('//*[@data-fleet-selector or @data-device-menu]')->length);
         $this->assertSame(0, $xpath->query('//form[contains(@action,"/fleet/") or contains(@action,"/devices/")]')->length);
         $this->assertSame(0, $xpath->query('//a[contains(@href,"/devices/") and contains(@href,"/edit")]')->length);
