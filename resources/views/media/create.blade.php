@@ -19,20 +19,10 @@
 
     <!-- Form -->
     <div class="bg-white rounded-xl border border-border shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-6 sm:p-8"
-         x-data="{ 
-            file: null, 
-            fileName: '', 
-            progress: 0, 
-            isUploading: false,
-            dragOver: false,
-            handleFile(file) {
-                this.file = file;
-                this.fileName = file.name;
-            }
-         }"
-         @dragover.prevent="dragOver = true"
+         x-data="mediaUpload()"
+         @dragover.prevent="if (!isUploading) dragOver = true"
          @dragleave.prevent="dragOver = false"
-         @drop.prevent="dragOver = false; handleFile($event.dataTransfer.files[0])">
+         @drop.prevent="handleDrop($event.dataTransfer.files)">
 
         @if ($errors->any())
             <div class="mb-6 p-4 rounded-lg bg-danger/10 border border-danger/20 text-danger text-sm">
@@ -50,7 +40,7 @@
             </div>
         @endif
 
-        <form action="{{ route('media.store') }}" method="POST" enctype="multipart/form-data" class="space-y-6" @submit="isUploading = true">
+        <form action="{{ route('media.store') }}" method="POST" enctype="multipart/form-data" class="space-y-6" @submit.prevent="submit($event)">
             @csrf
 
             <!-- File Upload -->
@@ -58,7 +48,7 @@
                 <label class="block text-sm font-medium text-text mb-2">Archivo <span class="text-danger">*</span></label>
                 <div class="border-2 border-dashed rounded-xl p-8 text-center transition-colors"
                      :class="dragOver ? 'border-primary bg-primary/5' : (file ? 'border-success bg-success/5' : 'border-border bg-surface')">
-                    <input type="file" name="file" id="file" required accept="video/*,image/*"
+                    <input type="file" name="file" id="file" accept=".mp4,.avi,.mov,.wmv,.flv,.mkv,.mp3,.wav"
                            class="hidden"
                            @change="handleFile($event.target.files[0])"
                            x-ref="fileInput">
@@ -76,7 +66,7 @@
                         <button type="button" @click="$refs.fileInput.click()" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm font-medium text-text hover:bg-white transition-colors">
                             Seleccionar archivo
                         </button>
-                        <p class="text-xs text-text-muted">Soporta videos e imágenes (MP4, AVI, WEBM, JPG, PNG)</p>
+                        <p class="text-xs text-text-muted">Soporta videos y audio (MP4, AVI, MOV, WMV, FLV, MKV, MP3, WAV)</p>
                     </div>
 
                     <div x-show="file" class="space-y-3">
@@ -86,7 +76,7 @@
                             </svg>
                         </div>
                         <p class="text-sm text-text font-medium" x-text="fileName"></p>
-                        <button type="button" @click="file = null; fileName = ''; $refs.fileInput.value = ''" class="text-xs text-danger hover:text-danger/80 font-medium transition-colors">
+                        <button type="button" @click="clearFile()" :disabled="isUploading" class="text-xs text-danger hover:text-danger/80 font-medium transition-colors">
                             Cambiar archivo
                         </button>
                     </div>
@@ -101,13 +91,15 @@
                 <p class="text-xs text-text-muted mt-1">Si se deja vacío, se usará el nombre original del archivo.</p>
             </div>
 
+            <div x-cloak x-show="error" role="alert" class="p-4 rounded-lg bg-danger/10 border border-danger/20 text-danger text-sm" x-text="error"></div>
+
             <!-- Progress Bar -->
-            <div x-show="isUploading" class="space-y-2">
+            <div x-cloak x-show="isUploading" class="space-y-2" aria-live="polite">
                 <div class="flex items-center justify-between text-sm">
-                    <span class="text-text-light">Subiendo archivo...</span>
+                    <span class="text-text-light" x-text="processing ? 'Archivo transferido. Procesando en el servidor...' : 'Subiendo archivo...'"></span>
                     <span class="text-text font-medium" x-text="progress + '%'"></span>
                 </div>
-                <div class="w-full h-2 bg-surface rounded-full overflow-hidden">
+                <div class="w-full h-2 bg-surface rounded-full overflow-hidden" role="progressbar" aria-label="Progreso de transferencia" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="progress">
                     <div class="h-full bg-primary rounded-full transition-all duration-300" :style="'width: ' + progress + '%'"></div>
                 </div>
             </div>
@@ -119,7 +111,7 @@
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
                     </svg>
-                    <span x-text="isUploading ? 'Subiendo...' : 'Subir Archivo'"></span>
+                    <span x-text="isUploading ? (processing ? 'Procesando...' : 'Subiendo...') : 'Subir Archivo'"></span>
                 </button>
             </div>
         </form>

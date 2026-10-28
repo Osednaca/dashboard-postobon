@@ -13,7 +13,7 @@ Mejorar los desplazamientos de reproducción individual y el acceso al detalle d
 - [x] T1 Reproducción: al seleccionar dispositivo individual en móvil desplazar al formulario; al terminar reproducir, mostrar confirmación o fallo desplazando al estado. Conservar otros modos. Ruta delegada; verificar interacción y regresiones.
 - [x] T2 Dispositivos: ampliar acceso táctil al detalle sin interferir con selección ni acciones. Ruta delegada; verificar ambos roles y controles.
 - [ ] T3 Medios: mostrar progreso de transferencia y distinguir procesamiento del servidor; conservar validación, redirecciones y selección de archivo. Ruta delegada; verificar éxito y fallo.
-- [ ] T4 Calendario: optimizar móvil y permitir ver más eventos por día; confirmado por el usuario que se refiere a Programaciones. Ruta delegada; verificar múltiples eventos y navegación.
+- [x] T4 Calendario: optimizar móvil y permitir ver más eventos por día; confirmado por el usuario que se refiere a Programaciones. Ruta delegada; verificar múltiples eventos y navegación.
 
 ## Progreso y siguiente paso
 Mapa de código completado por exploración delegada. Usuario confirmó que el calendario es el de Programaciones; avanzar con T1–T4. No se ha accedido a servidores ni dispositivos reales. La modificación previa `docs/DESPLIEGUE_LATENCIA.md` queda fuera del alcance.
@@ -23,4 +23,7 @@ Mapa de código completado por exploración delegada. Usuario confirmó que el c
 
 
 - T2: commit 58decf5; PHPUnit focal 7 pruebas/165 aserciones, Pint y comprobación Chrome headless de áreas táctiles aprobados. Sin teléfono físico. Rollback: vista de lista, estilos y pruebas de dispositivos. RDD disabled/unmanaged.
+
+
+- T4: commit b4a5c19; PHPUnit focal 6 pruebas/57 aserciones, Node 6/6 y Pint aprobados. Sin teléfono físico. Rollback: vistas de calendario, schedule-index.js y pruebas correspondientes. RDD disabled/unmanaged.
 
