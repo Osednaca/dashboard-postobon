@@ -11,6 +11,7 @@ use App\Models\Establishment;
 use App\Models\Media;
 use App\Models\Wl35DeviceMedia;
 use App\Models\Wl35DeviceProfile;
+use App\Services\Fleet\DeviceMutationLock;
 use App\Services\Fleet\UnifiedFleetClient;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
@@ -104,16 +105,34 @@ class Wl35DeviceController extends Controller
         $index = (int) $request->validated('index');
 
         try {
-            $this->fleetClient->deleteWl35Video($deviceId, $index);
-            DB::transaction(function () use ($deviceId, $index): void {
-                Wl35DeviceMedia::where('device_id', $deviceId)
-                    ->where('video_index', $index)
-                    ->delete();
-                Wl35DeviceMedia::where('device_id', $deviceId)
-                    ->where('video_index', '>', $index)
-                    ->orderBy('video_index')
-                    ->get()
-                    ->each(fn (Wl35DeviceMedia $mapping) => $mapping->decrement('video_index'));
+            app(DeviceMutationLock::class)->run(['wl35:'.$deviceId], function () use ($deviceId, $index): void {
+                $live = collect($this->fleetClient->getFleet()['devices'] ?? [])->first(
+                    fn ($item) => ($item['type'] ?? null) === 'wl35' && ($item['id'] ?? null) === $deviceId
+                );
+                $count = $live['video_count'] ?? null;
+                if (! is_int($count) || $index > $count || ($live['session_ready'] ?? false) !== true) {
+                    throw new \RuntimeException('El equipo no está listo o el índice cambió. Actualiza el contenido antes de reintentar.');
+                }
+                try {
+                    $response = $this->fleetClient->deleteWl35Video($deviceId, $index, $count);
+                    if (($response['success'] ?? false) !== true || ($response['confirmed'] ?? false) !== true
+                        || ($response['index'] ?? null) !== $index || ($response['video_count'] ?? null) !== $count - 1) {
+                        throw new \RuntimeException('El dispositivo no confirmó el borrado.');
+                    }
+                    DB::transaction(function () use ($deviceId, $index): void {
+                        Wl35DeviceMedia::where('device_id', $deviceId)
+                            ->where('video_index', $index)
+                            ->delete();
+                        Wl35DeviceMedia::where('device_id', $deviceId)
+                            ->where('video_index', '>', $index)
+                            ->orderBy('video_index')
+                            ->get()
+                            ->each(fn (Wl35DeviceMedia $mapping) => $mapping->decrement('video_index'));
+                    });
+                } catch (Throwable $exception) {
+                    Wl35DeviceMedia::where('device_id', $deviceId)->update(['media_id' => null, 'filename' => null]);
+                    throw new \RuntimeException('No se pudo confirmar o registrar el borrado. No repitas el índice: revisa el contenido del dispositivo.', previous: $exception);
+                }
             });
 
             return back()->with('success', "Video {$index} eliminado del 35.");

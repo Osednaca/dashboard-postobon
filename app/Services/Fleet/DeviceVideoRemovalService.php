@@ -105,7 +105,7 @@ class DeviceVideoRemovalService
                 throw new VideoRemovalRejected('El equipo 35 no está listo o el índice del video ya no coincide. Actualiza su contenido antes de reintentar.');
             }
             try {
-                $response = $this->fleet->deleteWl35Video($deviceId, $index);
+                $response = $this->fleet->deleteWl35Video($deviceId, $index, (int) $live['video_count']);
                 if (($response['success'] ?? null) !== true || ($response['index'] ?? null) !== $index) {
                     throw new VideoRemovalRejected('Respuesta de eliminación no confirmada.');
                 }

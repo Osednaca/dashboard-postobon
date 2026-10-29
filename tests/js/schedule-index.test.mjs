@@ -112,3 +112,32 @@ test('refresh preserves expanded days without opening other dates or layouts', (
     assert.equal(anotherDay.open, false);
     assert.equal(desktopDay.open, false);
 }));
+
+test('select all applies only to the visible page and refresh pauses until selection is cleared', () => browser(async (state, _timers, results) => {
+    const inputs = [{ value: '1' }, { value: '2' }];
+    results.querySelectorAll = selector => selector === '[data-schedule-select]' ? inputs : [];
+    let calls = 0;
+    globalThis.fetch = async () => { calls++; return { ok: true, text: async () => 'updated' }; };
+
+    state.selectAll(true);
+    assert.deepEqual(state.selected, ['1', '2']);
+    assert.equal(state.allSelected(), true);
+    state.select('1', false);
+    assert.equal(state.allSelected(), false);
+    await state.refresh();
+    assert.equal(calls, 0);
+    state.selectAll(false);
+    await state.refresh();
+    assert.equal(calls, 1);
+}));
+
+test('selection made while a refresh is in flight is not replaced', () => browser(async (state, _timers, results) => {
+    let finish;
+    globalThis.fetch = () => new Promise(resolve => { finish = resolve; });
+    const refresh = state.refresh();
+    state.select('42', true);
+    finish({ ok: true, text: async () => 'updated' });
+    await refresh;
+    assert.equal(results.innerHTML, 'previous');
+    assert.deepEqual(state.selected, ['42']);
+}));

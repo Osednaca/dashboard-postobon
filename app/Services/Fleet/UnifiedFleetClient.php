@@ -75,14 +75,15 @@ class UnifiedFleetClient
         );
     }
 
-    public function deleteWl35Video(string $deviceId, int $index): array
+    public function deleteWl35Video(string $deviceId, int $index, ?int $expectedCount = null): array
     {
         $this->ensureConfigured();
         $baseUrl = $this->resolveReachableBaseUrl();
 
         return $this->send(
             fn (): Response => $this->request(false, $baseUrl)->delete(
-                '/api/devices/'.rawurlencode($deviceId).'/video/'.$index
+                '/api/devices/'.rawurlencode($deviceId).'/video/'.$index,
+                $expectedCount === null ? [] : ['expected_video_count' => $expectedCount],
             ),
             "eliminar el video {$index} del 35",
             $baseUrl

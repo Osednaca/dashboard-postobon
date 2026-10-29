@@ -209,9 +209,11 @@ class Wl35LibraryUploadTest extends TestCase
         $this->assertSame('missing_mapping', $preview['status']);
         $this->assertSame('actual.mp4', $preview['media_name']);
         $this->assertNull($preview['url']);
-        Http::fake(['gateway.test/*' => Http::response(['success' => true, 'results' => [
-            ['success' => true, 'type' => 'wl35', 'id' => 'fan-a'],
-        ]])]);
+        Http::fake(['gateway.test/api/fleet' => Http::response(['devices' => [$this->live(2)]]),
+            'gateway.test/api/devices/fan-a/video/1' => Http::response(['success' => true, 'confirmed' => true, 'index' => 1, 'video_count' => 1]),
+            'gateway.test/*' => Http::response(['success' => true, 'results' => [
+                ['success' => true, 'type' => 'wl35', 'id' => 'fan-a'],
+            ]])]);
         $this->delete(route('devices.wl35.videos.destroy', 'fan-a'), ['index' => 1])->assertRedirect();
         $this->assertSame('siguiente.mp4', Wl35DeviceMedia::sole()->filename);
         $this->assertSame(1, Wl35DeviceMedia::sole()->video_index);

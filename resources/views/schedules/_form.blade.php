@@ -4,10 +4,15 @@
     $formType = $formType === 'activate_campaign' ? '' : $formType;
     $recurrence = old('recurrence_type', $schedule?->recurrence_type ?? 'once');
     $defaultScope = $schedule?->controlTargetScope();
-    if ($schedule?->type === 'change_content' && $schedule?->target_scope === null && ! $schedule?->device_id && ! $schedule?->group_id) {
+    if ($schedule?->type === 'change_content' && $schedule?->target_scope === null && ! $schedule?->device_id && ! $schedule?->group_id && empty($schedule?->device_targets)) {
         $defaultScope = 'all';
     }
     $scope = old('target_scope', $defaultScope ?? '');
+    $selectedDevices = old('device_targets', old('device_targets_present') ? [] : ($schedule?->device_targets ?? ($schedule?->device_id ? ['z2:'.$schedule->device_id] : [])));
+    $selectedDevices = is_array($selectedDevices) ? array_filter($selectedDevices, 'is_string') : [];
+    $availableDeviceKeys = $devices->map(fn ($device) => 'z2:'.$device->id)
+        ->concat($wl35Devices->map(fn ($device) => 'wl35:'.$device->id))->all();
+    $unavailableDevices = array_diff($selectedDevices, $availableDeviceKeys);
     $selectedDays = array_map('intval', old('recurrence_days', $schedule?->recurrence_days ?? [1, 2, 3, 4, 5]));
     $scheduledAt = old('scheduled_at', $schedule?->scheduled_at?->format('Y-m-d\TH:i'));
     $startsOn = old('starts_on', $schedule?->scheduled_at?->format('Y-m-d') ?? now(config('app.timezone'))->format('Y-m-d'));
@@ -93,14 +98,36 @@
         <p x-show="!scope" class="text-sm text-amber-800">Selecciona el alcance de esta programación. Sin una selección confirmada no se enviará la instrucción.</p>
 
         <div x-show="scope === 'device'" x-cloak>
-            <label for="device_id" class="block text-sm font-medium text-text mb-1.5">Dispositivo <span class="text-danger">*</span></label>
-            <select name="device_id" id="device_id" :disabled="scope !== 'device'"
-                    class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none focus:border-primary focus:ring-1 focus:ring-primary">
-                <option value="">Seleccionar dispositivo</option>
-                @foreach($devices as $device)
-                    <option value="{{ $device->id }}" @selected(old('device_id', $schedule?->device_id) == $device->id)>{{ $device->name }}</option>
-                @endforeach
-            </select>
+            <fieldset>
+                <legend class="block text-sm font-medium text-text mb-1.5">Dispositivos <span class="text-danger">*</span></legend>
+                <p class="mb-2 text-xs text-text-muted">Selecciona uno o varios dispositivos.</p>
+                <input type="hidden" name="device_targets_present" value="1" :disabled="scope !== 'device'">
+                <div class="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-border bg-surface p-3">
+                    @foreach($devices as $device)
+                        <label class="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-text hover:bg-white">
+                            <input type="checkbox" name="device_targets[]" value="z2:{{ $device->id }}" :disabled="scope !== 'device'" @checked(in_array('z2:'.$device->id, $selectedDevices))>
+                            {{ $device->name }} <span class="text-text-muted">(42)</span>
+                        </label>
+                    @endforeach
+                    @foreach($wl35Devices as $device)
+                        <label class="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-text hover:bg-white">
+                            <input type="checkbox" name="device_targets[]" value="wl35:{{ $device->id }}" :disabled="scope !== 'device'" @checked(in_array('wl35:'.$device->id, $selectedDevices))>
+                            {{ $device->name ?: $device->device_id }} <span class="text-text-muted">(35)</span>
+                        </label>
+                    @endforeach
+                    @foreach($unavailableDevices as $key)
+                        <label class="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-danger">
+                            <input type="checkbox" name="device_targets[]" value="{{ $key }}" :disabled="scope !== 'device'" checked>
+                            Dispositivo no disponible ({{ $key }}). Desmárcalo para continuar.
+                        </label>
+                    @endforeach
+                    @if($devices->isEmpty() && $wl35Devices->isEmpty())
+                        <p class="text-sm text-text-muted">No hay dispositivos registrados.</p>
+                    @endif
+                </div>
+            </fieldset>
+            @error('device_targets')<p class="mt-1.5 text-xs text-danger">{{ $message }}</p>@enderror
+            @error('device_targets.*')<p class="mt-1.5 text-xs text-danger">{{ $message }}</p>@enderror
             @error('device_id')<p class="mt-1.5 text-xs text-danger">{{ $message }}</p>@enderror
         </div>
 

@@ -10,6 +10,7 @@ use App\Jobs\FormatFleetStorageJob;
 use App\Models\FleetOperation;
 use App\Models\FleetUpload;
 use App\Models\Media;
+use App\Services\Fleet\DeviceMutationLock;
 use App\Services\Fleet\QueueTargetLock;
 use App\Services\Fleet\UnifiedFleetClient;
 use Illuminate\Http\JsonResponse;
@@ -43,7 +44,9 @@ class UnifiedFleetController extends Controller
         }
 
         try {
-            $result = $this->fleetClient->sendCommand($payload);
+            $result = ($payload['command'] ?? null) === 'play'
+                ? app(DeviceMutationLock::class)->run($payload['targets'] ?? [], fn (): array => $this->fleetClient->sendCommand($payload))
+                : $this->fleetClient->sendCommand($payload);
 
             if ($request->expectsJson()) {
                 $total = (int) ($result['total'] ?? count($result['results'] ?? []));

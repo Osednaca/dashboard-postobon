@@ -2,11 +2,14 @@
 
 namespace App\Http\Requests;
 
+use App\Http\Requests\Concerns\ValidatesScheduleDevices;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class UpdateScheduleRequest extends FormRequest
 {
+    use ValidatesScheduleDevices;
+
     public function authorize(): bool
     {
         return $this->user()?->can('update', $this->route('schedule'))
@@ -20,7 +23,7 @@ class UpdateScheduleRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'type' => ['required', 'in:power_on,power_off,change_content,format_sd'],
             'target_scope' => ['required', 'in:all,device,group'],
-            'device_id' => ['nullable', 'required_if:target_scope,device', 'prohibited_unless:target_scope,device', Rule::exists('devices', 'id')->whereNull('deleted_at')],
+            ...$this->scheduleDeviceRules(),
             'group_id' => ['nullable', 'required_if:target_scope,group', 'prohibited_unless:target_scope,group', Rule::exists('groups', 'id')->whereNull('deleted_at')],
             'campaign_id' => ['prohibited'],
             'content_id' => ['nullable', 'required_if:type,change_content', 'exists:media,id'],
@@ -55,7 +58,8 @@ class UpdateScheduleRequest extends FormRequest
             'type' => $this->input('type', $schedule?->type),
             'target_scope' => $scope,
             'recurrence_type' => $this->input('recurrence_type', $schedule?->recurrence_type ?? 'once'),
-            'device_id' => $this->input('device_id', ! $this->has('target_scope') || $scope === 'device' ? $schedule?->device_id : null),
+            'device_id' => $this->input('device_id', ($this->has('device_targets') || $this->has('device_targets_present')) ? null : (! $this->has('target_scope') || $scope === 'device' ? $schedule?->device_id : null)),
+            'device_targets' => $this->input('device_targets', $this->has('device_targets_present') ? [] : ($this->has('device_id') ? null : (! $this->has('target_scope') || $scope === 'device' ? $schedule?->device_targets : null))),
             'group_id' => $this->input('group_id', ! $this->has('target_scope') || $scope === 'group' ? $schedule?->group_id : null),
             'campaign_id' => $this->input('campaign_id'),
             'content_id' => $this->input('content_id', $schedule?->content_id),
@@ -82,6 +86,10 @@ class UpdateScheduleRequest extends FormRequest
             'campaign_id.prohibited' => 'Las programaciones ya no permiten activar campañas.',
             'device_id.exists' => 'El dispositivo seleccionado no existe.',
             'device_id.required_if' => 'Selecciona el dispositivo que recibirá la instrucción.',
+            'device_id.required' => 'Selecciona al menos un dispositivo.',
+            'device_targets.required' => 'Selecciona al menos un dispositivo.',
+            'device_targets.min' => 'Selecciona al menos un dispositivo.',
+            'device_targets.prohibited_unless' => 'Los dispositivos no coinciden con el alcance seleccionado.',
             'group_id.exists' => 'El grupo seleccionado no existe.',
             'group_id.required_if' => 'Selecciona el grupo que recibirá la instrucción.',
             'campaign_id.exists' => 'La campaña seleccionada no existe.',

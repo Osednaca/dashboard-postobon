@@ -1,0 +1,324 @@
+<?php
+
+namespace App\Services\Campaigns;
+
+use App\Jobs\ProcessCampaignDeviceJob;
+use App\Models\Campaign;
+use App\Models\CampaignDelivery;
+use App\Models\CampaignDeviceFile;
+use App\Models\CampaignDevicePlayback;
+use App\Models\Device;
+use App\Services\CampaignTargetCatalog;
+use App\Services\Fleet\MediaPreviewSource;
+use App\Services\Fleet\RetiredDeviceJobExclusions;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
+use Throwable;
+
+class CampaignLifecycle
+{
+    public function __construct(private CampaignDeviceTransport $transport) {}
+
+    public function assertQueueConfiguration(): void
+    {
+        if (! in_array(config('cache.stores.'.config('cache.default').'.driver'), ['database', 'redis'])) {
+            throw new \RuntimeException('Las campanas requieren bloqueos compartidos en cache database/redis.');
+        }
+        $connection = config('queue.default');
+        if (! in_array(config('queue.connections.'.$connection.'.driver'), ['database', 'redis']) || (int) config('queue.connections.'.$connection.'.retry_after') <= 1900) {
+            throw new \RuntimeException('Las campanas requieren cola database/redis y retry_after mayor a 1900 segundos.');
+        }
+    }
+
+    public static function lockName(string $target): string
+    {
+        return str_starts_with($target, 'wl35:') ? 'device-video-removal:wl35:'.hash('sha256', substr($target, 5)) : 'campaign-device:'.hash('sha256', $target);
+    }
+
+    public function activate(Campaign $campaign): void
+    {
+        $this->assertQueueConfiguration();
+        $campaign->refresh();
+        if ($campaign->end_date?->lte(now())) {
+            throw ValidationException::withMessages(['end_date' => 'La campaÃ±a ya terminÃ³. Ajusta su perÃ­odo antes de activarla.']);
+        }
+        if ($campaign->media()->count() === 0) {
+            throw ValidationException::withMessages(['media_ids' => 'Selecciona al menos un video para activar la campaña.']);
+        }
+        $previous = $campaign->status;
+        $campaign->update(['status' => 'scheduled']);
+        try {
+            $this->snapshot($campaign);
+        } catch (Throwable $e) {
+            $campaign->update(['status' => $previous]);
+            throw $e;
+        }
+        $campaign->update(['status' => $campaign->start_date?->isFuture() ? 'scheduled' : 'active', 'lifecycle_error' => null]);
+    }
+
+    public function finish(Campaign $campaign): void
+    {
+        $campaign->update(['status' => 'finished']);
+    }
+
+    public function snapshot(Campaign $campaign): void
+    {
+        $media = $campaign->media()->get();
+        $sources = [];
+        foreach ($media as $item) {
+            if (! str_starts_with($item->mime_type, 'video/') || $item->duration < 1) {
+                throw ValidationException::withMessages(['media_ids' => 'Selecciona videos con duración conocida para reproducir la secuencia.']);
+            }
+            $sources[$item->id] = app(MediaPreviewSource::class)->resolve($item);
+            if (! $sources[$item->id]) {
+                throw ValidationException::withMessages(['media_ids' => 'Un video seleccionado no está disponible.']);
+            }
+        }
+        $targets = $campaign->target_devices;
+        if ($targets === null) {
+            $targets = Device::whereIn('id', $campaign->deviceCampaigns()->pluck('device_id'))->get()->map(fn ($d) => CampaignTargetCatalog::z2Key($d->mac_address))->unique()->all();
+        }
+        [$targets] = app(RetiredDeviceJobExclusions::class)->filter('campaign', (string) $campaign->id, $targets);
+        $targets = app(CampaignTargetCatalog::class)->validatedKeys($targets);
+        if ($targets === []) {
+            throw ValidationException::withMessages(['target_devices' => 'Selecciona dispositivos disponibles para la campaña.']);
+        }
+        // Old targets participate in the same transaction so an audience edit cannot race cleanup.
+        $lockTargets = array_unique(array_merge($targets, $campaign->deliveries()->with('file')->get()->pluck('file.target_key')->all()));
+        sort($lockTargets);
+        $locks = [];
+        try {
+            foreach ($lockTargets as $target) {
+                $lock = Cache::lock(self::lockName($target), 2000);
+                if (! $lock->get()) {
+                    throw ValidationException::withMessages(['target_devices' => 'Un dispositivo está procesando contenido. Reintenta cuando termine.']);
+                }
+                $locks[] = $lock;
+            }
+            DB::transaction(function () use ($campaign, $targets, $media, $sources): void {
+                $current = [];
+                foreach ($targets as $target) {
+                    foreach ($media as $position => $item) {
+                        $source = $sources[$item->id];
+                        $identity = $source['kind'] === 'private_cloud' ? 'cloud:'.rawurldecode(basename($source['path'])) : 'source:'.$item->file_path;
+                        $file = CampaignDeviceFile::firstOrCreate(['target_key' => $target, 'identity_key' => hash('sha256', $identity)], ['media_id' => $item->id, 'filename' => $source['kind'] === 'private_cloud' ? rawurldecode(basename($source['path'])) : 'campaign-'.substr(hash('sha256', $identity), 0, 24).'.mp4']);
+                        if ($file->state === 'removing' || (str_starts_with($target, 'z2:') && CampaignDeviceFile::where('target_key', $target)->where('filename', $file->filename)->where('state', 'removing')->exists())) {
+                            throw ValidationException::withMessages(['media_ids' => 'Este archivo aún se está retirando. Espera su confirmación antes de activarlo.']);
+                        }
+                        if (in_array($file->state, ['removed', 'preserved', 'reported_absent'])) {
+                            $file->update(['state' => 'pending', 'owned' => false, 'requested_at' => null, 'confirmed_at' => null, 'evidence' => null]);
+                        }
+                        $delivery = CampaignDelivery::updateOrCreate(['campaign_id' => $campaign->id, 'campaign_device_file_id' => $file->id], ['position' => $position + 1, 'duration' => $item->duration, 'released_at' => null]);
+                        $current[] = $delivery->id;
+                    }
+                }
+                $campaign->deliveries()->whereNotIn('id', $current)->whereNull('released_at')->update(['released_at' => now()]);
+            });
+        } finally {
+            foreach (array_reverse($locks) as $lock) {
+                $lock->release();
+            }
+        }
+    }
+
+    public function tick(): void
+    {
+        $this->assertQueueConfiguration();
+        // Paused campaigns also expire; permanent campaigns have no deadline.
+        Campaign::whereIn('status', ['active', 'paused', 'scheduled'])->whereNotNull('end_date')->where('end_date', '<=', now())->update(['status' => 'finished']);
+        foreach (Campaign::where('status', 'scheduled')->where(fn ($q) => $q->whereNull('start_date')->orWhere('start_date', '<=', now()))->get() as $campaign) {
+            try {
+                $this->activate($campaign);
+            } catch (Throwable $e) {
+                $this->recordCampaignError($campaign, $e->getMessage());
+            }
+        }
+        // Existing active campaigns and edits are reconciled without discarding old delivery evidence.
+        foreach (Campaign::where('status', 'active')->get() as $campaign) {
+            try {
+                $this->snapshot($campaign);
+            } catch (Throwable $e) {
+                $this->recordCampaignError($campaign, $e->getMessage());
+            }
+        }
+        CampaignDeviceFile::whereNotIn('state', ['removed', 'preserved', 'reported_absent'])->select('target_key')->distinct()->pluck('target_key')->merge(CampaignDevicePlayback::whereNotNull('campaign_id')->pluck('target_key'))->unique()->each(fn ($target) => ProcessCampaignDeviceJob::dispatch($target));
+    }
+
+    private function recordCampaignError(Campaign $campaign, string $error): void
+    {
+        $campaign->update(['lifecycle_error' => $error]);
+        $campaign->deliveries()->get()->each(fn ($d) => $d->file->update(['last_error' => $error]));
+        Log::warning('CampaÃ±a pendiente de reconciliaciÃ³n', ['campaign_id' => $campaign->id, 'error' => $error]);
+    }
+
+    private function references(CampaignDeviceFile $file)
+    {
+        $physicalIds = CampaignDeviceFile::where('target_key', $file->target_key)->where(function ($q) use ($file): void {
+            $q->whereKey($file->id);
+            if (str_starts_with($file->target_key, 'z2:') && $file->filename) {
+                $q->orWhere('filename', $file->filename);
+            } elseif ($file->evidence['upload_identity'] ?? null) {
+                $q->orWhere('evidence->upload_identity', $file->evidence['upload_identity']);
+            }
+        })->pluck('id');
+
+        return CampaignDelivery::whereIn('campaign_device_file_id', $physicalIds)->whereNull('released_at')->whereHas('campaign', fn ($q) => $q->whereNull('deleted_at')->where(fn ($q) => $q->whereIn('status', ['active', 'paused'])->orWhere(fn ($q) => $q->where('status', 'scheduled')->where(fn ($q) => $q->whereNull('start_date')->orWhere('start_date', '<=', now()))))->where(fn ($q) => $q->whereNull('end_date')->orWhere('end_date', '>', now())));
+    }
+
+    private function wantedNow(CampaignDeviceFile $file): bool
+    {
+        return $this->references($file)->with('campaign.media')->get()->contains(function ($delivery) use ($file): bool {
+            $campaign = $delivery->campaign;
+            if ($campaign->status !== 'active' || $campaign->start_date?->isFuture() || $campaign->end_date?->lte(now())) {
+                return false;
+            }
+            if ($campaign->target_devices !== null && ! in_array($file->target_key, $campaign->target_devices, true)) {
+                return false;
+            }
+
+            return $campaign->media->contains(fn ($media) => $media->id === $file->media_id || rawurldecode(basename($media->file_path)) === $file->filename);
+        });
+    }
+
+    private function hasReferences(CampaignDeviceFile $file): bool
+    {
+        if ($this->references($file)->exists()) {
+            return true;
+        }
+        // Protect active legacy campaigns even if their delivery snapshot cannot yet be reconciled.
+        foreach (Campaign::where(fn ($q) => $q->whereIn('status', ['active', 'paused'])->orWhere(fn ($q) => $q->where('status', 'scheduled')->where(fn ($q) => $q->whereNull('start_date')->orWhere('start_date', '<=', now()))))->where(fn ($q) => $q->whereNull('end_date')->orWhere('end_date', '>', now()))->with('media')->get() as $campaign) {
+            $keys = $campaign->target_devices;
+            if ($keys === null) {
+                $keys = Device::whereIn('id', $campaign->deviceCampaigns()->pluck('device_id'))->get()->map(fn ($d) => CampaignTargetCatalog::z2Key($d->mac_address))->all();
+            }
+            if (! in_array($file->target_key, $keys, true)) {
+                continue;
+            }
+            foreach ($campaign->media as $media) {
+                if ($media->id === $file->media_id || rawurldecode(basename($media->file_path)) === $file->filename) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    public function processDevice(string $target): void
+    {
+        $lock = Cache::lock(self::lockName($target), 2000);
+        if (! $lock->get()) {
+            return;
+        }
+        try {
+            $files = CampaignDeviceFile::where('target_key', $target)->orderBy('id')->get();
+            $winner = Campaign::where('status', 'active')->where(fn ($q) => $q->whereNull('start_date')->orWhere('start_date', '<=', now()))->where(fn ($q) => $q->whereNull('end_date')->orWhere('end_date', '>', now()))
+                ->whereHas('deliveries', fn ($q) => $q->whereNull('released_at')->whereHas('file', fn ($f) => $f->where('target_key', $target)))
+                ->orderByDesc('priority')->orderBy('id')->first();
+            $playback = CampaignDevicePlayback::where('target_key', $target)->first();
+            $currentValid = $winner && $playback?->campaign_id === $winner->id && $winner->deliveries()->whereKey($playback->delivery_id)->whereNull('released_at')->exists();
+            if (! $currentValid && $playback?->campaign_id !== null) {
+                $this->transport->power($target, false);
+                $playback->update(['campaign_id' => null, 'delivery_id' => null, 'due_at' => null, 'powered_off' => true, 'last_error' => null]);
+            }
+            // Finalize in-flight physical operations first; never overwrite the 42 desired file.
+            foreach ($files->whereIn('state', ['installing', 'removing']) as $file) {
+                if ($file->state === 'installing' && ! $this->hasReferences($file) && str_starts_with($target, 'z2:')) {
+                    $this->transport->remove($file);
+                } elseif ($file->state === 'installing') {
+                    $this->transport->confirmInstallation($file);
+                } else {
+                    $this->transport->remove($file);
+                }
+                if ($file->fresh()->state === 'installing' || $file->fresh()->state === 'removing') {
+                    return;
+                }
+            }
+            foreach ($files as $file) {
+                $file->refresh();
+                if ($this->hasReferences($file)) {
+                    continue;
+                }
+                if ($file->state === 'pending') {
+                    $file->update(['state' => 'removed', 'last_error' => null]);
+
+                    continue;
+                }
+                if (in_array($file->state, ['ready'])) {
+                    $this->transport->remove($file);
+
+                    return;
+                }
+            }
+            // Install all live campaign deliveries, even when a higher priority campaign owns playback.
+            foreach ($files as $file) {
+                $file->refresh();
+                if ($file->state === 'pending' && $this->references($file)->whereHas('campaign', fn ($q) => $q->where('status', 'active')->where(fn ($q) => $q->whereNull('start_date')->orWhere('start_date', '<=', now())))->exists()) {
+                    $this->publishFile($file);
+
+                    return;
+                }
+            }
+            if (! $winner) {
+                return;
+            }
+            $deliveries = $winner->deliveries()->whereNull('released_at')->whereHas('file', fn ($q) => $q->where('target_key', $target))->with('file')->orderBy('position')->get();
+            foreach ($deliveries as $delivery) {
+                if ($delivery->file->state === 'pending') {
+                    $this->publishFile($delivery->file);
+
+                    return;
+                }
+                if ($delivery->file->state !== 'ready') {
+                    return;
+                }
+            }
+            $this->rotate($winner, $target, $deliveries);
+        } catch (Throwable $e) {
+            if (isset($file)) {
+                $file->update(['last_error' => $e->getMessage()]);
+            }
+            CampaignDevicePlayback::updateOrCreate(['target_key' => $target], ['last_error' => $e->getMessage()]);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function publishFile(CampaignDeviceFile $file): void
+    {
+        $playback = CampaignDevicePlayback::where('target_key', $file->target_key)->first();
+        if ($playback?->campaign_id !== null) {
+            // The 42 installation protocol also selects its downloaded file. Suspend managed
+            // playback while provisioning so a lower-priority upload cannot replace its winner.
+            $this->transport->power($file->target_key, false);
+            $playback->update(['campaign_id' => null, 'delivery_id' => null, 'due_at' => null, 'powered_off' => true]);
+        }
+        $this->transport->install($file, fn () => $this->wantedNow($file));
+    }
+
+    private function rotate(Campaign $campaign, string $target, $deliveries): void
+    {
+        if ($deliveries->isEmpty()) {
+            return;
+        }
+        $playback = CampaignDevicePlayback::firstOrCreate(['target_key' => $target]);
+        if ($playback->campaign_id === $campaign->id && $playback->due_at?->isFuture()) {
+            return;
+        }
+        $current = $deliveries->search(fn ($d) => $d->id === $playback->delivery_id);
+        $next = $playback->campaign_id === $campaign->id && $current !== false ? ($current + 1) % $deliveries->count() : 0;
+        $delivery = $deliveries[$next];
+        // A finish/pause can arrive after a long upload; recheck immediately before playback.
+        $campaign->refresh();
+        if ($campaign->status !== 'active' || $campaign->end_date?->lte(now())) {
+            return;
+        }
+        if ($playback->powered_off) {
+            $this->transport->power($target, true);
+        }
+        $this->transport->select($delivery->file);
+        $playback->update(['campaign_id' => $campaign->id, 'delivery_id' => $delivery->id, 'due_at' => now()->addSeconds($delivery->duration), 'powered_off' => false, 'last_error' => null]);
+    }
+}

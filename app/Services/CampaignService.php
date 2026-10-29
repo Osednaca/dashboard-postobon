@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Campaign;
 use App\Repositories\Contracts\CampaignRepositoryInterface;
+use App\Services\Campaigns\CampaignLifecycle;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Arr;
@@ -116,7 +117,9 @@ class CampaignService extends BaseService
         $campaign = $this->repository->find($id);
 
         if ($campaign instanceof Campaign && in_array($campaign->status, ['draft', 'scheduled', 'paused'])) {
-            return $this->repository->update($id, ['status' => 'active']);
+            app(CampaignLifecycle::class)->activate($campaign);
+
+            return $campaign->fresh();
         }
 
         /** @var Campaign|null */
@@ -146,7 +149,9 @@ class CampaignService extends BaseService
         $campaign = $this->repository->find($id);
 
         if ($campaign instanceof Campaign && in_array($campaign->status, ['active', 'paused'])) {
-            return $this->repository->update($id, ['status' => 'finished']);
+            app(CampaignLifecycle::class)->finish($campaign);
+
+            return $campaign->fresh();
         }
 
         /** @var Campaign|null */

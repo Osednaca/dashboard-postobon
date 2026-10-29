@@ -121,6 +121,99 @@ class GroupMembershipUpdateTest extends TestCase
         Http::assertNothingSent();
     }
 
+    #[DataProvider('managers')]
+    public function test_managers_can_remove_selected_members_without_affecting_others(string $role, bool $api): void
+    {
+        $actor = User::factory()->create(['role' => $role]);
+        $group = Group::factory()->create();
+        $device = Device::factory()->create(['group_id' => $group->id]);
+        $profile = Wl35DeviceProfile::create(['device_id' => 'remove-35', 'name' => 'Quitar 35', 'group_id' => $group->id, 'notes' => 'Conservar']);
+        $retained = Device::factory()->create(['group_id' => $group->id]);
+        $beforeDevice = Arr::except($device->fresh()->getAttributes(), ['group_id', 'updated_at']);
+        $beforeProfile = Arr::except($profile->fresh()->getAttributes(), ['group_id', 'updated_at']);
+        $payload = ['remove_device_keys' => ['z2:'.$device->id, 'wl35:remove-35']];
+
+        $this->actingAs($actor);
+        if ($api) {
+            $this->putJson('/api/groups/'.$group->id, $payload)->assertOk();
+        } else {
+            $this->put('/groups/'.$group->id, $payload)->assertRedirect(route('groups.index'))->assertSessionHas('success');
+        }
+
+        $this->assertNull($device->fresh()->group_id);
+        $this->assertNull($profile->fresh()->group_id);
+        $this->assertSame($group->id, $retained->fresh()->group_id);
+        $this->assertEquals($beforeDevice, Arr::except($device->fresh()->getAttributes(), ['group_id', 'updated_at']));
+        $this->assertEquals($beforeProfile, Arr::except($profile->fresh()->getAttributes(), ['group_id', 'updated_at']));
+        $log = AuditLog::where('entity_type', 'Group')->where('entity_id', $group->id)->sole();
+        $this->assertSame([
+            ['device_key' => 'z2:'.$device->id, 'previous_group_id' => $group->id, 'action' => 'removed'],
+            ['device_key' => 'wl35:remove-35', 'previous_group_id' => $group->id, 'action' => 'removed'],
+        ], $log->details['devices']);
+        Http::assertNothingSent();
+    }
+
+    public function test_stale_removal_never_unlinks_devices_moved_to_another_group(): void
+    {
+        $group = Group::factory()->create();
+        $newGroup = Group::factory()->create();
+        $device = Device::factory()->create(['group_id' => $newGroup->id]);
+        $profile = Wl35DeviceProfile::create(['device_id' => 'moved-35', 'name' => '35', 'group_id' => $newGroup->id]);
+        $this->actingAs(User::factory()->create(['role' => 'admin']))->put('/groups/'.$group->id, [
+            'remove_device_keys' => ['z2:'.$device->id, 'wl35:moved-35'],
+        ])->assertRedirect(route('groups.index'))->assertSessionHas('success');
+
+        $this->assertSame($newGroup->id, $device->fresh()->group_id);
+        $this->assertSame($newGroup->id, $profile->fresh()->group_id);
+        $this->assertSame([], AuditLog::where('entity_type', 'Group')->where('entity_id', $group->id)->sole()->details['devices']);
+        Http::assertNothingSent();
+    }
+
+    public function test_invalid_or_conflicting_removal_is_rejected_and_edit_retains_selection(): void
+    {
+        $group = Group::factory()->create();
+        $device = Device::factory()->create(['group_id' => $group->id]);
+        $key = 'z2:'.$device->id;
+        $this->actingAs(User::factory()->create(['role' => 'admin']));
+        $this->get('/groups/'.$group->id.'/edit')->assertOk()->assertSee('name="remove_device_keys[]"', false)->assertSee('Quitar del grupo');
+        $this->from('/groups/'.$group->id.'/edit')->put('/groups/'.$group->id, [
+            'name' => '', 'remove_device_keys' => [$key],
+        ])->assertSessionHasErrors('name')->assertSessionHasInput('remove_device_keys', [$key]);
+        $this->putJson('/api/groups/'.$group->id, ['remove_device_keys' => ['wl35:unknown']])->assertUnprocessable();
+        $this->putJson('/api/groups/'.$group->id, ['device_keys' => [$key], 'remove_device_keys' => [$key]])->assertUnprocessable();
+        $this->assertSame($group->id, $device->fresh()->group_id);
+        $this->assertSame(0, AuditLog::count());
+        Http::assertNothingSent();
+    }
+
+    public function test_forbidden_roles_cannot_remove_members(): void
+    {
+        $group = Group::factory()->create();
+        $device = Device::factory()->create(['group_id' => $group->id]);
+        foreach (['campanas', 'tecnico'] as $role) {
+            $this->actingAs(User::factory()->create(['role' => $role]));
+            $this->put('/groups/'.$group->id, ['remove_device_keys' => ['z2:'.$device->id]])->assertForbidden();
+            $this->putJson('/api/groups/'.$group->id, ['remove_device_keys' => ['z2:'.$device->id]])->assertForbidden();
+        }
+        $this->assertSame($group->id, $device->fresh()->group_id);
+        Http::assertNothingSent();
+    }
+
+    public function test_audit_failure_rolls_back_removal_of_both_models(): void
+    {
+        $group = Group::factory()->create();
+        $device = Device::factory()->create(['group_id' => $group->id]);
+        $profile = Wl35DeviceProfile::create(['device_id' => 'rollback-remove-35', 'name' => '35', 'group_id' => $group->id]);
+        $this->mock(AuditLogService::class)->shouldReceive('log')->once()->andThrow(new \RuntimeException('Audit unavailable'));
+        $this->actingAs(User::factory()->create(['role' => 'admin']))->putJson('/api/groups/'.$group->id, [
+            'remove_device_keys' => ['z2:'.$device->id, 'wl35:rollback-remove-35'],
+        ])->assertServerError();
+
+        $this->assertSame($group->id, $device->fresh()->group_id);
+        $this->assertSame($group->id, $profile->fresh()->group_id);
+        Http::assertNothingSent();
+    }
+
     public function test_unknown_deleted_and_malformed_keys_cannot_partially_update_membership_or_metadata(): void
     {
         $group = Group::factory()->create(['name' => 'Original']);

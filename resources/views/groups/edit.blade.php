@@ -55,11 +55,14 @@
 
             <section class="space-y-3 border-t border-border pt-6">
                 <h2 class="text-lg font-semibold text-text">Dispositivos actuales ({{ count($currentDevices) }})</h2>
-                <p class="text-sm text-text-light">Estos equipos seguirán en el grupo al guardar.</p>
+                <p class="text-sm text-text-light">Marca los equipos que quieras quitar del grupo al guardar.</p>
                 <ul class="divide-y divide-border rounded-lg border border-border">
                     @forelse($currentDevices as $device)
                         <li class="flex items-center justify-between gap-3 p-3">
-                            <span><span class="block font-medium text-text">{{ $device['name'] }}</span><span class="text-xs text-text-muted">{{ $device['establishment_name'] ?? 'Sin establecimiento' }}</span></span>
+                            <label class="flex flex-1 cursor-pointer items-center gap-3">
+                                <input type="checkbox" name="remove_device_keys[]" value="{{ $device['key'] }}" @checked(in_array($device['key'], (array) old('remove_device_keys', []), true)) class="rounded border-border text-primary">
+                                <span><span class="block font-medium text-text">{{ $device['name'] }}</span><span class="text-xs text-text-muted">{{ $device['establishment_name'] ?? 'Sin establecimiento' }} · Quitar del grupo</span></span>
+                            </label>
                             <span class="rounded-full bg-surface px-2 py-1 text-xs font-medium">{{ $device['type'] === 'wl35' ? '35' : '42' }}</span>
                         </li>
                     @empty

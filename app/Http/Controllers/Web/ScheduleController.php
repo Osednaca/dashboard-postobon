@@ -3,16 +3,19 @@
 namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\BulkDeleteSchedulesRequest;
 use App\Http\Requests\StoreScheduleRequest;
 use App\Http\Requests\UpdateScheduleRequest;
 use App\Models\Device;
 use App\Models\Group;
 use App\Models\Media;
 use App\Models\Schedule;
+use App\Models\Wl35DeviceProfile;
 use App\Services\ScheduleService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -79,10 +82,11 @@ class ScheduleController extends Controller
         $this->authorize('create', Schedule::class);
 
         $devices = Device::orderBy('name')->get();
+        $wl35Devices = Wl35DeviceProfile::orderBy('name')->get();
         $groups = Group::orderBy('name')->get();
         $media = Media::orderBy('name')->get();
 
-        return view('schedules.create', compact('devices', 'groups', 'media'));
+        return view('schedules.create', compact('devices', 'wl35Devices', 'groups', 'media'));
     }
 
     /**
@@ -134,10 +138,11 @@ class ScheduleController extends Controller
         $this->authorize('update', $schedule);
 
         $devices = Device::orderBy('name')->get();
+        $wl35Devices = Wl35DeviceProfile::orderBy('name')->get();
         $groups = Group::orderBy('name')->get();
         $media = Media::orderBy('name')->get();
 
-        return view('schedules.edit', compact('schedule', 'devices', 'groups', 'media'));
+        return view('schedules.edit', compact('schedule', 'devices', 'wl35Devices', 'groups', 'media'));
     }
 
     /**
@@ -195,6 +200,36 @@ class ScheduleController extends Controller
             Log::error('Error al eliminar programación: '.$e->getMessage());
 
             return back()->with('error', 'Ocurrió un error al eliminar la programación. Por favor intente nuevamente.');
+        }
+    }
+
+    public function bulkDestroy(BulkDeleteSchedulesRequest $request): RedirectResponse
+    {
+        $this->authorize('viewAny', Schedule::class);
+        $ids = $request->validated('ids');
+        $schedules = Schedule::whereIn('id', $ids)->get();
+        if ($schedules->count() !== count($ids)) {
+            throw ValidationException::withMessages(['ids' => 'Una programación seleccionada ya no está disponible.']);
+        }
+
+        foreach ($schedules as $schedule) {
+            $this->authorize('delete', $schedule);
+        }
+
+        try {
+            DB::transaction(function () use ($schedules): void {
+                foreach ($schedules as $schedule) {
+                    if (! $this->scheduleService->delete($schedule->id)) {
+                        throw new \RuntimeException('No se pudo eliminar una programación seleccionada.');
+                    }
+                }
+            });
+
+            return redirect()->route('schedules.index')->with('success', 'Programaciones eliminadas exitosamente.');
+        } catch (\Exception $e) {
+            Log::error('Error al eliminar programaciones: '.$e->getMessage());
+
+            return back()->with('error', 'No se pudieron eliminar las programaciones seleccionadas.');
         }
     }
 }

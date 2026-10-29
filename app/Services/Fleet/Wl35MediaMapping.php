@@ -5,6 +5,7 @@ namespace App\Services\Fleet;
 use App\Models\Wl35DeviceMedia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Throwable;
 
 class Wl35MediaMapping
@@ -43,7 +44,7 @@ class Wl35MediaMapping
                     }
                     Wl35DeviceMedia::updateOrCreate(
                         ['device_id' => $deviceId, 'video_index' => $index],
-                        ['media_id' => $mediaId, 'filename' => $filename],
+                        ['media_id' => $mediaId, 'filename' => $filename, 'upload_identity' => (string) Str::uuid()],
                     );
                 });
             } catch (Throwable $exception) {

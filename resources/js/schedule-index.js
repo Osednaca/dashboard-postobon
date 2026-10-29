@@ -3,6 +3,7 @@ export function createScheduleIndex(initialView = 'list') {
         view: initialView,
         refreshError: false,
         refreshing: false,
+        selected: [],
         timer: null,
         controller: null,
         init() {
@@ -23,9 +24,21 @@ export function createScheduleIndex(initialView = 'list') {
                 link.href = target.href;
             });
         },
+        select(id, checked) {
+            this.selected = checked ? [...new Set([...this.selected, id])] : this.selected.filter(item => item !== id);
+        },
+        selectAll(checked) {
+            this.selected = checked
+                ? Array.from(this.$refs.results.querySelectorAll('[data-schedule-select]'), input => input.value)
+                : [];
+        },
+        allSelected() {
+            const inputs = this.$refs.results?.querySelectorAll('[data-schedule-select]') ?? [];
+            return inputs.length > 0 && Array.from(inputs).every(input => this.selected.includes(input.value));
+        },
         async refresh() {
             // Do not replace a focused action or a pending confirmation dialog.
-            if (this.refreshing || document.hidden || this.$refs.results.contains(document.activeElement)) return;
+            if (this.refreshing || this.selected.length || document.hidden || this.$refs.results.contains(document.activeElement)) return;
             this.refreshing = true;
             this.controller = new AbortController();
             const timeout = window.setTimeout(() => this.controller.abort(), 10000);
@@ -37,6 +50,8 @@ export function createScheduleIndex(initialView = 'list') {
                 const page = new DOMParser().parseFromString(await response.text(), 'text/html');
                 const results = page.querySelector('[data-schedule-results]');
                 if (!results) throw new Error('Respuesta inesperada');
+                // Selection can begin while the fetch is in flight.
+                if (this.selected.length || this.$refs.results.contains(document.activeElement)) return;
                 // Keep expanded days open when the automatic status refresh replaces the markup.
                 const expandedDays = new Set(Array.from(
                     this.$refs.results.querySelectorAll('[data-calendar-more][open]'),

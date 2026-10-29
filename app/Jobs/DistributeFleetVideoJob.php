@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\FleetUpload;
+use App\Services\Fleet\DeviceMutationLock;
 use App\Services\Fleet\MediaSourceMaterializer;
 use App\Services\Fleet\RetiredDeviceJobExclusions;
 use App\Services\Fleet\UnifiedFleetClient;
@@ -59,21 +60,25 @@ class DistributeFleetVideoJob implements ShouldQueue
                 $upload->update(['phase' => 'downloading_media']);
                 app(MediaSourceMaterializer::class)->materialize($upload->sourceMedia, $upload->file_path);
             }
-            $result = $fleetClient->uploadPathAndDistribute(
-                Storage::disk('local')->path($upload->file_path),
-                $upload->original_name,
-                $targets,
-                function (string $phase, int $progress, array $metadata = []) use ($upload): void {
-                    $upload->update([
-                        'phase' => $phase,
-                        'progress' => $progress,
-                        'result' => array_merge($upload->result ?? [], $metadata),
-                    ]);
-                },
-                false,
-            );
-            app(Wl35MediaMapping::class)->remember($result['results'] ?? [], $targets,
-                $upload->source_media_id, $upload->original_name);
+            $result = app(DeviceMutationLock::class)->run($targets, function () use ($fleetClient, $upload, $targets): array {
+                $result = $fleetClient->uploadPathAndDistribute(
+                    Storage::disk('local')->path($upload->file_path),
+                    $upload->original_name,
+                    $targets,
+                    function (string $phase, int $progress, array $metadata = []) use ($upload): void {
+                        $upload->update([
+                            'phase' => $phase,
+                            'progress' => $progress,
+                            'result' => array_merge($upload->result ?? [], $metadata),
+                        ]);
+                    },
+                    false,
+                );
+                app(Wl35MediaMapping::class)->remember($result['results'] ?? [], $targets,
+                    $upload->source_media_id, $upload->original_name);
+
+                return $result;
+            });
 
             $upload->update([
                 'status' => 'completed',
