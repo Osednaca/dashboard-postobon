@@ -216,11 +216,7 @@ class CampaignLifecycleTest extends TestCase
         $transport = $this->mock(CampaignDeviceTransport::class);
         $transport->shouldNotReceive('power');
         $transport->shouldReceive('select')->once();
-        if ($transition === 'paused') {
-            $transport->shouldNotReceive('remove');
-        } else {
-            $transport->shouldReceive('remove')->once()->andReturnUsing(fn ($file) => $file->update(['state' => 'removed']));
-        }
+        $transport->shouldReceive('remove')->once()->andReturnUsing(fn ($file) => $file->update(['state' => 'removed']));
         $lifecycle = app(CampaignLifecycle::class);
         $lifecycle->activate($campaign);
         $this->ready($campaign);
@@ -242,7 +238,7 @@ class CampaignLifecycleTest extends TestCase
         $this->assertNull($playback->delivery_id);
         $this->assertNull($playback->due_at);
         $this->assertFalse($playback->powered_off);
-        $this->assertSame($transition === 'paused' ? 'ready' : 'removed', CampaignDeviceFile::sole()->state);
+        $this->assertSame('removed', CampaignDeviceFile::sole()->state);
     }
 
     public static function inactiveTransitions(): array

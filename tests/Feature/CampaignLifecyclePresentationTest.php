@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Campaign;
+use App\Models\CampaignBaselineFile;
 use App\Models\CampaignDelivery;
 use App\Models\CampaignDeviceFile;
 use App\Models\CampaignDevicePlayback;
@@ -38,7 +39,7 @@ class CampaignLifecyclePresentationTest extends TestCase
             ->assertSee('Requiere revisión')
             ->assertSee('Finalizar una campaña no confirma el borrado.')
             ->assertSee('deja de gestionar la secuencia sin apagar el equipo.')
-            ->assertSee('El video actual puede continuar')
+            ->assertSee('el video actual puede continuar')
             ->assertDontSee('pausar o finalizar envía una orden de apagado')
             ->assertSee('No se volverá a borrar por un índice incierto.')
             ->assertSee('<script>alert(1)</script>')
@@ -149,10 +150,10 @@ class CampaignLifecyclePresentationTest extends TestCase
         $file->update(['target_key' => 'z2:AABBCCDDEEFF']);
         CampaignDevicePlayback::create(['target_key' => $file->target_key, 'baseline' => ['type' => 'z2', 'files' => [$file->filename], 'selection' => $file->filename], 'restore_state' => 'restored']);
         $this->actingAs($campaign->creator)->get(route('campaigns.show', $campaign))->assertOk()
-            ->assertSee('Contenido anterior conservado')
-            ->assertSee('Selección anterior solicitada')
+            ->assertSee('Contenido conservado por seguridad')
+            ->assertSee('Recuperación de contenido anterior solicitada')
             ->assertSee('esto no confirma su reproducción física')
-            ->assertSee('ya estaba en el dispositivo');
+            ->assertSee('estaba en el dispositivo');
         Http::assertNothingSent();
     }
 
@@ -162,9 +163,56 @@ class CampaignLifecyclePresentationTest extends TestCase
         $file = $this->delivery($campaign, 'preserved', 'Anterior')->file;
         CampaignDevicePlayback::create(['target_key' => $file->target_key, 'baseline' => ['type' => 'legacy'], 'restore_state' => 'pending', 'restore_error' => '<script>error</script>']);
         $this->actingAs($campaign->creator)->get(route('campaigns.show', $campaign))->assertOk()
-            ->assertSee('Recuperación de selección anterior pendiente')
+            ->assertSee('Recuperación del contenido anterior pendiente')
             ->assertSee('no se puede reconstruir la selección previa')
             ->assertSee('<script>error</script>')->assertDontSee('<script>error</script>', false);
+        Http::assertNothingSent();
+    }
+
+    public function test_preparing_backup_is_visible_before_publication(): void
+    {
+        $campaign = $this->campaign('active');
+        $file = $this->delivery($campaign, 'pending', 'Pendiente')->file;
+        CampaignDevicePlayback::create([
+            'target_key' => $file->target_key,
+            'baseline' => ['type' => 'z2', 'files' => ['anterior.mp4'], 'selection' => 'anterior.mp4'],
+            'restore_state' => 'preparing',
+            'restore_error' => 'No se confirmó la detención o reanudación del dispositivo.',
+        ]);
+
+        $this->actingAs($campaign->creator)->get(route('campaigns.show', $campaign))->assertOk()
+            ->assertSee('Preparando respaldo del contenido anterior')
+            ->assertSee('No se confirmó la detención o reanudación del dispositivo.')
+            ->assertSee('Publicación pendiente')
+            ->assertDontSee('Contenido anterior conservado en la SD');
+        Http::assertNothingSent();
+    }
+
+    public function test_baseline_file_statuses_show_current_session_and_never_claim_physical_deletion_for_42(): void
+    {
+        $campaign = $this->campaign('active');
+        $file = $this->delivery($campaign, 'pending', 'Pendiente')->file;
+        $file->update(['target_key' => 'z2:AABBCCDDEEFF']);
+        $session = 'b1676e5f-ea81-4139-8338-fcb41d5a73bf';
+        $playback = CampaignDevicePlayback::create([
+            'target_key' => $file->target_key,
+            'baseline' => ['type' => 'z2', 'session_id' => $session, 'files' => ['anterior.mp4']],
+            'restore_state' => 'preparing',
+        ]);
+        $attributes = [
+            'playback_id' => $playback->id, 'session_id' => $session, 'position' => 1,
+            'filename' => 'anterior.mp4', 'backup_disk' => 'local', 'backup_path' => 'backup/test',
+            'backup_hash' => str_repeat('a', 64), 'backup_size' => 10, 'state' => 'removed',
+        ];
+        CampaignBaselineFile::create($attributes);
+        CampaignBaselineFile::create(array_merge($attributes, ['session_id' => 'ff10560c-4ef8-42b0-a51e-5a715fc008a3', 'filename' => 'sesion-antigua.mp4']));
+
+        $this->actingAs($campaign->creator)->get(route('campaigns.show', $campaign))->assertOk()
+            ->assertSee('anterior.mp4')
+            ->assertSee('Retiro procesado')
+            ->assertSee('Ausente del reporte; borrado físico de SD sin verificar.')
+            ->assertDontSee('sesion-antigua.mp4')
+            ->assertDontSee('Borrado confirmado');
         Http::assertNothingSent();
     }
 

@@ -2,6 +2,7 @@
 
 namespace App\Services\Campaigns;
 
+use App\Models\CampaignBaselineFile;
 use App\Models\CampaignDeviceFile;
 use App\Models\CampaignDevicePlayback;
 use App\Models\Wl35DeviceMedia;
@@ -20,6 +21,157 @@ use Throwable;
 class CampaignDeviceTransport
 {
     public function __construct(private UnifiedFleetClient $fleet, private PrivateCloudClient $cloud, private MediaSourceMaterializer $materializer, private MediaPreviewSource $sources) {}
+
+    /** Caller holds the device lock and verifies all backups and active references. */
+    public function removeBaseline(CampaignBaselineFile $file): void
+    {
+        $target = CampaignDevicePlayback::findOrFail($file->playback_id)->target_key;
+        $probe = new CampaignDeviceFile(['target_key' => $target]);
+        $operation = $file->operation ?? [];
+        if ($file->state === 'needs_review' || $file->state === 'removed') {
+            return;
+        }
+        if (str_starts_with($target, 'z2:')) {
+            $device = $this->z2($probe);
+            $id = $operation['removal_id'] ?? null;
+            $name = $operation['current_filename'] ?? $file->filename;
+            $record = collect($device['mediaRemovals'] ?? [])->first(fn ($r) => $id && ($r['requestId'] ?? null) === $id);
+            if (($record['status'] ?? null) === 'reported_absent') {
+                $file->update(['state' => 'removed', 'last_error' => 'Ausencia reportada en la lista; el borrado físico de SD no está confirmado.']);
+
+                return;
+            }
+            if ($file->state !== 'removing') {
+                $id = (string) Str::uuid();
+                $operation['removal_id'] = $id;
+                $file->update(['state' => 'removing', 'operation' => $operation, 'last_error' => null]);
+            }
+            $response = $this->cloud->post('/api/devices/'.substr($target, 3).'/remove-media', ['filename' => $name, 'request_id' => $id]);
+            if (($response['result'] ?? -1) !== 0) {
+                throw new RuntimeException('No se pudo solicitar el retiro del archivo 42.');
+            }
+
+            return;
+        }
+        if ($file->state === 'removing') {
+            $file->update(['state' => 'needs_review', 'last_error' => 'El borrado anterior del equipo 35 se interrumpió; requiere revisión.']);
+
+            return;
+        }
+        $live = $this->wl35($probe);
+        $id = substr($target, 5);
+        $identity = $operation['current_identity'] ?? $file->upload_identity;
+        $mappings = Wl35DeviceMedia::where('device_id', $id)->where('upload_identity', $identity)->get();
+        $mapping = $mappings->first();
+        if (! $identity || $mappings->count() !== 1 || $mapping->video_index > (int) $live['video_count']) {
+            $file->update(['state' => 'needs_review', 'last_error' => 'No se puede identificar con seguridad el archivo anterior del equipo 35.']);
+
+            return;
+        }
+        $index = $mapping->video_index;
+        $file->update(['state' => 'removing', 'operation' => array_merge($operation, ['before_count' => (int) $live['video_count'], 'removal_index' => $index]), 'last_error' => null]);
+        try {
+            $result = $this->fleet->deleteWl35Video($id, $index, (int) $live['video_count']);
+            if (($result['confirmed'] ?? false) !== true || ($result['deletion_status'] ?? '') !== 'confirmed' || (int) ($result['video_count'] ?? -1) !== (int) $live['video_count'] - 1) {
+                throw new RuntimeException('Respuesta de borrado sin evidencia del dispositivo.');
+            }
+            DB::transaction(function () use ($id, $target, $index, $mapping, $file): void {
+                $mapping->delete();
+                Wl35DeviceMedia::where('device_id', $id)->where('video_index', '>', $index)->orderBy('video_index')->get()->each(fn ($m) => $m->decrement('video_index'));
+                CampaignDeviceFile::where('target_key', $target)->where('video_index', '>', $index)->decrement('video_index');
+                $file->update(['state' => 'removed', 'last_error' => null]);
+            });
+        } catch (Throwable $e) {
+            Wl35DeviceMedia::where('device_id', $id)->update(['media_id' => null, 'filename' => null]);
+            $file->update(['state' => 'needs_review', 'last_error' => 'Borrado anterior 35 ambiguo; no se repetirá el índice.']);
+        }
+    }
+
+    /** $verifiedPath must be supplied by the backup verifier on each attempt. */
+    public function restoreBaselineFile(CampaignBaselineFile $file, string $verifiedPath): void
+    {
+        if (in_array($file->state, ['backed_up', 'restored', 'needs_review'], true)) {
+            return;
+        }
+        if (! in_array($file->state, ['removed', 'restoring'], true)) {
+            throw new RuntimeException('El retiro anterior todavía no ha terminado.');
+        }
+        $target = CampaignDevicePlayback::findOrFail($file->playback_id)->target_key;
+        $probe = new CampaignDeviceFile(['target_key' => $target]);
+        $operation = $file->operation ?? [];
+        if (str_starts_with($target, 'z2:')) {
+            $device = $this->z2($probe);
+            if ($file->state === 'restoring') {
+                if (($operation['stage'] ?? null) === 'sending') {
+                    $name = $operation['current_filename'] ?? null;
+                    if ($name && ($device['reportedPlaylistVersion'] ?? 0) > ($operation['report_version'] ?? 0)
+                        && ($device['reportedPlaylistAt'] ?? 0) > ($operation['sent_at_ms'] ?? 0)
+                        && in_array($name, $device['reportedPlaylist'] ?? [], true)) {
+                        $file->update(['state' => 'restored', 'last_error' => null]);
+                    } elseif (($operation['sent_at_ms'] ?? 0) < now()->subMinutes(5)->getTimestampMs()) {
+                        $file->update(['state' => 'needs_review', 'last_error' => 'La restauración 42 no fue reportada; requiere revisión antes de reintentar.']);
+                    }
+
+                    return;
+                }
+                $file->update(['state' => 'needs_review', 'last_error' => 'La preparación del respaldo 42 se interrumpió; requiere revisión.']);
+
+                return;
+            }
+            $file->update(['state' => 'restoring', 'operation' => array_merge($operation, ['stage' => 'uploading_library']), 'last_error' => null]);
+            try {
+                $upload = $this->cloud->postFile('/api/media/upload', $verifiedPath, $file->filename);
+                if (($upload['result'] ?? -1) !== 0 || ! is_string($upload['filename'] ?? null)) {
+                    throw new RuntimeException('La biblioteca no confirmó la copia anterior.');
+                }
+                $operation['current_filename'] = $upload['filename'];
+                $operation['restored_filename'] = $upload['filename'];
+                $operation['stage'] = 'sending';
+                $operation['sent_at_ms'] = now()->getTimestampMs();
+                $operation['report_version'] = $device['reportedPlaylistVersion'] ?? 0;
+                unset($operation['removal_id']);
+                $file->update(['operation' => $operation]);
+                $response = $this->cloud->post('/api/devices/'.substr($target, 3).'/play', ['filename' => $upload['filename']]);
+                if (($response['result'] ?? -1) !== 0) {
+                    $file->update(['last_error' => 'Esperando evidencia de la restauración del equipo 42.']);
+                }
+            } catch (Throwable $e) {
+                // If the play request may have reached the provider, wait for a new report.
+                if (($file->fresh()->operation['stage'] ?? null) !== 'sending') {
+                    $file->update(['state' => 'needs_review', 'last_error' => 'La copia anterior 42 requiere revisión antes de reintentar.']);
+                } else {
+                    $file->update(['last_error' => 'Esperando evidencia de la restauración del equipo 42.']);
+                }
+            }
+
+            return;
+        }
+        if ($file->state === 'restoring') {
+            $file->update(['state' => 'needs_review', 'last_error' => 'La carga anterior del equipo 35 se interrumpió; requiere revisión.']);
+
+            return;
+        }
+        $live = $this->wl35($probe);
+        $id = substr($target, 5);
+        $count = (int) $live['video_count'];
+        $uploadName = $file->filename ?: 'campaign-baseline-'.$file->id.'.mp4';
+        $file->update(['state' => 'restoring', 'operation' => array_merge($operation, ['before_count' => $count]), 'last_error' => null]);
+        try {
+            $result = $this->fleet->uploadPathAndDistribute($verifiedPath, $uploadName, [$target], null, false);
+            $item = collect($result['results'] ?? [])->firstWhere('key', $target);
+            if (! is_array($item) || ($item['success'] ?? false) !== true || (int) ($item['video_index'] ?? 0) !== $count + 1) {
+                throw new RuntimeException('La carga del respaldo 35 no fue confirmada.');
+            }
+            DB::transaction(function () use ($id, $count, $file, $operation, $uploadName): void {
+                $identity = (string) Str::uuid();
+                Wl35DeviceMedia::create(['device_id' => $id, 'video_index' => $count + 1, 'media_id' => $file->media_id, 'filename' => $uploadName, 'upload_identity' => $identity]);
+                $file->update(['state' => 'restored', 'operation' => array_merge($operation, ['current_identity' => $identity, 'current_index' => $count + 1, 'restored_upload_identity' => $identity, 'restored_index' => $count + 1]), 'last_error' => null]);
+            });
+        } catch (Throwable $e) {
+            Wl35DeviceMedia::where('device_id', $id)->update(['media_id' => null, 'filename' => null]);
+            $file->update(['state' => 'needs_review', 'last_error' => 'Carga anterior 35 ambigua; no se repetirá automáticamente.']);
+        }
+    }
 
     public function captureBaseline(string $target): array
     {
