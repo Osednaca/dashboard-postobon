@@ -3,6 +3,7 @@
 namespace App\Services\Z2;
 
 use App\Models\Media;
+use App\Services\Fleet\VideoDurationProbe;
 use App\Services\PrivateCloud\PrivateCloudClient;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -133,6 +134,7 @@ class Z2VideoService
      */
     public function uploadVideo(string $filePath, string $fileName, int $duration = 0): ?Media
     {
+        $duration = app(VideoDurationProbe::class)->file($filePath) ?? $duration;
         // Asegurar extensión correcta (la nube privada solo acepta video)
         $extension = pathinfo($filePath, PATHINFO_EXTENSION);
         if ($extension && ! str_ends_with(strtolower($fileName), '.'.strtolower($extension))) {
@@ -152,16 +154,14 @@ class Z2VideoService
             return null;
         }
 
-        $media = Media::withTrashed()->updateOrCreate(
-            ['file_path' => $filename],
-            [
-                'name' => pathinfo($filename, PATHINFO_FILENAME),
-                'original_name' => $filename,
-                'mime_type' => 'video/mp4',
-                'size' => (int) ($response['size'] ?? 0),
-                'duration' => $duration > 0 ? $duration : null,
-            ]
-        );
+        $attributes = [
+            'name' => pathinfo($filename, PATHINFO_FILENAME),
+            'original_name' => $filename,
+            'mime_type' => 'video/mp4',
+            'size' => (int) ($response['size'] ?? 0),
+            'duration' => $duration > 0 ? $duration : null,
+        ];
+        $media = Media::withTrashed()->updateOrCreate(['file_path' => $filename], $attributes);
         if ($media->trashed()) {
             $media->restore();
         }

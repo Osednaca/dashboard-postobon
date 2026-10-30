@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\PrepareCampaignDurations;
 use App\Jobs\ProcessCampaignDeviceJob;
 use App\Models\Campaign;
 use App\Models\CampaignDeviceFile;
@@ -89,16 +90,12 @@ class CampaignLifecycleTest extends TestCase
         $this->assertSame('active', $campaign->fresh()->status);
     }
 
-    public function test_unknown_duration_rejects_activation_without_claiming_active(): void
+    public function test_unknown_duration_defers_activation_without_claiming_active(): void
     {
         $campaign = $this->campaign();
         $campaign->media()->first()->update(['duration' => null]);
-        try {
-            app(CampaignLifecycle::class)->activate($campaign);
-            $this->fail();
-        } catch (ValidationException $e) {
-            $this->assertArrayHasKey('media_ids', $e->errors());
-        }
+        $this->assertFalse(app(CampaignLifecycle::class)->activate($campaign));
+        Queue::assertPushed(PrepareCampaignDurations::class);
         $this->assertSame('draft', $campaign->fresh()->status);
     }
 
@@ -309,7 +306,7 @@ class CampaignLifecycleTest extends TestCase
         $campaign = $this->campaign(['status' => 'scheduled', 'start_date' => null]);
         $campaign->media()->first()->update(['duration' => 0]);
         app(CampaignLifecycle::class)->tick();
-        $this->assertNotNull($campaign->fresh()->lifecycle_error);
+        $this->assertSame('pending', $campaign->fresh()->duration_preparation_state);
         $this->assertDatabaseCount('campaign_deliveries', 0);
     }
 

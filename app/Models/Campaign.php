@@ -29,6 +29,8 @@ class Campaign extends Model
         'audience_establishment_id',
         'created_by',
         'lifecycle_error',
+        'duration_preparation_token',
+        'duration_preparation_state',
     ];
 
     protected function casts(): array

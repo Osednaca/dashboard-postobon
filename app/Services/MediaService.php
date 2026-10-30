@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Media;
 use App\Repositories\Contracts\MediaRepositoryInterface;
+use App\Services\Fleet\VideoDurationProbe;
 use App\Services\Z2\Z2VideoService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
@@ -34,6 +35,7 @@ class MediaService extends BaseService
             'file_path' => $path,
             'mime_type' => $file->getMimeType(),
             'size' => $file->getSize(),
+            'duration' => app(VideoDurationProbe::class)->file($file->path()),
         ]);
 
         /** @var Media */

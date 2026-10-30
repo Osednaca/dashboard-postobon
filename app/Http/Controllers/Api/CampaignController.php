@@ -136,12 +136,12 @@ class CampaignController extends Controller
     {
         try {
             $this->authorize('update', $campaign);
-            $this->z2CampaignSyncService->activate($campaign);
+            $activated = $this->z2CampaignSyncService->activate($campaign);
 
             return response()->json([
-                'message' => 'Campaña activada correctamente.',
+                'message' => $activated ? 'Campaña activada correctamente.' : 'Preparando la duración de los videos.',
                 'campaign' => $campaign->fresh(),
-            ]);
+            ], $activated ? 200 : 202);
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Error al activar la campaña.',

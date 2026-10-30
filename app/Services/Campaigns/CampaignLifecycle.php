@@ -2,6 +2,7 @@
 
 namespace App\Services\Campaigns;
 
+use App\Jobs\PrepareCampaignDurations;
 use App\Jobs\ProcessCampaignDeviceJob;
 use App\Models\Campaign;
 use App\Models\CampaignDelivery;
@@ -14,6 +15,7 @@ use App\Services\Fleet\RetiredDeviceJobExclusions;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Throwable;
 
@@ -37,7 +39,7 @@ class CampaignLifecycle
         return str_starts_with($target, 'wl35:') ? 'device-video-removal:wl35:'.hash('sha256', substr($target, 5)) : 'campaign-device:'.hash('sha256', $target);
     }
 
-    public function activate(Campaign $campaign): void
+    public function activate(Campaign $campaign): bool
     {
         $this->assertQueueConfiguration();
         $campaign->refresh();
@@ -47,6 +49,33 @@ class CampaignLifecycle
         if ($campaign->media()->count() === 0) {
             throw ValidationException::withMessages(['media_ids' => 'Selecciona al menos un video para activar la campaña.']);
         }
+        $media = $campaign->media()->get();
+        if ($media->contains(fn ($item) => ! str_starts_with($item->mime_type, 'video/'))) {
+            throw ValidationException::withMessages(['media_ids' => 'Selecciona únicamente videos para la campaña.']);
+        }
+        if ($media->contains(fn ($item) => ! $item->duration || $item->duration < 1)) {
+            $token = DB::transaction(function () use ($campaign): ?string {
+                $locked = Campaign::whereKey($campaign->id)->lockForUpdate()->firstOrFail();
+                if ($locked->duration_preparation_state === 'pending') {
+                    return null;
+                }
+                $token = (string) Str::uuid();
+                $locked->update(['duration_preparation_token' => $token, 'duration_preparation_state' => 'pending', 'lifecycle_error' => null]);
+
+                return $token;
+            });
+            if ($token === null) {
+                return false;
+            }
+            try {
+                PrepareCampaignDurations::dispatch($campaign->id, $token, $this->durationFingerprint($campaign->fresh()))->afterCommit();
+            } catch (Throwable $e) {
+                $campaign->update(['duration_preparation_state' => 'failed', 'lifecycle_error' => 'No se pudo iniciar la preparación de los videos. Inténtalo nuevamente.']);
+                throw $e;
+            }
+
+            return false;
+        }
         $previous = $campaign->status;
         $campaign->update(['status' => 'scheduled']);
         try {
@@ -55,12 +84,24 @@ class CampaignLifecycle
             $campaign->update(['status' => $previous]);
             throw $e;
         }
-        $campaign->update(['status' => $campaign->start_date?->isFuture() ? 'scheduled' : 'active', 'lifecycle_error' => null]);
+        $campaign->update(['status' => $campaign->start_date?->isFuture() ? 'scheduled' : 'active', 'lifecycle_error' => null, 'duration_preparation_token' => null, 'duration_preparation_state' => null]);
+
+        return true;
+    }
+
+    public function durationFingerprint(Campaign $campaign): string
+    {
+        $attributes = $campaign->getAttributes();
+        unset($attributes['duration_preparation_token'], $attributes['duration_preparation_state'], $attributes['lifecycle_error']);
+        $media = $campaign->media()->get()->map(fn ($item) => [$item->id, $item->file_path, $item->mime_type, $item->size, $item->pivot->order])->all();
+        $legacy = $campaign->target_devices === null ? $campaign->deviceCampaigns()->orderBy('device_id')->pluck('device_id')->all() : [];
+
+        return hash('sha256', json_encode([$attributes, $media, $legacy], JSON_THROW_ON_ERROR));
     }
 
     public function finish(Campaign $campaign): void
     {
-        $campaign->update(['status' => 'finished']);
+        $campaign->update(['status' => 'finished', 'duration_preparation_token' => null, 'duration_preparation_state' => null]);
     }
 
     public function snapshot(Campaign $campaign): void
@@ -127,8 +168,8 @@ class CampaignLifecycle
     {
         $this->assertQueueConfiguration();
         // Paused campaigns also expire; permanent campaigns have no deadline.
-        Campaign::whereIn('status', ['active', 'paused', 'scheduled'])->whereNotNull('end_date')->where('end_date', '<=', now())->update(['status' => 'finished']);
-        foreach (Campaign::where('status', 'scheduled')->where(fn ($q) => $q->whereNull('start_date')->orWhere('start_date', '<=', now()))->get() as $campaign) {
+        Campaign::whereIn('status', ['active', 'paused', 'scheduled'])->whereNotNull('end_date')->where('end_date', '<=', now())->update(['status' => 'finished', 'duration_preparation_token' => null, 'duration_preparation_state' => null]);
+        foreach (Campaign::where('status', 'scheduled')->whereNull('duration_preparation_state')->where(fn ($q) => $q->whereNull('start_date')->orWhere('start_date', '<=', now()))->get() as $campaign) {
             try {
                 $this->activate($campaign);
             } catch (Throwable $e) {
@@ -138,6 +179,14 @@ class CampaignLifecycle
         // Existing active campaigns and edits are reconciled without discarding old delivery evidence.
         foreach (Campaign::where('status', 'active')->get() as $campaign) {
             try {
+                if ($campaign->duration_preparation_state !== null) {
+                    continue;
+                }
+                if ($campaign->media()->where(fn ($q) => $q->whereNull('duration')->orWhere('duration', '<=', 0))->exists()) {
+                    $this->activate($campaign);
+
+                    continue;
+                }
                 $this->snapshot($campaign);
             } catch (Throwable $e) {
                 $this->recordCampaignError($campaign, $e->getMessage());

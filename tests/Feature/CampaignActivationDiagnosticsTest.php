@@ -9,6 +9,7 @@ use App\Services\Z2\Z2CampaignSyncService;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
 use Psr\Log\LoggerInterface;
@@ -92,14 +93,15 @@ class CampaignActivationDiagnosticsTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_missing_duration_is_explained(): void
+    public function test_missing_duration_is_prepared_without_claiming_activation(): void
     {
+        Queue::fake();
         $campaign = Campaign::factory()->draft()->create(['end_date' => null]);
         $media = Media::factory()->video()->create(['file_path' => 'media/example.mp4', 'duration' => 0]);
         $campaign->media()->attach($media);
-        $this->expectDiagnostics('No se pudo activar la campaña: validación', $campaign->id);
         $this->post(route('campaigns.activate', $campaign))
-            ->assertSessionHas('error', 'Selecciona videos con duración conocida para reproducir la secuencia.');
+            ->assertSessionHas('success', 'Preparando la duración de los videos. La campaña se activará cuando estén listos.');
+        $this->assertSame('pending', $campaign->fresh()->duration_preparation_state);
         Http::assertNothingSent();
     }
 
