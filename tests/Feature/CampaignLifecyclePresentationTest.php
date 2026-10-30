@@ -37,6 +37,9 @@ class CampaignLifecyclePresentationTest extends TestCase
             ->assertSee('Borrado confirmado')
             ->assertSee('Requiere revisión')
             ->assertSee('Finalizar una campaña no confirma el borrado.')
+            ->assertSee('deja de gestionar la secuencia sin apagar el equipo.')
+            ->assertSee('El video actual puede continuar')
+            ->assertDontSee('pausar o finalizar envía una orden de apagado')
             ->assertSee('No se volverá a borrar por un índice incierto.')
             ->assertSee('<script>alert(1)</script>')
             ->assertDontSee('<script>alert(1)</script>', false);
@@ -136,6 +139,32 @@ class CampaignLifecyclePresentationTest extends TestCase
             ->assertSee('Falta la duración del video de lanzamiento.')
             ->assertSee('Aún no hay entregas registradas.')
             ->assertDontSee('Borrado confirmado');
+        Http::assertNothingSent();
+    }
+
+    public function test_previous_content_and_accepted_restoration_do_not_claim_physical_playback(): void
+    {
+        $campaign = $this->campaign('finished');
+        $file = $this->delivery($campaign, 'preserved', 'Anterior')->file;
+        $file->update(['target_key' => 'z2:AABBCCDDEEFF']);
+        CampaignDevicePlayback::create(['target_key' => $file->target_key, 'baseline' => ['type' => 'z2', 'files' => [$file->filename], 'selection' => $file->filename], 'restore_state' => 'restored']);
+        $this->actingAs($campaign->creator)->get(route('campaigns.show', $campaign))->assertOk()
+            ->assertSee('Contenido anterior conservado')
+            ->assertSee('Selección anterior solicitada')
+            ->assertSee('esto no confirma su reproducción física')
+            ->assertSee('ya estaba en el dispositivo');
+        Http::assertNothingSent();
+    }
+
+    public function test_pending_restoration_error_is_visible_and_escaped(): void
+    {
+        $campaign = $this->campaign('finished');
+        $file = $this->delivery($campaign, 'preserved', 'Anterior')->file;
+        CampaignDevicePlayback::create(['target_key' => $file->target_key, 'baseline' => ['type' => 'legacy'], 'restore_state' => 'pending', 'restore_error' => '<script>error</script>']);
+        $this->actingAs($campaign->creator)->get(route('campaigns.show', $campaign))->assertOk()
+            ->assertSee('Recuperación de selección anterior pendiente')
+            ->assertSee('no se puede reconstruir la selección previa')
+            ->assertSee('<script>error</script>')->assertDontSee('<script>error</script>', false);
         Http::assertNothingSent();
     }
 

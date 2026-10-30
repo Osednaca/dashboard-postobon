@@ -67,7 +67,7 @@ class CampaignDeviceTransportTest extends TestCase
         Http::fake(['*' => Http::response($this->report(['reportedPlaylist' => ['campaign.mp4']]))]);
         $transport = app(CampaignDeviceTransport::class);
         $transport->install($file);
-        $this->assertTrue($file->fresh()->owned);
+        $this->assertFalse($file->fresh()->owned);
         $this->assertSame('ready', $file->fresh()->state);
         Http::assertSentCount(1);
     }

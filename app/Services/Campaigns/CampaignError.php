@@ -32,6 +32,12 @@ class CampaignError
             'El equipo 42 no aceptó seleccionar el archivo instalado.',
             'El índice 35 requiere revisión antes de reproducir.',
             'El equipo 35 no confirmó la selección.',
+            'Espera a que termine la operación de contenido del equipo 42 antes de iniciar la campaña.',
+            'El equipo 35 no informó un conteo válido para conservar su contenido.',
+            'La selección anterior no está disponible o aún hay un retiro pendiente en el equipo 42.',
+            'El contenido del equipo 35 cambió. Revisa la selección anterior antes de recuperarla.',
+            'La identidad de la selección anterior del equipo 35 cambió.',
+            'El equipo 35 no confirmó la selección anterior.',
         ];
 
         if ($exception instanceof RuntimeException && in_array($exception->getMessage(), $safe, true)) {
