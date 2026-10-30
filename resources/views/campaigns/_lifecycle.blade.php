@@ -24,11 +24,15 @@
     <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
             <h3 id="campaign-lifecycle-title" class="text-lg font-semibold text-text">Publicación y limpieza</h3>
-            <p class="mt-1 text-sm text-text-light">Antes de publicar, se respalda el contenido anterior y se solicita su retiro de la SD. Al pausar o finalizar la última campaña activa, los videos anteriores se vuelven a cargar desde el servidor. Los archivos que otra campaña activa necesita se protegen.</p>
+            <p class="mt-1 text-sm text-text-light">En los equipos 35 se conserva el contenido anterior en la SD y se solicita repetición individual tras seleccionar cada video. En los equipos 42 se respaldan y retiran los anteriores para volver a cargarlos al pausar o finalizar la última campaña activa. Los archivos usados por otra campaña activa se protegen.</p>
         </div>
         <a href="{{ route('campaigns.show', $campaign) }}" class="text-sm font-medium text-primary hover:underline">Actualizar estado</a>
     </div>
     <p class="text-sm text-text-muted">Finalizar una campaña no confirma el borrado. Una orden aceptada permanece pendiente hasta recibir evidencia del dispositivo; los equipos sin conexión pueden tardar en completar la operación.</p>
+    @if($targets->contains(fn ($target) => str_starts_with($target, 'wl35:')))
+        <p class="text-sm text-text-muted">En el modelo 35, enviar la orden de repetición no confirma por sí solo el modo ni la reproducción física.</p>
+        <p class="text-sm text-text-muted">Al recuperar el contenido previo de un equipo 35, un video que ya estaba en la SD puede volver a mostrarse aunque también se haya usado en la campaña.</p>
+    @endif
     <p class="text-sm text-text-muted">Si no hay otra campaña que continúe la reproducción, pausar o finalizar deja de gestionar la secuencia sin apagar el equipo. La recuperación puede tardar mientras se retiran y cargan archivos; el video actual puede continuar durante la operación.</p>
     @foreach($playbackByTarget as $target => $session)
         @if($session->baseline !== null)

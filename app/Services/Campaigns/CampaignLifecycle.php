@@ -275,7 +275,10 @@ class CampaignLifecycle
                 ->orderByDesc('priority')->orderBy('id')->first();
             $playback = app(CampaignPlaybackRestoration::class)->begin($target, $files, $winner !== null);
             $baselineTransition = app(CampaignBaselineTransition::class);
-            if ($winner && $playback?->baseline !== null && ! $baselineTransition->prepare($playback)) {
+            if (str_starts_with($target, 'wl35:') && $playback?->baseline !== null && ! app(CampaignWl35Baseline::class)->prepare($playback, $winner !== null)) {
+                return;
+            }
+            if (str_starts_with($target, 'z2:') && $winner && $playback?->baseline !== null && ! $baselineTransition->prepare($playback)) {
                 return;
             }
             $currentValid = $winner && $playback?->campaign_id === $winner->id && $winner->deliveries()->whereKey($playback->delivery_id)->whereNull('released_at')->exists();
@@ -321,7 +324,7 @@ class CampaignLifecycle
                     return;
                 }
             }
-            if ($winner && $playback?->baseline !== null && ! $baselineTransition->removePrevious($playback, function () use ($winner): bool {
+            if (str_starts_with($target, 'z2:') && $winner && $playback?->baseline !== null && ! $baselineTransition->removePrevious($playback, function () use ($winner): bool {
                 $winner->refresh();
 
                 return $winner->status === 'active' && (! $winner->end_date || $winner->end_date->isFuture());
@@ -340,7 +343,7 @@ class CampaignLifecycle
                 }
             }
             if (! $winner) {
-                if ($playback?->baseline !== null && app(CampaignBaselineBackup::class)->files($playback)->contains(fn ($file) => in_array($file->state, ['removing', 'removed', 'restoring', 'restored', 'needs_review'], true))) {
+                if (str_starts_with($target, 'z2:') && $playback?->baseline !== null && app(CampaignBaselineBackup::class)->files($playback)->contains(fn ($file) => in_array($file->state, ['removing', 'removed', 'restoring', 'restored', 'needs_review'], true))) {
                     if (! $baselineTransition->restorePrevious($playback, fn () => ! Campaign::where('status', 'active')->where(fn ($q) => $q->whereNull('start_date')->orWhere('start_date', '<=', now()))->where(fn ($q) => $q->whereNull('end_date')->orWhere('end_date', '>', now()))->whereHas('deliveries', fn ($q) => $q->whereNull('released_at')->whereHas('file', fn ($f) => $f->where('target_key', $target)))->exists())) {
                         return;
                     }
@@ -421,6 +424,14 @@ class CampaignLifecycle
             $this->transport->power($target, true);
         }
         $this->transport->select($delivery->file);
+        // The composed WL35 order may finish after a concurrent pause or expiry.
+        // It cannot be recalled, but an obsolete cursor must not be marked active.
+        if (str_starts_with($target, 'wl35:')) {
+            $campaign->refresh();
+            if ($campaign->status !== 'active' || $campaign->end_date?->lte(now())) {
+                return;
+            }
+        }
         $playback->update(['campaign_id' => $campaign->id, 'delivery_id' => $delivery->id, 'due_at' => now()->addSeconds($delivery->duration), 'powered_off' => false, 'last_error' => null]);
     }
 }

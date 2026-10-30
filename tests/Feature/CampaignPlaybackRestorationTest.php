@@ -326,19 +326,19 @@ class CampaignPlaybackRestorationTest extends TestCase
         $fleet->shouldReceive('getFleet')->andReturnUsing(function () use (&$count, &$selected) {
             return ['devices' => [['type' => 'wl35', 'id' => 'fan', 'online' => true, 'session_ready' => true, 'video_count' => $count, 'current_video' => $selected]]];
         });
-        $fleet->shouldReceive('uploadPathAndDistribute')->twice()->andReturnUsing(function () use (&$count) {
+        $fleet->shouldReceive('uploadPathAndDistribute')->once()->andReturnUsing(function () use (&$count) {
             $this->assertSame(1, CampaignDevicePlayback::sole()->baseline['selection']);
             $count++;
 
             return ['results' => [['key' => $this->target, 'type' => 'wl35', 'id' => 'fan', 'success' => true, 'video_index' => $count]]];
         });
         $fleet->shouldReceive('sendCommand')->twice()->andReturnUsing(function ($payload) use (&$selected) {
-            $this->assertSame('play', $payload['command']);
+            $this->assertContains($payload['command'], ['play', 'play_repeat_one']);
             $selected = $payload['wl35_video_index'];
 
-            return ['results' => [['key' => $this->target, 'success' => true]]];
+            return ['results' => [['key' => $this->target, 'success' => true, 'selection_confirmed' => true, 'repeat_command_sent' => true, 'repeat_confirmed' => false]]];
         });
-        $fleet->shouldReceive('deleteWl35Video')->twice()->with('fan', 1, 1)->andReturnUsing(function () use (&$count) {
+        $fleet->shouldReceive('deleteWl35Video')->once()->with('fan', 2, 2)->andReturnUsing(function () use (&$count) {
             $count--;
 
             return ['confirmed' => true, 'deletion_status' => 'confirmed', 'video_count' => $count];
@@ -346,13 +346,13 @@ class CampaignPlaybackRestorationTest extends TestCase
         $campaign = $this->campaign();
         $campaign->media()->first()->update(['file_path' => 'campaign.mp4']);
         $this->process(8);
-        $this->assertSame(1, $selected);
+        $this->assertSame(2, $selected);
         app(CampaignLifecycle::class)->finish($campaign);
         $this->process(8);
         $this->assertSame(1, $count);
         $this->assertSame(1, $selected);
         $this->assertSame('removed', CampaignDeviceFile::sole()->state);
-        $this->assertNotSame('original-installation', Wl35DeviceMedia::sole()->upload_identity);
+        $this->assertSame('original-installation', Wl35DeviceMedia::sole()->upload_identity);
         $this->assertNotNull(CampaignDevicePlayback::sole()->baseline_closed_at);
     }
 

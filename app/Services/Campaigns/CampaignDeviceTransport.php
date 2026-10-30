@@ -219,8 +219,16 @@ class CampaignDeviceTransport
         }
         $device = $this->wl35($file);
         $index = $baseline['selection'];
+        if ($baseline['t15_reconciled'] ?? false) {
+            $identity = $baseline['upload_identity'] ?? null;
+            $mappings = Wl35DeviceMedia::where('device_id', substr($target, 5))->where('upload_identity', $identity)->get();
+            if (! $identity || $mappings->count() !== 1) {
+                throw new RuntimeException('La identidad de la selección anterior del equipo 35 cambió.');
+            }
+            $index = $mappings->first()->video_index;
+        }
         $extra = CampaignDeviceFile::where('target_key', $target)->where('owned', true)->where('state', 'ready')->pluck('video_index')->filter()->unique()->count();
-        if (($device['video_count'] ?? null) !== $baseline['count'] + $extra || $index > $baseline['count']) {
+        if (($device['video_count'] ?? null) !== $baseline['count'] + $extra || $index < 1 || $index > ($device['video_count'] ?? 0) || (! ($baseline['t15_reconciled'] ?? false) && $index > $baseline['count'])) {
             throw new RuntimeException('El contenido del equipo 35 cambió. Revisa la selección anterior antes de recuperarla.');
         }
         if ($baseline['upload_identity'] ?? null) {
@@ -269,6 +277,9 @@ class CampaignDeviceTransport
         $id = substr($file->target_key, 5);
         $existing = Wl35DeviceMedia::where('device_id', $id)->where('media_id', $file->media_id)->first();
         if ($existing && $existing->video_index <= (int) $live['video_count']) {
+            if (! $existing->upload_identity) {
+                throw new RuntimeException('El video de campaña en el equipo 35 no tiene una identidad de carga verificable.');
+            }
             $file->video_index = $existing->video_index;
             $owned = $this->alreadyOwned($file, $existing->upload_identity);
             $file->update(['evidence' => ['mapping_id' => $existing->id, 'upload_identity' => $existing->upload_identity], 'video_index' => $existing->video_index, 'state' => 'ready', 'owned' => $owned, 'confirmed_at' => now(), 'last_error' => null]);
@@ -451,14 +462,15 @@ class CampaignDeviceTransport
         } else {
             $this->wl35($file);
             $mapping = Wl35DeviceMedia::whereKey($file->evidence['mapping_id'] ?? 0)->where('device_id', substr($file->target_key, 5))->where('media_id', $file->media_id)->first();
-            if (! $mapping || $mapping->upload_identity !== ($file->evidence['upload_identity'] ?? null)) {
+            if (! $mapping || ! $mapping->upload_identity || $mapping->upload_identity !== ($file->evidence['upload_identity'] ?? null)) {
                 throw new RuntimeException('El Ã­ndice 35 requiere revisiÃ³n antes de reproducir.');
             }
-            $result = $this->fleet->sendCommand(['command' => 'play', 'targets' => [$file->target_key], 'wl35_video_index' => $mapping->video_index]);
-            if (collect($result['results'] ?? [])->firstWhere('key', $file->target_key)['success'] ?? false) {
+            $result = $this->fleet->sendCommand(['command' => 'play_repeat_one', 'targets' => [$file->target_key], 'wl35_video_index' => $mapping->video_index]);
+            $item = collect($result['results'] ?? [])->firstWhere('key', $file->target_key);
+            if (($item['success'] ?? false) === true && ($item['selection_confirmed'] ?? false) === true && ($item['repeat_command_sent'] ?? false) === true && ($item['repeat_confirmed'] ?? null) === false) {
                 return;
             }
-            throw new RuntimeException('El equipo 35 no confirmÃ³ la selecciÃ³n.');
+            throw new RuntimeException('No se confirmó la selección o no se pudo enviar la repetición individual al equipo 35.');
         }
     }
 }
