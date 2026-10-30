@@ -132,6 +132,8 @@ class UnifiedFleetClient
         array $targets,
         ?callable $progress = null,
         bool $playAfterUpload = false,
+        ?string $expectedBootId = null,
+        ?callable $onDistributionStarting = null,
     ): array {
         $this->ensureConfigured();
         $baseUrl = $this->resolveReachableBaseUrl();
@@ -178,12 +180,17 @@ class UnifiedFleetClient
             $progress('distributing', 35, ['gateway_upload_id' => $uploadId, 'gateway_base_url' => $baseUrl]);
         }
 
+        // Once dispatch starts, an HTTP timeout cannot prove that the device did not act.
+        if ($onDistributionStarting !== null) {
+            $onDistributionStarting();
+        }
         $result = $this->send(
             fn (): Response => $this->request(true, $baseUrl)->post(
                 '/api/fleet/uploads/'.rawurlencode($uploadId).'/distribute',
                 [
                     'targets' => array_values($targets),
                     'play_after_upload' => $playAfterUpload,
+                    ...($expectedBootId === null ? [] : ['expected_boot_ids' => array_fill_keys($targets, $expectedBootId)]),
                 ]
             ),
             'distribuir el video a los equipos seleccionados',

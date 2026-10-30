@@ -62,6 +62,24 @@ class CampaignLifecyclePresentationTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_wl35_waiting_for_restart_is_visible_without_exposing_boot_id(): void
+    {
+        $campaign = $this->campaign('active');
+        $file = $this->delivery($campaign, 'ready', 'Video 35')->file;
+        CampaignDevicePlayback::create([
+            'target_key' => $file->target_key,
+            'wl35_wait_boot_id' => 'internal-boot-identifier',
+            'wl35_wait_started_at' => now()->subMinutes(3),
+        ]);
+
+        $this->actingAs($campaign->creator)->get(route('campaigns.show', $campaign))
+            ->assertOk()
+            ->assertSee('esperando reconexión del ESP32 y sesión lista')
+            ->assertSee('La espera continúa.')
+            ->assertDontSee('internal-boot-identifier');
+        Http::assertNothingSent();
+    }
+
     public function test_retained_file_names_the_active_campaign_reference_without_claiming_removal(): void
     {
         $finished = $this->campaign('finished');

@@ -51,6 +51,10 @@ Si un equipo pierde conexión, el servidor no puede garantizar que deje de repro
 
 ## Requisitos de operación y despliegue
 
+Para cargas de campaña en equipos 35, el firmware y el gateway deben exponer la identidad de arranque y el estado fresco de la sesión. El dashboard registra el arranque antes de cada carga y conserva la espera hasta observar un arranque distinto, una conexión vigente y la sesión con el ventilador lista. Un corte de red que conserve el mismo arranque no libera la espera. Si el firmware es anterior o el estado no es suficiente, la publicación espera sin enviar otra carga. La carga confirmada no se repite por una demora o un reinicio del gateway; una carga sin confirmación sigue requiriendo revisión.
+
+La migración `2026_10_30_000004_add_wl35_restart_barrier.php` guarda esta espera entre reinicios. Coordina el despliegue de firmware ESP32, gateway y dashboard; aplica la migración antes de reiniciar workers. Conserva el estado de cargas inciertas y los respaldos de sesiones anteriores; no se deben restablecer manualmente solo porque la reconexión haya tardado.
+
 Los cambios requieren desplegar versiones compatibles del dashboard, la nube privada del modelo 42 y el gateway del modelo 35, además de aplicar la migración del registro de campañas. No habilites la limpieza automática con una versión antigua que solo devuelve estado optimista.
 
 Para el nuevo modo 35, detener scheduler y workers antiguos antes del cambio coordinado del dashboard, gateway y firmware ESP32; una versión anterior del ciclo aún podría retirar contenido previo. Cargar el firmware en cada equipo y verificar la capacidad antes de reanudar campañas. Durante la campaña el intervalo entre seleccionar un video y activar repetición, las latencias, desconexiones y un fallo de orden pueden afectar lo mostrado; la escritura aceptada no prueba reproducción exclusiva. Al terminar se solicita la selección anterior conocida sin afirmar que se recupera el modo anterior exacto.

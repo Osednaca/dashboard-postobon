@@ -196,7 +196,7 @@ class CampaignLifecycle
                 $this->recordCampaignError($campaign, CampaignError::publicMessage($e));
             }
         }
-        CampaignDeviceFile::whereNotIn('state', ['removed', 'preserved', 'reported_absent'])->select('target_key')->distinct()->pluck('target_key')->merge(CampaignDevicePlayback::whereNotNull('campaign_id')->orWhere('powered_off', true)->orWhere(fn ($q) => $q->whereNotNull('baseline')->whereNull('baseline_closed_at'))->pluck('target_key'))->unique()->each(fn ($target) => ProcessCampaignDeviceJob::dispatch($target));
+        CampaignDeviceFile::whereNotIn('state', ['removed', 'preserved', 'reported_absent'])->select('target_key')->distinct()->pluck('target_key')->merge(CampaignDevicePlayback::whereNotNull('campaign_id')->orWhere('powered_off', true)->orWhereNotNull('wl35_wait_boot_id')->orWhere(fn ($q) => $q->whereNotNull('baseline')->whereNull('baseline_closed_at'))->pluck('target_key'))->unique()->each(fn ($target) => ProcessCampaignDeviceJob::dispatch($target));
         app(CampaignActivity::class)->tick();
     }
 
@@ -274,6 +274,16 @@ class CampaignLifecycle
                 ->whereHas('deliveries', fn ($q) => $q->whereNull('released_at')->whereHas('file', fn ($f) => $f->where('target_key', $target)))
                 ->orderByDesc('priority')->orderBy('id')->first();
             $playback = app(CampaignPlaybackRestoration::class)->begin($target, $files, $winner !== null);
+            if (str_starts_with($target, 'wl35:') && $playback && ! app(CampaignWl35RestartBarrier::class)->mayProceed($playback)) {
+                return;
+            }
+            if (str_starts_with($target, 'wl35:') && $files->contains('state', 'needs_review')) {
+                CampaignDevicePlayback::where('target_key', $target)->update([
+                    'last_error' => 'El equipo 35 tiene una operación incierta que requiere revisión antes de continuar.',
+                ]);
+
+                return;
+            }
             $baselineTransition = app(CampaignBaselineTransition::class);
             if (str_starts_with($target, 'wl35:') && $playback?->baseline !== null && ! app(CampaignWl35Baseline::class)->prepare($playback, $winner !== null)) {
                 return;
@@ -302,7 +312,15 @@ class CampaignLifecycle
                     $this->transport->remove($file);
                 }
                 $this->clearPlaybackErrorIfVerified($file);
-                if ($file->fresh()->state === 'installing' || $file->fresh()->state === 'removing') {
+                $state = $file->fresh()->state;
+                if (str_starts_with($target, 'wl35:') && $state === 'needs_review') {
+                    CampaignDevicePlayback::where('target_key', $target)->update([
+                        'last_error' => 'El equipo 35 tiene una operación incierta que requiere revisión antes de continuar.',
+                    ]);
+
+                    return;
+                }
+                if ($state === 'installing' || $state === 'removing') {
                     return;
                 }
                 $failedFile = null;

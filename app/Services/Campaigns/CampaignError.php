@@ -21,6 +21,9 @@ class CampaignError
     {
         // Unexpected exceptions can contain database connection strings, URLs or credentials.
         $safe = [
+            'El equipo 35 tiene una operación incierta que requiere revisión antes de continuar.',
+            'Actualiza el firmware del equipo 35 para verificar la reconexión antes de publicar.',
+            'El equipo 35 está esperando una conexión y sesión listas antes de publicar.',
             'El video de campaña en el equipo 35 no tiene una identidad de carga verificable.',
             'No se confirmó la selección o no se pudo enviar la repetición individual al equipo 35.',
             'No se conoce el contenido anterior del equipo 35; requiere revisión.',
