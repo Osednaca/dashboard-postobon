@@ -18,6 +18,14 @@ class CampaignDevicePlayback extends Model
         $session = $this->baseline['session_id'] ?? null;
         $copies = $session ? CampaignBaselineFile::where('playback_id', $this->id)->where('session_id', $session)->get() : collect();
         if ($copies->isNotEmpty()) {
+            // A partial T15 backup has not removed any originals. Preserve the complete
+            // original prefix, not just the entries copied before the policy changed.
+            if (($this->baseline['type'] ?? null) === 'wl35'
+                && $copies->every(fn ($copy) => $copy->state === 'backed_up')
+                && $file->video_index !== null && $file->video_index <= ($this->baseline['count'] ?? 0)) {
+                return true;
+            }
+
             return $copies->whereIn('state', ['backed_up', 'restored', 'removing', 'restoring', 'needs_review'])->contains(function ($copy) use ($file): bool {
                 if (($this->baseline['type'] ?? null) === 'z2') {
                     return $file->filename === ($copy->operation['current_filename'] ?? $copy->filename);

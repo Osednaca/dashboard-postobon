@@ -267,7 +267,7 @@ class CampaignBaselineLifecycleTest extends TestCase
         $this->assertSame(['campaign.mp4'], $this->device['reportedPlaylist']);
     }
 
-    public function test_model_35_removes_previous_and_restores_from_backup_after_finish(): void
+    public function test_model_35_preserves_previous_and_cleans_only_campaign_file_after_finish(): void
     {
         $this->target = 'wl35:fan';
         Storage::disk('local')->put('original.mp4', 'original');
@@ -281,29 +281,31 @@ class CampaignBaselineLifecycleTest extends TestCase
         $fleet->shouldReceive('getFleet')->andReturnUsing(function () use (&$count, &$selected) {
             return ['devices' => [['type' => 'wl35', 'id' => 'fan', 'online' => true, 'session_ready' => true, 'video_count' => $count, 'current_video' => $selected]]];
         });
-        $fleet->shouldReceive('deleteWl35Video')->twice()->andReturnUsing(function ($id, $index, $expected) use (&$count) {
+        $fleet->shouldReceive('deleteWl35Video')->once()->andReturnUsing(function ($id, $index, $expected) use (&$count) {
+            $this->assertSame(2, $index);
             $this->assertSame($count, $expected);
             $count--;
 
             return ['confirmed' => true, 'deletion_status' => 'confirmed', 'video_count' => $count];
         });
-        $fleet->shouldReceive('uploadPathAndDistribute')->twice()->andReturnUsing(function () use (&$count) {
+        $fleet->shouldReceive('uploadPathAndDistribute')->once()->andReturnUsing(function () use (&$count) {
             $count++;
 
             return ['results' => [['key' => $this->target, 'type' => 'wl35', 'id' => 'fan', 'success' => true, 'video_index' => $count]]];
         });
         $fleet->shouldReceive('sendCommand')->andReturnUsing(function ($payload) use (&$selected) {
-            $this->assertSame('play', $payload['command']);
+            $this->assertContains($payload['command'], ['play', 'play_repeat_one']);
             $selected = $payload['wl35_video_index'];
 
-            return ['results' => [['key' => $this->target, 'success' => true]]];
+            return ['results' => [['key' => $this->target, 'success' => true, 'selection_confirmed' => true, 'repeat_command_sent' => true, 'repeat_confirmed' => false]]];
         });
         $campaign = Campaign::factory()->create(['status' => 'draft', 'start_date' => now()->subMinute(), 'end_date' => now()->addHour(), 'target_devices' => [$this->target]]);
         $campaign->media()->attach($media, ['order' => 1]);
         app(CampaignLifecycle::class)->activate($campaign);
         $this->process(6);
-        $this->assertSame(1, $count);
-        $this->assertSame($media->id, Wl35DeviceMedia::sole()->media_id);
+        $this->assertSame(2, $count);
+        $this->assertSame($old->id, Wl35DeviceMedia::where('video_index', 1)->sole()->media_id);
+        $this->assertSame($media->id, Wl35DeviceMedia::where('video_index', 2)->sole()->media_id);
         app(CampaignLifecycle::class)->finish($campaign);
         $this->process(7);
         $this->assertSame(1, $count);

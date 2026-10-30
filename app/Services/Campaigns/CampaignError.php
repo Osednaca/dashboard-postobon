@@ -21,6 +21,11 @@ class CampaignError
     {
         // Unexpected exceptions can contain database connection strings, URLs or credentials.
         $safe = [
+            'El video de campaña en el equipo 35 no tiene una identidad de carga verificable.',
+            'No se confirmó la selección o no se pudo enviar la repetición individual al equipo 35.',
+            'No se conoce el contenido anterior del equipo 35; requiere revisión.',
+            'El contenido anterior del equipo 35 requiere revisión antes de continuar.',
+            'El respaldo anterior del equipo 35 está incompleto y requiere revisión.',
             'Se necesita un reporte reciente del contenido del equipo 42.',
             'El equipo 35 no está disponible para procesar la campaña.',
             'No se confirmó la identidad del archivo cargado en el equipo 35.',

@@ -49,6 +49,19 @@ class CampaignLifecyclePresentationTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_wl35_repeat_order_does_not_claim_mode_or_physical_playback_confirmed(): void
+    {
+        $campaign = $this->campaign('active');
+        $this->delivery($campaign, 'ready', 'Video 35');
+        $this->actingAs($campaign->creator)->get(route('campaigns.show', $campaign))
+            ->assertOk()
+            ->assertSee('se conserva el contenido anterior en la SD')
+            ->assertSee('enviar la orden de repetición no confirma por sí solo el modo ni la reproducción física.')
+            ->assertSee('un video que ya estaba en la SD puede volver a mostrarse')
+            ->assertDontSee('Repetición individual confirmada');
+        Http::assertNothingSent();
+    }
+
     public function test_retained_file_names_the_active_campaign_reference_without_claiming_removal(): void
     {
         $finished = $this->campaign('finished');

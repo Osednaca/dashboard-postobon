@@ -1,6 +1,8 @@
 # Publicación, reproducción y limpieza de campañas
 
-El ciclo de campañas registra cada entrega por dispositivo y archivo. Antes de publicar, prepara copias de los videos anteriores en el servidor y solicita retirarlos de la SD; al pausar o finalizar la última campaña activa, vuelve a cargar los videos respaldados. Los archivos que otra campaña activa necesita se protegen. Se bloquea la publicación cuando no se puede identificar o respaldar con seguridad el contenido anterior.
+El ciclo de campañas registra cada entrega por dispositivo y archivo. En el modelo 35 conserva los videos anteriores en la SD y, después de seleccionar cada video de campaña, solicita repetición individual. La escritura de esa orden no confirma el modo ni la reproducción física. Al pausar o finalizar la última campaña se retiran solo los archivos añadidos que ya no necesite otra campaña y se intenta seleccionar el contenido anterior conocido. En el modelo 42 se respaldan y retiran los videos anteriores y se recargan al pausar o finalizar. En ambos modelos los archivos usados por otra campaña activa permanecen protegidos.
+
+Por decisión del usuario, si un video de campaña ya formaba parte del contenido anterior en la SD del 35, se conserva y puede volver a mostrarse al restaurar ese contenido al pausar o finalizar.
 
 ## Uso del dashboard
 
@@ -31,13 +33,15 @@ En el modelo 42 se utiliza una lista reportada por el dispositivo después de en
 
 La secuencia se coordina desde el servidor según la duración de cada video. No ofrece sincronización exacta entre pantallas: la cola, la latencia y la disponibilidad del equipo afectan el momento del cambio. En un dispositivo con varias campañas vigentes, gana la de mayor prioridad; en empate, la de menor ID. Los archivos compartidos siguen protegidos aunque otra campaña controle la reproducción.
 
-Antes del retiro se guarda una copia verificable de cada video anterior identificable en el servidor. Si falta un original o no se puede establecer su identidad, no se procede con el borrado y el dispositivo muestra el motivo. Varias campañas comparten el registro anterior y las copias. Cuando no queda una campaña activa, se libera el cursor sin apagar el equipo y se restauran los videos anteriores desde el servidor; si es posible, también se solicita la selección previa. Las operaciones pendientes se retoman tras una desconexión o reinicio.
+En el modelo 42, antes del retiro se guarda una copia verificable de cada video anterior identificable en el servidor. Si falta un original o no se puede establecer su identidad, no se procede con el borrado y el dispositivo muestra el motivo. En el modelo 35 no se necesita respaldar el contenido anterior para una sesión nueva: permanece en la SD. Varias campañas comparten el registro anterior. Cuando no queda una campaña activa, se libera el cursor sin apagar el equipo y se intenta solicitar la selección anterior conocida. Las operaciones pendientes se retoman tras una desconexión o reinicio.
 
 En el42 la captura espera a que terminen descargas, retiradas e intenciones de video pendientes. El heartbeat del proveedor despeja `desiredVideo` al confirmar `DisplayImageId`; el dashboard no lo limpia ni considera suficiente que coincida el nombre en un reporte anterior.
 
 Se recupera la selección individual conocida, no un modo o secuencia que el equipo no reporte. En el 42, una orden aceptada puede quedar encolada hasta un heartbeat y no confirma reproducción física. En el 35 se valida conteo e identidad de instalación antes de actuar; una respuesta ambigua requiere revisión. Un estado vacío o una selección anterior desconocida se muestran explícitamente, sin elegir un video arbitrario. La SD del 35 no ofrece identidad estable para archivos históricos desconocidos: cambios externos con idéntico conteo no son detectables.
 
-Las campañas ya publicadas antes de esta migración no tienen un registro anterior recuperable. Se muestra esa limitación y se conservan los archivos existentes cuya propiedad no puede probarse. No se inventa un historial a partir de la selección actual. Mientras haya una sesión abierta, el dashboard bloquea modificaciones manuales de contenido, formato y borrado de originales42 protegidos; finaliza las campañas y espera la recuperación antes de intervenir. Esta protección no cubre aplicaciones externas ni órdenes enviadas directamente a los proveedores.
+Las campañas antiguas que no tienen un registro anterior recuperable muestran esa limitación y conservan los archivos existentes cuya propiedad no puede probarse. No se inventa un historial a partir de la selección actual. Mientras haya una sesión abierta, el dashboard bloquea modificaciones manuales de contenido, formato y borrado de originales42 protegidos; finaliza las campañas y espera la recuperación antes de intervenir. Esta protección no cubre aplicaciones externas ni órdenes enviadas directamente a los proveedores.
+
+Las sesiones antiguas del modelo 35 que ya retiraron videos conservan su registro de respaldo. Antes de aplicar la nueva política se intentan recuperar los archivos retirados con copias íntegras y se verifica su identidad actual. Una carga o borrado interrumpido, o una identidad incierta, requiere revisión sin repetir órdenes ambiguas ni descartar copias. Si el video que se quiere usar en una campaña ya está en la SD pero no tiene identidad de carga verificable, no se reutiliza a ciegas. Las instalaciones de videos de campaña nuevos siguen requiriendo transferencia. El gateway y el firmware 35 deben admitir `play_repeat_one`; un gateway anterior rechaza la orden y no permite presentar la secuencia como iniciada.
 
 Si una intervención externa cambia la identidad o el conteo esperado del35, la recuperación queda pendiente y se mantiene el bloqueo de contenido. Reintentar por sí solo no corrige esa incompatibilidad: requiere revisión controlada del estado y del registro fuera del flujo automático. No se ofrece una acción que descarte el registro o seleccione un índice incierto.
 
@@ -49,9 +53,11 @@ Si un equipo pierde conexión, el servidor no puede garantizar que deje de repro
 
 Los cambios requieren desplegar versiones compatibles del dashboard, la nube privada del modelo 42 y el gateway del modelo 35, además de aplicar la migración del registro de campañas. No habilites la limpieza automática con una versión antigua que solo devuelve estado optimista.
 
+Para el nuevo modo 35, detener scheduler y workers antiguos antes del cambio coordinado del dashboard, gateway y firmware ESP32; una versión anterior del ciclo aún podría retirar contenido previo. Cargar el firmware en cada equipo y verificar la capacidad antes de reanudar campañas. Durante la campaña el intervalo entre seleccionar un video y activar repetición, las latencias, desconexiones y un fallo de orden pueden afectar lo mostrado; la escritura aceptada no prueba reproducción exclusiva. Al terminar se solicita la selección anterior conocida sin afirmar que se recupera el modo anterior exacto.
+
 Aplica las migraciones antes de reiniciar los workers. Para revertir, detén scheduler y workers primero y conserva las copias y los registros de sesiones pendientes: eliminarlos impediría restaurar el contenido anterior. Las pruebas automatizadas usan SQLite y proveedores falsos; MySQL y la reproducción física requieren verificación de despliegue.
 
-Configura `CAMPAIGN_BACKUP_DISK` para un disco local de Laravel que apunte a un volumen durable y compartido por los workers, y `CAMPAIGN_BACKUP_PERSISTENT=true` solo después de verificar que ese volumen sobrevive a recreaciones del contenedor. La aplicación no puede comprobar por sí sola la persistencia real del montaje. Reserva capacidad para todas las copias y consérvalas hasta que las sesiones pendientes se hayan recuperado.
+Para el modelo 42 y para recuperar sesiones antiguas que ya retiraron videos del 35, configura `CAMPAIGN_BACKUP_DISK` para un disco local de Laravel que apunte a un volumen durable y compartido por los workers, y `CAMPAIGN_BACKUP_PERSISTENT=true` solo después de verificar que ese volumen sobrevive a recreaciones del contenedor. La aplicación no puede comprobar por sí sola la persistencia real del montaje. Reserva capacidad para todas las copias y consérvalas hasta que las sesiones pendientes se hayan recuperado.
 
 - Usa una cola asíncrona `database` o `redis`; `sync` no sirve para este ciclo.
 - Configura `retry_after` de esa conexión por encima de 1900 segundos. La conexión `database` tiene 2100 por defecto; para Redis configura `REDIS_QUEUE_RETRY_AFTER=2100` o un valor mayor que el timeout del trabajo.
@@ -82,7 +88,7 @@ Consulta la [documentación oficial de tareas subminuto de Laravel 12](https://l
 - Desconecta un equipo durante el fin: debe aparecer pendiente, nunca «Borrado confirmado» sin evidencia.
 - Comprueba una respuesta ambigua del modelo 35: debe quedar «Requiere revisión», sin repetir automáticamente el índice.
 - Verifica que los archivos ajenos a la campaña y los dispositivos no seleccionados permanezcan intactos.
-- Inicia con videos anteriores identificables y respaldados: verifica su retiro, la reproducción de campaña y su recarga al pausar o finalizar la última activa, sin apagar el equipo.
+- En el modelo 42, inicia con videos anteriores identificables y respaldados: verifica su retiro, la reproducción de campaña y su recarga al pausar o finalizar la última activa, sin apagar el equipo. En el 35, verifica que los anteriores permanezcan en la SD y que cada video de campaña repita individualmente hasta el cambio al siguiente.
 - Desconecta al restaurar: la recuperación debe quedar pendiente y reintentarse aunque ya no haya archivos de campaña que retirar. Verifica también el bloqueo si falta un original.
 
 Estas comprobaciones sobre hardware son posteriores a las pruebas automatizadas con fakes; requieren un entorno y dispositivos de prueba autorizados.
