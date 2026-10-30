@@ -24,11 +24,11 @@ class CampaignLifecycle
     public function assertQueueConfiguration(): void
     {
         if (! in_array(config('cache.stores.'.config('cache.default').'.driver'), ['database', 'redis'])) {
-            throw new \RuntimeException('Las campanas requieren bloqueos compartidos en cache database/redis.');
+            throw new CampaignConfigurationException('La campaña requiere una caché compartida (database o redis). Contacta al administrador para revisar la configuración.');
         }
         $connection = config('queue.default');
         if (! in_array(config('queue.connections.'.$connection.'.driver'), ['database', 'redis']) || (int) config('queue.connections.'.$connection.'.retry_after') <= 1900) {
-            throw new \RuntimeException('Las campanas requieren cola database/redis y retry_after mayor a 1900 segundos.');
+            throw new CampaignConfigurationException('La campaña requiere una cola database o redis con retry_after mayor a 1900 segundos. Contacta al administrador para revisar la configuración.');
         }
     }
 
@@ -42,7 +42,7 @@ class CampaignLifecycle
         $this->assertQueueConfiguration();
         $campaign->refresh();
         if ($campaign->end_date?->lte(now())) {
-            throw ValidationException::withMessages(['end_date' => 'La campaÃ±a ya terminÃ³. Ajusta su perÃ­odo antes de activarla.']);
+            throw ValidationException::withMessages(['end_date' => 'La campaña ya terminó. Ajusta su período antes de activarla.']);
         }
         if ($campaign->media()->count() === 0) {
             throw ValidationException::withMessages(['media_ids' => 'Selecciona al menos un video para activar la campaña.']);
