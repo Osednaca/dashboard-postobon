@@ -75,7 +75,7 @@ class CampaignDeviceTransport
             $mapping = Wl35DeviceMedia::where('device_id', $id)->where('video_index', (int) $item['video_index'])->where('media_id', $file->media_id)->firstOrFail();
             $file->update(['evidence' => ['mapping_id' => $mapping->id, 'upload_identity' => $mapping->upload_identity], 'video_index' => (int) $item['video_index'], 'state' => 'ready', 'confirmed_at' => now(), 'last_error' => null]);
         } catch (Throwable $e) {
-            $file->update(['state' => 'needs_review', 'last_error' => 'Carga 35 ambigua: '.$e->getMessage()]);
+            $file->update(['state' => 'needs_review', 'last_error' => 'Carga 35 ambigua: '.CampaignError::publicMessage($e)]);
         } finally {
             Storage::disk('local')->delete($path);
         }
@@ -176,7 +176,7 @@ class CampaignDeviceTransport
             });
         } catch (Throwable $e) {
             Wl35DeviceMedia::where('device_id', $id)->update(['media_id' => null, 'filename' => null]);
-            $file->update(['state' => 'needs_review', 'last_error' => 'Borrado 35 ambiguo; no se reintentarÃ¡ el Ã­ndice: '.$e->getMessage()]);
+            $file->update(['state' => 'needs_review', 'last_error' => 'Borrado 35 ambiguo; no se reintentarÃ¡ el Ã­ndice: '.CampaignError::publicMessage($e)]);
         }
     }
 

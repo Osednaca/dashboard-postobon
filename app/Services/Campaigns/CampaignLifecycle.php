@@ -134,7 +134,7 @@ class CampaignLifecycle
             foreach ($lockTargets as $target) {
                 $lock = Cache::lock(self::lockName($target), 2000);
                 if (! $lock->get()) {
-                    throw ValidationException::withMessages(['target_devices' => 'Un dispositivo está procesando contenido. Reintenta cuando termine.']);
+                    throw new CampaignDeviceBusyException;
                 }
                 $locks[] = $lock;
             }
@@ -172,8 +172,10 @@ class CampaignLifecycle
         foreach (Campaign::where('status', 'scheduled')->whereNull('duration_preparation_state')->where(fn ($q) => $q->whereNull('start_date')->orWhere('start_date', '<=', now()))->get() as $campaign) {
             try {
                 $this->activate($campaign);
+            } catch (CampaignDeviceBusyException $e) {
+                // A device job owns this lock during normal publication; retry on the next tick.
             } catch (Throwable $e) {
-                $this->recordCampaignError($campaign, $e->getMessage());
+                $this->recordCampaignError($campaign, CampaignError::publicMessage($e));
             }
         }
         // Existing active campaigns and edits are reconciled without discarding old delivery evidence.
@@ -188,11 +190,14 @@ class CampaignLifecycle
                     continue;
                 }
                 $this->snapshot($campaign);
+            } catch (CampaignDeviceBusyException $e) {
+                // Reconciliation must wait for the in-flight device operation.
             } catch (Throwable $e) {
-                $this->recordCampaignError($campaign, $e->getMessage());
+                $this->recordCampaignError($campaign, CampaignError::publicMessage($e));
             }
         }
         CampaignDeviceFile::whereNotIn('state', ['removed', 'preserved', 'reported_absent'])->select('target_key')->distinct()->pluck('target_key')->merge(CampaignDevicePlayback::whereNotNull('campaign_id')->pluck('target_key'))->unique()->each(fn ($target) => ProcessCampaignDeviceJob::dispatch($target));
+        app(CampaignActivity::class)->tick();
     }
 
     private function recordCampaignError(Campaign $campaign, string $error): void
@@ -261,6 +266,8 @@ class CampaignLifecycle
         if (! $lock->get()) {
             return;
         }
+        $failedFile = null;
+        $winner = null;
         try {
             $files = CampaignDeviceFile::where('target_key', $target)->orderBy('id')->get();
             $winner = Campaign::where('status', 'active')->where(fn ($q) => $q->whereNull('start_date')->orWhere('start_date', '<=', now()))->where(fn ($q) => $q->whereNull('end_date')->orWhere('end_date', '>', now()))
@@ -274,6 +281,7 @@ class CampaignLifecycle
             }
             // Finalize in-flight physical operations first; never overwrite the 42 desired file.
             foreach ($files->whereIn('state', ['installing', 'removing']) as $file) {
+                $failedFile = $file;
                 if ($file->state === 'installing' && ! $this->hasReferences($file) && str_starts_with($target, 'z2:')) {
                     $this->transport->remove($file);
                 } elseif ($file->state === 'installing') {
@@ -281,9 +289,11 @@ class CampaignLifecycle
                 } else {
                     $this->transport->remove($file);
                 }
+                $this->clearPlaybackErrorIfVerified($file);
                 if ($file->fresh()->state === 'installing' || $file->fresh()->state === 'removing') {
                     return;
                 }
+                $failedFile = null;
             }
             foreach ($files as $file) {
                 $file->refresh();
@@ -296,6 +306,7 @@ class CampaignLifecycle
                     continue;
                 }
                 if (in_array($file->state, ['ready'])) {
+                    $failedFile = $file;
                     $this->transport->remove($file);
 
                     return;
@@ -305,7 +316,9 @@ class CampaignLifecycle
             foreach ($files as $file) {
                 $file->refresh();
                 if ($file->state === 'pending' && $this->references($file)->whereHas('campaign', fn ($q) => $q->where('status', 'active')->where(fn ($q) => $q->whereNull('start_date')->orWhere('start_date', '<=', now())))->exists()) {
+                    $failedFile = $file;
                     $this->publishFile($file);
+                    $this->clearPlaybackErrorIfVerified($file);
 
                     return;
                 }
@@ -316,7 +329,9 @@ class CampaignLifecycle
             $deliveries = $winner->deliveries()->whereNull('released_at')->whereHas('file', fn ($q) => $q->where('target_key', $target))->with('file')->orderBy('position')->get();
             foreach ($deliveries as $delivery) {
                 if ($delivery->file->state === 'pending') {
+                    $failedFile = $delivery->file;
                     $this->publishFile($delivery->file);
+                    $this->clearPlaybackErrorIfVerified($delivery->file);
 
                     return;
                 }
@@ -326,12 +341,27 @@ class CampaignLifecycle
             }
             $this->rotate($winner, $target, $deliveries);
         } catch (Throwable $e) {
-            if (isset($file)) {
-                $file->update(['last_error' => $e->getMessage()]);
+            $message = CampaignError::publicMessage($e);
+            if ($failedFile !== null) {
+                $failedFile->update(['last_error' => $message]);
             }
-            CampaignDevicePlayback::updateOrCreate(['target_key' => $target], ['last_error' => $e->getMessage()]);
+            CampaignDevicePlayback::updateOrCreate(['target_key' => $target], ['last_error' => $message]);
+            $key = 'campaigns:diagnostic:'.hash('sha256', $target.'|'.$e::class.'|'.$e->getMessage());
+            if (Cache::add($key, true, 60)) {
+                Log::channel('diagnostics')->error('Falló el procesamiento de campaña para un dispositivo.', [
+                    'target' => $target, 'campaign_id' => $winner?->id, 'exception_type' => $e::class, 'reason' => $message,
+                ]);
+            }
         } finally {
             $lock->release();
+        }
+    }
+
+    private function clearPlaybackErrorIfVerified(CampaignDeviceFile $file): void
+    {
+        $file->refresh();
+        if ($file->state === 'ready' && $file->confirmed_at !== null) {
+            CampaignDevicePlayback::where('target_key', $file->target_key)->update(['last_error' => null]);
         }
     }
 

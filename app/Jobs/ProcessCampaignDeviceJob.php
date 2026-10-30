@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Services\Campaigns\CampaignActivity;
 use App\Services\Campaigns\CampaignLifecycle;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -32,6 +33,7 @@ class ProcessCampaignDeviceJob implements ShouldBeUnique, ShouldQueue
 
     public function handle(CampaignLifecycle $lifecycle): void
     {
+        app(CampaignActivity::class)->deviceStarted($this->target);
         $lifecycle->processDevice($this->target);
     }
 }

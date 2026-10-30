@@ -5,8 +5,10 @@ namespace Tests\Feature;
 use App\Models\Campaign;
 use App\Models\CampaignDelivery;
 use App\Models\CampaignDeviceFile;
+use App\Models\CampaignDevicePlayback;
 use App\Models\Media;
 use App\Models\User;
+use App\Services\Campaigns\CampaignActivity;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -76,6 +78,38 @@ class CampaignLifecyclePresentationTest extends TestCase
             ->assertSee('Conservado por seguridad')
             ->assertSee('Dispositivo sin conexión')
             ->assertDontSee('Borrado confirmado');
+        Http::assertNothingSent();
+    }
+
+    public function test_pending_delivery_displays_observed_activity_and_device_errors_without_claiming_a_worker_failure(): void
+    {
+        $campaign = $this->campaign('active');
+        $delivery = $this->delivery($campaign, 'pending', 'En espera');
+        CampaignDevicePlayback::create(['target_key' => $delivery->file->target_key, 'last_error' => 'No se confirmó la detención o reanudación del dispositivo.']);
+        $activity = app(CampaignActivity::class);
+        $this->actingAs($campaign->creator)->get(route('campaigns.show', $campaign))->assertOk()
+            ->assertSee('No se ha observado actividad reciente del programador')
+            ->assertSee('Aún no se ha observado un intento reciente para este dispositivo.')
+            ->assertSee('Error del dispositivo: No se confirmó la detención o reanudación del dispositivo.')
+            ->assertDontSee('worker detenido');
+        $activity->tick();
+        $activity->deviceStarted($delivery->file->target_key);
+        $this->actingAs($campaign->creator)->get(route('campaigns.show', $campaign))->assertOk()
+            ->assertSee('Última actividad observada del programador de campañas:')
+            ->assertSee('Último intento observado:')
+            ->assertSee('Esta observación no confirma que se haya publicado el video.');
+        Http::assertNothingSent();
+    }
+
+    public function test_legacy_error_with_url_or_secret_is_not_displayed(): void
+    {
+        $campaign = $this->campaign('active');
+        $this->delivery($campaign, 'pending', 'Video', 'https://example.test/?token=secret');
+        $campaign->update(['lifecycle_error' => 'password=secret']);
+        $this->actingAs($campaign->creator)->get(route('campaigns.show', $campaign))->assertOk()
+            ->assertSee('No se pudo procesar el dispositivo. Revisa los registros del servidor.')
+            ->assertDontSee('https://example.test/')
+            ->assertDontSee('password=secret');
         Http::assertNothingSent();
     }
 

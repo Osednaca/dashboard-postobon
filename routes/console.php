@@ -7,6 +7,7 @@ use App\Jobs\SyncGroupsJob;
 use App\Jobs\SyncVideosJob;
 use App\Models\FleetOperation;
 use App\Models\FleetUpload;
+use App\Services\Campaigns\CampaignActivity;
 use App\Services\Fleet\CompressedMediaPreview;
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Stringable;
@@ -52,4 +53,5 @@ Schedule::call(fn () => app(CompressedMediaPreview::class)->prune())
     ->name('media-preview:prune')->dailyAt('03:40')->withoutOverlapping();
 
 // Sub-minute orchestration only; slow transfers run on dedicated campaign workers.
-Schedule::command('campaigns:process')->everySecond()->withoutOverlapping();
+Schedule::command('campaigns:process')->everySecond()->withoutOverlapping()
+    ->onFailure(fn () => app(CampaignActivity::class)->schedulerFailed());
