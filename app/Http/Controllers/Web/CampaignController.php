@@ -38,6 +38,7 @@ class CampaignController extends Controller
 
         try {
             $campaigns = $this->campaignService->paginate(15);
+            $campaigns->getCollection()->loadCount(['deviceCampaigns' => fn ($query) => $query->whereHas('device')]);
 
             return view('campaigns.index', compact('campaigns'));
         } catch (\Exception $e) {
