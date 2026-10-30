@@ -31,7 +31,9 @@ En el modelo 42 se utiliza una lista reportada por el dispositivo después de en
 
 La secuencia se coordina desde el servidor según la duración de cada video. No ofrece sincronización exacta entre pantallas: la cola, la latencia y la disponibilidad del equipo afectan el momento del cambio. En un dispositivo con varias campañas vigentes, gana la de mayor prioridad; en empate, la de menor ID. Los archivos compartidos siguen protegidos aunque otra campaña controle la reproducción.
 
-Cuando se pausa o finaliza la campaña que controla un dispositivo y no hay otra campaña que pueda tomar su lugar, se envía una orden de apagado para detener la reproducción administrada. Al reanudar una secuencia, se envía la orden de encendido. Este es el mecanismo de parada disponible en ambos modelos; no borra archivos por sí mismo.
+Cuando se pausa o finaliza la campaña que controla un dispositivo y no hay otra campaña que pueda tomar su lugar, se libera el cursor de la secuencia sin apagar el equipo. Esto no detiene instantáneamente el video actual: puede continuar hasta que se seleccione otro o se complete su retiro al finalizar. La pausa conserva los archivos de la campaña.
+
+La provisión de archivos todavía puede apagar temporalmente el equipo para evitar que una carga interrumpa la secuencia ganadora. El relevo entre campañas ya publicadas no envía una orden de apagado. Si la campaña termina durante esa provisión y no queda otra activa, se solicita el encendido antes de continuar la limpieza. Un fallo de conexión conserva el intento pendiente hasta poder confirmar el encendido.
 
 Si un equipo pierde conexión, el servidor no puede garantizar que deje de reproducir o borre su SD a la hora exacta de fin. Mantiene la operación pendiente y conserva el error, en lugar de presentar una limpieza ficticia. La pausa y la finalización impiden que trabajos obsoletos sigan avanzando la campaña.
 

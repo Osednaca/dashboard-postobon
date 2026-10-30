@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Validation\ValidationException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class CampaignLifecycleTest extends TestCase
@@ -133,7 +134,7 @@ class CampaignLifecycleTest extends TestCase
         $second->media()->first()->update(['file_path' => 'alias/'.basename($first->media()->first()->file_path)]);
         $transport = $this->mock(CampaignDeviceTransport::class);
         $transport->shouldReceive('select')->once();
-        $transport->shouldReceive('power')->with($this->target, false)->zeroOrMoreTimes();
+        $transport->shouldNotReceive('power');
         $transport->shouldReceive('remove')->once()->andReturnUsing(fn ($file) => $file->update(['state' => 'removed']));
         $lifecycle = app(CampaignLifecycle::class);
         $lifecycle->activate($first);
@@ -173,13 +174,12 @@ class CampaignLifecycleTest extends TestCase
         $this->assertSame(1, $campaign->deliveries()->whereNotNull('released_at')->count());
     }
 
-    public function test_rotation_uses_duration_order_repeats_and_stops_when_paused(): void
+    public function test_rotation_uses_duration_order_repeats_and_releases_the_cursor_without_powering_off_when_paused(): void
     {
         $campaign = $this->campaign();
         $seen = [];
         $transport = $this->mock(CampaignDeviceTransport::class);
-        $transport->shouldReceive('power')->once()->with($this->target, false);
-        $transport->shouldReceive('power')->once()->with($this->target, true);
+        $transport->shouldNotReceive('power');
         $transport->shouldReceive('select')->times(4)->andReturnUsing(function ($file) use (&$seen) {
             $seen[] = $file->media_id;
         });
@@ -198,10 +198,102 @@ class CampaignLifecycleTest extends TestCase
         $this->travel(10)->seconds();
         $lifecycle->processDevice($this->target);
         $this->assertNull(CampaignDevicePlayback::sole()->campaign_id);
-        $this->assertTrue(CampaignDevicePlayback::sole()->powered_off);
+        $this->assertFalse(CampaignDevicePlayback::sole()->powered_off);
         $lifecycle->activate($campaign);
         $lifecycle->processDevice($this->target);
         $this->assertFalse(CampaignDevicePlayback::sole()->powered_off);
+    }
+
+    #[DataProvider('inactiveTransitions')]
+    public function test_inactive_campaign_releases_playback_without_powering_off_and_preserves_cleanup(string $transition): void
+    {
+        $campaign = $this->campaign([], 1);
+        $transport = $this->mock(CampaignDeviceTransport::class);
+        $transport->shouldNotReceive('power');
+        $transport->shouldReceive('select')->once();
+        if ($transition === 'paused') {
+            $transport->shouldNotReceive('remove');
+        } else {
+            $transport->shouldReceive('remove')->once()->andReturnUsing(fn ($file) => $file->update(['state' => 'removed']));
+        }
+        $lifecycle = app(CampaignLifecycle::class);
+        $lifecycle->activate($campaign);
+        $this->ready($campaign);
+        $lifecycle->processDevice($this->target);
+        if ($transition === 'expired') {
+            $this->travel(61)->minutes();
+            $lifecycle->tick();
+            $this->assertSame('finished', $campaign->fresh()->status);
+        } elseif ($transition === 'finished') {
+            $lifecycle->finish($campaign);
+        } else {
+            $campaign->update(['status' => 'paused']);
+        }
+        $lifecycle->processDevice($this->target);
+        $this->travel(10)->seconds();
+        $lifecycle->processDevice($this->target);
+        $playback = CampaignDevicePlayback::sole();
+        $this->assertNull($playback->campaign_id);
+        $this->assertNull($playback->delivery_id);
+        $this->assertNull($playback->due_at);
+        $this->assertFalse($playback->powered_off);
+        $this->assertSame($transition === 'paused' ? 'ready' : 'removed', CampaignDeviceFile::sole()->state);
+    }
+
+    public static function inactiveTransitions(): array
+    {
+        return ['pause' => ['paused'], 'manual finish' => ['finished'], 'expiration' => ['expired']];
+    }
+
+    public function test_finish_during_provisioning_restores_power_before_cleanup_returns(): void
+    {
+        $campaign = $this->campaign([], 1);
+        $transport = $this->mock(CampaignDeviceTransport::class);
+        $transport->shouldReceive('power')->once()->with($this->target, true)->ordered();
+        $transport->shouldReceive('remove')->once()->andReturnUsing(fn ($file) => $file->update(['state' => 'removing']))->ordered();
+        $lifecycle = app(CampaignLifecycle::class);
+        $lifecycle->activate($campaign);
+        $this->ready($campaign);
+        CampaignDevicePlayback::create(['target_key' => $this->target, 'powered_off' => true]);
+        $lifecycle->finish($campaign);
+        $lifecycle->processDevice($this->target);
+        $this->assertFalse(CampaignDevicePlayback::sole()->powered_off);
+        $this->assertSame('removing', CampaignDeviceFile::sole()->state);
+    }
+
+    public function test_failed_power_recovery_is_scheduled_again_without_remaining_campaign_files(): void
+    {
+        $transport = $this->mock(CampaignDeviceTransport::class);
+        $transport->shouldReceive('power')->once()->with($this->target, true)->andThrow(new \RuntimeException('Dispositivo sin conexión.'));
+        $transport->shouldReceive('power')->once()->with($this->target, true);
+        $transport->shouldNotReceive('remove');
+        CampaignDevicePlayback::create(['target_key' => $this->target, 'powered_off' => true]);
+        $lifecycle = app(CampaignLifecycle::class);
+        $lifecycle->processDevice($this->target);
+        $this->assertTrue(CampaignDevicePlayback::sole()->powered_off);
+        $this->assertNotNull(CampaignDevicePlayback::sole()->last_error);
+        $lifecycle->tick();
+        Queue::assertPushed(ProcessCampaignDeviceJob::class, fn ($job) => $job->target === $this->target);
+        $lifecycle->processDevice($this->target);
+        $this->assertFalse(CampaignDevicePlayback::sole()->powered_off);
+        $this->assertNull(CampaignDevicePlayback::sole()->last_error);
+    }
+
+    public function test_provisioning_another_campaign_still_temporarily_suspends_managed_playback(): void
+    {
+        $playing = $this->campaign(['priority' => 10], 1);
+        $loading = $this->campaign(['priority' => 1], 1);
+        $transport = $this->mock(CampaignDeviceTransport::class);
+        $transport->shouldReceive('power')->once()->with($this->target, false)->ordered();
+        $transport->shouldReceive('install')->once()->withArgs(fn ($file) => $file->media_id === $loading->media()->first()->id)->ordered();
+        $lifecycle = app(CampaignLifecycle::class);
+        $lifecycle->activate($playing);
+        $lifecycle->activate($loading);
+        $this->ready($playing);
+        CampaignDevicePlayback::create(['target_key' => $this->target, 'campaign_id' => $playing->id, 'delivery_id' => $playing->deliveries->first()->id]);
+        $lifecycle->processDevice($this->target);
+        $this->assertTrue(CampaignDevicePlayback::sole()->powered_off);
+        $this->assertNull(CampaignDevicePlayback::sole()->campaign_id);
     }
 
     public function test_priority_winner_does_not_delete_lower_priority_files(): void
@@ -274,7 +366,8 @@ class CampaignLifecycleTest extends TestCase
         $lifecycle = app(CampaignLifecycle::class);
         $lifecycle->activate($campaign);
         $previous = $this->campaign(['status' => 'finished'], 1);
-        CampaignDevicePlayback::create(['target_key' => $this->target, 'campaign_id' => $previous->id]);
+        $this->ready($campaign);
+        CampaignDevicePlayback::create(['target_key' => $this->target, 'campaign_id' => $previous->id, 'powered_off' => true]);
         $logger = \Mockery::mock();
         $logger->shouldReceive('error')->once()->withArgs(function ($message, $context) {
             return str_contains($message, 'Falló') && $context['target'] === $this->target
@@ -401,22 +494,27 @@ class CampaignLifecycleTest extends TestCase
         app(CampaignLifecycle::class)->activate($campaign);
     }
 
-    public function test_handoff_stops_expired_playback_before_pending_campaign_is_ready(): void
+    public function test_handoff_to_published_campaign_keeps_power_on_and_cleans_up_the_finished_campaign(): void
     {
         $first = $this->campaign(['priority' => 10], 1);
         $next = $this->campaign(['priority' => 1], 1);
         $transport = $this->mock(CampaignDeviceTransport::class);
-        $transport->shouldReceive('power')->once()->with($this->target, false)->ordered();
+        $transport->shouldNotReceive('power');
         $transport->shouldReceive('remove')->once()->andReturnUsing(fn ($file) => $file->update(['state' => 'removed']))->ordered();
+        $transport->shouldReceive('select')->once()->withArgs(fn ($file) => $file->media_id === $next->media()->first()->id)->ordered();
         $lifecycle = app(CampaignLifecycle::class);
         $lifecycle->activate($first);
         $lifecycle->activate($next);
         $this->ready($first);
+        $this->ready($next);
         CampaignDevicePlayback::create(['target_key' => $this->target, 'campaign_id' => $first->id, 'delivery_id' => $first->deliveries->first()->id, 'due_at' => now()->addMinute()]);
         $lifecycle->finish($first);
         $lifecycle->processDevice($this->target);
-        $this->assertTrue(CampaignDevicePlayback::sole()->powered_off);
+        $this->assertFalse(CampaignDevicePlayback::sole()->powered_off);
         $this->assertNull(CampaignDevicePlayback::sole()->campaign_id);
+        $lifecycle->processDevice($this->target);
+        $this->assertSame($next->id, CampaignDevicePlayback::sole()->campaign_id);
+        $this->assertFalse(CampaignDevicePlayback::sole()->powered_off);
     }
 
     public function test_future_campaign_does_not_hold_expired_campaign_file_indefinitely(): void

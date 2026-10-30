@@ -196,7 +196,7 @@ class CampaignLifecycle
                 $this->recordCampaignError($campaign, CampaignError::publicMessage($e));
             }
         }
-        CampaignDeviceFile::whereNotIn('state', ['removed', 'preserved', 'reported_absent'])->select('target_key')->distinct()->pluck('target_key')->merge(CampaignDevicePlayback::whereNotNull('campaign_id')->pluck('target_key'))->unique()->each(fn ($target) => ProcessCampaignDeviceJob::dispatch($target));
+        CampaignDeviceFile::whereNotIn('state', ['removed', 'preserved', 'reported_absent'])->select('target_key')->distinct()->pluck('target_key')->merge(CampaignDevicePlayback::whereNotNull('campaign_id')->orWhere('powered_off', true)->pluck('target_key'))->unique()->each(fn ($target) => ProcessCampaignDeviceJob::dispatch($target));
         app(CampaignActivity::class)->tick();
     }
 
@@ -276,8 +276,13 @@ class CampaignLifecycle
             $playback = CampaignDevicePlayback::where('target_key', $target)->first();
             $currentValid = $winner && $playback?->campaign_id === $winner->id && $winner->deliveries()->whereKey($playback->delivery_id)->whereNull('released_at')->exists();
             if (! $currentValid && $playback?->campaign_id !== null) {
-                $this->transport->power($target, false);
-                $playback->update(['campaign_id' => null, 'delivery_id' => null, 'due_at' => null, 'powered_off' => true, 'last_error' => null]);
+                $playback->update(['campaign_id' => null, 'delivery_id' => null, 'due_at' => null, 'last_error' => null]);
+            }
+            // A campaign can finish while provisioning has temporarily powered the fan off.
+            // Recover before cleanup can return early, and retain the flag if reconnecting fails.
+            if (! $winner && $playback?->powered_off) {
+                $this->transport->power($target, true);
+                $playback->update(['powered_off' => false, 'last_error' => null]);
             }
             // Finalize in-flight physical operations first; never overwrite the 42 desired file.
             foreach ($files->whereIn('state', ['installing', 'removing']) as $file) {

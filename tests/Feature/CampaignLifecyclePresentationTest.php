@@ -37,6 +37,9 @@ class CampaignLifecyclePresentationTest extends TestCase
             ->assertSee('Borrado confirmado')
             ->assertSee('Requiere revisión')
             ->assertSee('Finalizar una campaña no confirma el borrado.')
+            ->assertSee('deja de gestionar la secuencia sin apagar el equipo.')
+            ->assertSee('El video actual puede continuar')
+            ->assertDontSee('pausar o finalizar envía una orden de apagado')
             ->assertSee('No se volverá a borrar por un índice incierto.')
             ->assertSee('<script>alert(1)</script>')
             ->assertDontSee('<script>alert(1)</script>', false);

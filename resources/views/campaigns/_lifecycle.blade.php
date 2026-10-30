@@ -28,7 +28,7 @@
         <a href="{{ route('campaigns.show', $campaign) }}" class="text-sm font-medium text-primary hover:underline">Actualizar estado</a>
     </div>
     <p class="text-sm text-text-muted">Finalizar una campaña no confirma el borrado. Una orden aceptada permanece pendiente hasta recibir evidencia del dispositivo; los equipos sin conexión pueden tardar en completar la operación.</p>
-    <p class="text-sm text-text-muted">Si no hay otra campaña que continúe la reproducción, pausar o finalizar envía una orden de apagado al equipo. Reanudar la secuencia vuelve a encenderlo.</p>
+    <p class="text-sm text-text-muted">Si no hay otra campaña que continúe la reproducción, pausar o finalizar deja de gestionar la secuencia sin apagar el equipo. El video actual puede continuar hasta que se seleccione otro o se complete su retiro al finalizar.</p>
     @if($campaign->status === 'active' && $deliveries->contains(fn ($delivery) => $delivery->file?->state === 'pending'))
         <p class="text-sm text-text-muted" role="status">
             @if($lastTick)
