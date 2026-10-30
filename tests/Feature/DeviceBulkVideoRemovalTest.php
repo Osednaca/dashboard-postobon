@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AuditLog;
+use App\Models\CampaignDevicePlayback;
 use App\Models\Device;
 use App\Models\Group;
 use App\Models\Media;
@@ -81,6 +82,16 @@ class DeviceBulkVideoRemovalTest extends TestCase
         $this->assertDatabaseHas('wl35_device_media', ['device_id' => 'unselected', 'media_id' => $media->id, 'video_index' => 2]);
         $this->assertSame(2, AuditLog::where('action', 'remove_video')->where('user_id', auth()->id())->count());
         Http::assertSentCount(4);
+    }
+
+    public function test_wl35_bulk_removal_cannot_bypass_a_durable_campaign_session(): void
+    {
+        $media = $this->media();
+        $this->wl35('fan-a', $media, 1);
+        CampaignDevicePlayback::create(['target_key' => 'wl35:fan-a', 'baseline' => ['type' => 'wl35', 'count' => 1, 'selection' => 1], 'restore_state' => 'managed']);
+        $this->remove($media, ['wl35:fan-a'])->assertOk()->assertJsonPath('results.0.status', 'failed');
+        $this->assertSame(1, Wl35DeviceMedia::sole()->video_index);
+        Http::assertNothingSent();
     }
 
     public function test_mixed_selection_continues_after_failure_and_never_uploads_or_deletes_library(): void

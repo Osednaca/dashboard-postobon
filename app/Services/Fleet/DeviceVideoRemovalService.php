@@ -92,6 +92,7 @@ class DeviceVideoRemovalService
         }
 
         try {
+            DeviceMutationLock::assertNoCampaignSession(['wl35:'.$deviceId]);
             $mappings = Wl35DeviceMedia::where('device_id', $deviceId)->where('media_id', $mediaId)->get();
             if ($mappings->count() !== 1) {
                 throw new VideoRemovalRejected('No se puede identificar este video en el equipo 35. Revísalo en el detalle del dispositivo.');

@@ -23,12 +23,31 @@
     <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
             <h3 id="campaign-lifecycle-title" class="text-lg font-semibold text-text">Publicación y limpieza</h3>
-            <p class="mt-1 text-sm text-text-light">Los videos se reproducen en secuencia repetida durante la campaña. Al finalizar, se retiran de la SD salvo que otra campaña los necesite o no se puedan identificar con seguridad.</p>
+            <p class="mt-1 text-sm text-text-light">Durante la campaña se seleccionan sus videos en secuencia repetida. El contenido anterior se conserva en la SD; al finalizar se retiran solo los archivos añadidos que ninguna otra campaña necesite y puedan identificarse con seguridad.</p>
         </div>
         <a href="{{ route('campaigns.show', $campaign) }}" class="text-sm font-medium text-primary hover:underline">Actualizar estado</a>
     </div>
     <p class="text-sm text-text-muted">Finalizar una campaña no confirma el borrado. Una orden aceptada permanece pendiente hasta recibir evidencia del dispositivo; los equipos sin conexión pueden tardar en completar la operación.</p>
-    <p class="text-sm text-text-muted">Si no hay otra campaña que continúe la reproducción, pausar o finalizar deja de gestionar la secuencia sin apagar el equipo. El video actual puede continuar hasta que se seleccione otro o se complete su retiro al finalizar.</p>
+    <p class="text-sm text-text-muted">Si no hay otra campaña que continúe la reproducción, pausar o finalizar deja de gestionar la secuencia sin apagar el equipo. Se solicita la selección anterior registrada, después de completar los retiros pendientes. El video actual puede continuar mientras se completa la operación.</p>
+    @foreach($playbackByTarget as $target => $session)
+        @if($session->baseline !== null)
+            @php
+                $restoreLabels = ['managed' => 'Contenido anterior conservado en la SD', 'pending' => 'Recuperación de selección anterior pendiente', 'restored' => 'Selección anterior solicitada', 'empty' => 'Sin contenido anterior registrado', 'unavailable' => 'Selección anterior no disponible'];
+                $restoreError = \App\Services\Campaigns\CampaignError::safeStored($session->restore_error);
+            @endphp
+            <div role="status" class="rounded-lg bg-surface p-3 text-sm">
+                <p class="font-medium">{{ $recipientNames->get($target) ?: $target }}: {{ $restoreLabels[$session->restore_state] ?? 'Estado anterior registrado' }}</p>
+                @if(($session->baseline['type'] ?? null) === 'legacy')
+                    <p class="mt-1 text-text-muted">Esta campaña comenzó sin registro del contenido anterior. Se conserva lo que no puede identificarse con seguridad; no se puede reconstruir la selección previa.</p>
+                @elseif($session->restore_state === 'restored')
+                    <p class="mt-1 text-text-muted">El proveedor aceptó la selección anterior. En el modelo 42 puede quedar encolada; esto no confirma su reproducción física ni restaura un modo o una secuencia anterior no registrados.</p>
+                @elseif($session->restore_state === 'empty')
+                    <p class="mt-1 text-text-muted">El reporte inicial no contenía videos; el equipo permanece encendido sin elegir otro archivo.</p>
+                @endif
+                @if($restoreError)<p class="mt-1 text-danger break-words">{{ $restoreError }}</p>@endif
+            </div>
+        @endif
+    @endforeach
     @if($campaign->status === 'active' && $deliveries->contains(fn ($delivery) => $delivery->file?->state === 'pending'))
         <p class="text-sm text-text-muted" role="status">
             @if($lastTick)
@@ -73,6 +92,10 @@
                                 ? 'Sin archivo pendiente de retirar'
                                 : ($lifecycleLabels[$state] ?? 'Estado no disponible');
                             $playback = $playbackByTarget->get($file?->target_key);
+                            $previousContent = $file && $playback?->preserves($file);
+                            if ($state === 'preserved' && $previousContent) {
+                                $stateLabel = 'Contenido anterior conservado';
+                            }
                             $fileError = \App\Services\Campaigns\CampaignError::safeStored($file?->last_error);
                             $playbackError = \App\Services\Campaigns\CampaignError::safeStored($playback?->last_error);
                             $lastDeviceStart = $file?->target_key ? $activity->lastDeviceStart($file->target_key) : null;
@@ -94,6 +117,8 @@
                                     <p class="mt-1 text-xs text-text-muted">No se volverá a borrar por un índice incierto. Revisa el contenido del dispositivo antes de intervenir.</p>
                                 @elseif($state === 'reported_absent')
                                     <p class="mt-1 text-xs text-text-muted">El modelo 42 ya no incluye este video en su reporte, pero no permite confirmar que el archivo haya desaparecido de la SD.</p>
+                                @elseif($previousContent)
+                                    <p class="mt-1 text-xs text-text-muted">Este video ya estaba en el dispositivo antes de la campaña y no se retira.</p>
                                 @elseif($state === 'preserved')
                                     <p class="mt-1 text-xs text-text-muted">No hay una identificación suficiente para retirarlo sin arriesgar otro archivo.</p>
                                 @endif

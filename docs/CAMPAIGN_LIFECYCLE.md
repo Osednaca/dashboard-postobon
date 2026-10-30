@@ -1,6 +1,6 @@
 # Publicación, reproducción y limpieza de campañas
 
-El ciclo de campañas registra cada entrega por dispositivo y archivo. Publica todos los videos, los reproduce en secuencia repetida durante la vigencia y retira los archivos al finalizar, incluso si se reutilizaron archivos ya instalados. La limpieza conserva los que todavía necesita otra campaña y evita borrar archivos ajenos o cuya identidad no pueda determinarse con seguridad.
+El ciclo de campañas registra cada entrega por dispositivo y archivo. Publica todos los videos y los selecciona en secuencia repetida durante la vigencia. Los videos anteriores permanecen en la SD. Al finalizar se retiran únicamente los archivos añadidos por la campaña que ninguna otra campaña necesita; se conservan los preexistentes, aunque también se usen en una campaña, y los de identidad incierta.
 
 ## Uso del dashboard
 
@@ -31,7 +31,15 @@ En el modelo 42 se utiliza una lista reportada por el dispositivo después de en
 
 La secuencia se coordina desde el servidor según la duración de cada video. No ofrece sincronización exacta entre pantallas: la cola, la latencia y la disponibilidad del equipo afectan el momento del cambio. En un dispositivo con varias campañas vigentes, gana la de mayor prioridad; en empate, la de menor ID. Los archivos compartidos siguen protegidos aunque otra campaña controle la reproducción.
 
-Cuando se pausa o finaliza la campaña que controla un dispositivo y no hay otra campaña que pueda tomar su lugar, se libera el cursor de la secuencia sin apagar el equipo. Esto no detiene instantáneamente el video actual: puede continuar hasta que se seleccione otro o se complete su retiro al finalizar. La pausa conserva los archivos de la campaña.
+Antes del primer comando se guarda el contenido reportado y la selección anterior por dispositivo. Varias campañas comparten ese registro: la segunda no sobrescribe el estado previo y una pausa no lo pierde. Cuando no queda una campaña activa, se libera el cursor sin apagar el equipo y, tras completar los retiros pendientes, se solicita la selección anterior válida. La pausa conserva los archivos de campaña y permite reanudar; el registro se cierra cuando ya no quedan entregas por resolver ni campañas que puedan reanudarse.
+
+En el42 la captura espera a que terminen descargas, retiradas e intenciones de video pendientes. El heartbeat del proveedor despeja `desiredVideo` al confirmar `DisplayImageId`; el dashboard no lo limpia ni considera suficiente que coincida el nombre en un reporte anterior.
+
+Se recupera la selección individual conocida, no un modo o secuencia que el equipo no reporte. En el42 se usa `select-media`, sin descarga ni reasignación destructiva; «Selección anterior solicitada» significa aceptación por el proveedor y puede quedar encolada hasta un heartbeat, no reproducción física confirmada. En el35 se valida conteo e identidad de instalación cuando existe antes de seleccionar el índice. Un estado vacío o una selección anterior desconocida se muestran explícitamente, sin elegir un video arbitrario. La SD del35 no ofrece identidad estable para archivos históricos desconocidos: cambios externos con idéntico conteo no son detectables.
+
+Las campañas ya publicadas antes de esta migración no tienen un registro anterior recuperable. Se muestra esa limitación y se conservan los archivos existentes cuya propiedad no puede probarse. No se inventa un historial a partir de la selección actual. Mientras haya una sesión abierta, el dashboard bloquea modificaciones manuales de contenido, formato y borrado de originales42 protegidos; finaliza las campañas y espera la recuperación antes de intervenir. Esta protección no cubre aplicaciones externas ni órdenes enviadas directamente a los proveedores.
+
+Si una intervención externa cambia la identidad o el conteo esperado del35, la recuperación queda pendiente y se mantiene el bloqueo de contenido. Reintentar por sí solo no corrige esa incompatibilidad: requiere revisión controlada del estado y del registro fuera del flujo automático. No se ofrece una acción que descarte el registro o seleccione un índice incierto.
 
 La provisión de archivos todavía puede apagar temporalmente el equipo para evitar que una carga interrumpa la secuencia ganadora. El relevo entre campañas ya publicadas no envía una orden de apagado. Si la campaña termina durante esa provisión y no queda otra activa, se solicita el encendido antes de continuar la limpieza. Un fallo de conexión conserva el intento pendiente hasta poder confirmar el encendido.
 
@@ -40,6 +48,8 @@ Si un equipo pierde conexión, el servidor no puede garantizar que deje de repro
 ## Requisitos de operación y despliegue
 
 Los cambios requieren desplegar versiones compatibles del dashboard, la nube privada del modelo 42 y el gateway del modelo 35, además de aplicar la migración del registro de campañas. No habilites la limpieza automática con una versión antigua que solo devuelve estado optimista.
+
+La conservación de reproducción agrega `2026_10_30_000002_add_campaign_playback_restoration.php`. Aplica las migraciones antes de reiniciar los workers. No necesita nuevos comandos de firmware/proveedor. Para revertir, detén scheduler y workers primero y conserva los datos `baseline`, `restore_state` y `restore_error` mientras haya sesiones pendientes; eliminarlos pierde la selección anterior. Las pruebas automatizadas usan SQLite y proveedores falsos; MySQL y la reproducción física requieren verificación de despliegue.
 
 - Usa una cola asíncrona `database` o `redis`; `sync` no sirve para este ciclo.
 - Configura `retry_after` de esa conexión por encima de 1900 segundos. La conexión `database` tiene 2100 por defecto; para Redis configura `REDIS_QUEUE_RETRY_AFTER=2100` o un valor mayor que el timeout del trabajo.
@@ -70,5 +80,7 @@ Consulta la [documentación oficial de tareas subminuto de Laravel 12](https://l
 - Desconecta un equipo durante el fin: debe aparecer pendiente, nunca «Borrado confirmado» sin evidencia.
 - Comprueba una respuesta ambigua del modelo 35: debe quedar «Requiere revisión», sin repetir automáticamente el índice.
 - Verifica que los archivos ajenos a la campaña y los dispositivos no seleccionados permanezcan intactos.
+- Inicia con un video anterior seleccionado: pausar o finalizar la última activa debe solicitar esa selección sin apagar; un archivo anterior usado también por la campaña debe permanecer.
+- Desconecta al restaurar: la selección debe quedar pendiente y reintentarse aunque ya no haya archivos de campaña que retirar.
 
 Estas comprobaciones sobre hardware son posteriores a las pruebas automatizadas con fakes; requieren un entorno y dispositivos de prueba autorizados.

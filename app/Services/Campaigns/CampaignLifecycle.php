@@ -196,7 +196,7 @@ class CampaignLifecycle
                 $this->recordCampaignError($campaign, CampaignError::publicMessage($e));
             }
         }
-        CampaignDeviceFile::whereNotIn('state', ['removed', 'preserved', 'reported_absent'])->select('target_key')->distinct()->pluck('target_key')->merge(CampaignDevicePlayback::whereNotNull('campaign_id')->orWhere('powered_off', true)->pluck('target_key'))->unique()->each(fn ($target) => ProcessCampaignDeviceJob::dispatch($target));
+        CampaignDeviceFile::whereNotIn('state', ['removed', 'preserved', 'reported_absent'])->select('target_key')->distinct()->pluck('target_key')->merge(CampaignDevicePlayback::whereNotNull('campaign_id')->orWhere('powered_off', true)->orWhere(fn ($q) => $q->whereNotNull('baseline')->whereNull('baseline_closed_at'))->pluck('target_key'))->unique()->each(fn ($target) => ProcessCampaignDeviceJob::dispatch($target));
         app(CampaignActivity::class)->tick();
     }
 
@@ -273,7 +273,7 @@ class CampaignLifecycle
             $winner = Campaign::where('status', 'active')->where(fn ($q) => $q->whereNull('start_date')->orWhere('start_date', '<=', now()))->where(fn ($q) => $q->whereNull('end_date')->orWhere('end_date', '>', now()))
                 ->whereHas('deliveries', fn ($q) => $q->whereNull('released_at')->whereHas('file', fn ($f) => $f->where('target_key', $target)))
                 ->orderByDesc('priority')->orderBy('id')->first();
-            $playback = CampaignDevicePlayback::where('target_key', $target)->first();
+            $playback = app(CampaignPlaybackRestoration::class)->begin($target, $files, $winner !== null);
             $currentValid = $winner && $playback?->campaign_id === $winner->id && $winner->deliveries()->whereKey($playback->delivery_id)->whereNull('released_at')->exists();
             if (! $currentValid && $playback?->campaign_id !== null) {
                 $playback->update(['campaign_id' => null, 'delivery_id' => null, 'due_at' => null, 'last_error' => null]);
@@ -329,6 +329,8 @@ class CampaignLifecycle
                 }
             }
             if (! $winner) {
+                app(CampaignPlaybackRestoration::class)->restore($playback);
+
                 return;
             }
             $deliveries = $winner->deliveries()->whereNull('released_at')->whereHas('file', fn ($q) => $q->where('target_key', $target))->with('file')->orderBy('position')->get();

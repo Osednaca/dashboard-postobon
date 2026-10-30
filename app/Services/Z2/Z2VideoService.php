@@ -2,8 +2,12 @@
 
 namespace App\Services\Z2;
 
+use App\Models\CampaignDeviceFile;
+use App\Models\CampaignDevicePlayback;
 use App\Models\Media;
+use App\Services\Fleet\DeviceMutationLock;
 use App\Services\Fleet\VideoDurationProbe;
+use App\Services\Fleet\VideoRemovalRejected;
 use App\Services\PrivateCloud\PrivateCloudClient;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -180,9 +184,20 @@ class Z2VideoService
             return true;
         }
 
-        $response = $this->client->delete('/api/media/'.rawurlencode(basename($filename)));
+        return DeviceMutationLock::withBaselineLock(function () use ($filename): bool {
+            $name = basename($filename);
+            $sessions = CampaignDevicePlayback::where('target_key', 'like', 'z2:%')->whereNotNull('baseline')->whereNull('baseline_closed_at')->get();
+            foreach ($sessions as $session) {
+                if (($session->baseline['type'] ?? null) === 'legacy'
+                    || in_array($name, $session->baseline['files'] ?? [], true)
+                    || CampaignDeviceFile::where('target_key', $session->target_key)->where('filename', $name)->whereNotIn('state', ['removed', 'reported_absent'])->exists()) {
+                    throw new VideoRemovalRejected('Este video está protegido por una sesión de campaña. Finaliza la campaña y espera la recuperación antes de eliminarlo de la biblioteca.');
+                }
+            }
+            $response = $this->client->delete('/api/media/'.rawurlencode($name));
 
-        return $response !== null && ($response['result'] ?? -1) === 0;
+            return $response !== null && ($response['result'] ?? -1) === 0;
+        });
     }
 
     /**

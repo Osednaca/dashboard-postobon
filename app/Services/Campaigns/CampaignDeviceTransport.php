@@ -3,6 +3,7 @@
 namespace App\Services\Campaigns;
 
 use App\Models\CampaignDeviceFile;
+use App\Models\CampaignDevicePlayback;
 use App\Models\Wl35DeviceMedia;
 use App\Services\Fleet\MediaPreviewSource;
 use App\Services\Fleet\MediaSourceMaterializer;
@@ -19,6 +20,70 @@ use Throwable;
 class CampaignDeviceTransport
 {
     public function __construct(private UnifiedFleetClient $fleet, private PrivateCloudClient $cloud, private MediaSourceMaterializer $materializer, private MediaPreviewSource $sources) {}
+
+    public function captureBaseline(string $target): array
+    {
+        $file = new CampaignDeviceFile(['target_key' => $target]);
+        if (str_starts_with($target, 'z2:')) {
+            $device = $this->z2($file);
+            if (! is_array($device['reportedPlaylist'] ?? null)
+                || ! empty($device['desiredVideo']) || (int) ($device['updateImageStatus'] ?? 0) === 1
+                || array_intersect(['FileDelect', 'NeedFormatSdCard', 'PlayList', 'Play'], array_keys($device['pending'] ?? [])) !== []
+                || (isset($device['playlist']) && $device['playlist'] !== $device['reportedPlaylist'])
+                || collect($device['mediaRemovals'] ?? [])->contains(fn ($removal) => ($removal['status'] ?? null) !== 'reported_absent')) {
+                throw new RuntimeException('Espera a que termine la operación de contenido del equipo 42 antes de iniciar la campaña.');
+            }
+            $files = $device['reportedPlaylist'];
+            $selection = $device['displayImageId'] ?? null;
+
+            return ['type' => 'z2', 'files' => $files, 'selection' => is_string($selection) && in_array($selection, $files, true) ? $selection : null];
+        }
+        $device = $this->wl35($file);
+        $count = $device['video_count'] ?? null;
+        if (! is_int($count) || $count < 0 || $count > 255) {
+            throw new RuntimeException('El equipo 35 no informó un conteo válido para conservar su contenido.');
+        }
+        $selection = $device['current_video'] ?? null;
+        $selection = is_int($selection) && $selection >= 1 && $selection <= $count ? $selection : null;
+        $mapping = $selection === null ? null : Wl35DeviceMedia::where('device_id', substr($target, 5))->where('video_index', $selection)->first();
+
+        return ['type' => 'wl35', 'count' => $count, 'selection' => $selection, 'upload_identity' => $mapping?->upload_identity];
+    }
+
+    /** True means the provider accepted selection; 42 may still deliver it by heartbeat. */
+    public function restoreBaseline(string $target, array $baseline): bool
+    {
+        $file = new CampaignDeviceFile(['target_key' => $target]);
+        if (str_starts_with($target, 'z2:')) {
+            $device = $this->z2($file);
+            if (! in_array($baseline['selection'], $device['reportedPlaylist'] ?? [], true)
+                || collect($device['mediaRemovals'] ?? [])->contains(fn ($removal) => ($removal['status'] ?? null) !== 'reported_absent')) {
+                throw new RuntimeException('La selección anterior no está disponible o aún hay un retiro pendiente en el equipo 42.');
+            }
+            $file->filename = $baseline['selection'];
+            $this->select($file);
+
+            return true;
+        }
+        $device = $this->wl35($file);
+        $index = $baseline['selection'];
+        $extra = CampaignDeviceFile::where('target_key', $target)->where('owned', true)->where('state', 'ready')->pluck('video_index')->filter()->unique()->count();
+        if (($device['video_count'] ?? null) !== $baseline['count'] + $extra || $index > $baseline['count']) {
+            throw new RuntimeException('El contenido del equipo 35 cambió. Revisa la selección anterior antes de recuperarla.');
+        }
+        if ($baseline['upload_identity'] ?? null) {
+            $mapping = Wl35DeviceMedia::where('device_id', substr($target, 5))->where('video_index', $index)->first();
+            if ($mapping?->upload_identity !== $baseline['upload_identity']) {
+                throw new RuntimeException('La identidad de la selección anterior del equipo 35 cambió.');
+            }
+        }
+        $result = $this->fleet->sendCommand(['command' => 'play', 'targets' => [$target], 'wl35_video_index' => $index]);
+        if ((collect($result['results'] ?? [])->firstWhere('key', $target)['success'] ?? false) !== true) {
+            throw new RuntimeException('El equipo 35 no confirmó la selección anterior.');
+        }
+
+        return true;
+    }
 
     private function z2(CampaignDeviceFile $file): array
     {
@@ -52,7 +117,9 @@ class CampaignDeviceTransport
         $id = substr($file->target_key, 5);
         $existing = Wl35DeviceMedia::where('device_id', $id)->where('media_id', $file->media_id)->first();
         if ($existing && $existing->video_index <= (int) $live['video_count']) {
-            $file->update(['evidence' => ['mapping_id' => $existing->id, 'upload_identity' => $existing->upload_identity], 'video_index' => $existing->video_index, 'state' => 'ready', 'owned' => true, 'confirmed_at' => now(), 'last_error' => null]);
+            $file->video_index = $existing->video_index;
+            $owned = $this->alreadyOwned($file, $existing->upload_identity);
+            $file->update(['evidence' => ['mapping_id' => $existing->id, 'upload_identity' => $existing->upload_identity], 'video_index' => $existing->video_index, 'state' => 'ready', 'owned' => $owned, 'confirmed_at' => now(), 'last_error' => null]);
 
             return;
         }
@@ -85,7 +152,7 @@ class CampaignDeviceTransport
     {
         $device = $this->z2($file);
         if (in_array($file->filename, $device['reportedPlaylist'] ?? [], true)) {
-            $file->update(['state' => 'ready', 'owned' => true, 'confirmed_at' => now(), 'last_error' => null]);
+            $file->update(['state' => 'ready', 'owned' => $this->alreadyOwned($file), 'confirmed_at' => now(), 'last_error' => null]);
 
             return;
         }
@@ -116,6 +183,18 @@ class CampaignDeviceTransport
         }
     }
 
+    private function alreadyOwned(CampaignDeviceFile $file, ?string $uploadIdentity = null): bool
+    {
+        if (CampaignDevicePlayback::where('target_key', $file->target_key)->first()?->preserves($file)) {
+            return false;
+        }
+        $query = CampaignDeviceFile::where('target_key', $file->target_key)->where('owned', true)->whereIn('state', ['ready', 'installing']);
+
+        return str_starts_with($file->target_key, 'z2:')
+            ? $query->where('filename', $file->filename)->exists()
+            : ($uploadIdentity !== null && $query->where('evidence->upload_identity', $uploadIdentity)->exists());
+    }
+
     public function confirmInstallation(CampaignDeviceFile $file): void
     {
         if (! str_starts_with($file->target_key, 'z2:')) {
@@ -138,7 +217,9 @@ class CampaignDeviceTransport
 
     public function remove(CampaignDeviceFile $file): void
     {
-        if (! $file->owned) {
+        $playback = CampaignDevicePlayback::where('target_key', $file->target_key)->first();
+        if (! $file->owned || $playback?->preserves($file)) {
+            $file->owned = false;
             $file->update(['state' => 'preserved', 'last_error' => null]);
 
             return;

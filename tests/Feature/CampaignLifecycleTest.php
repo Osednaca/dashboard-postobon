@@ -12,6 +12,7 @@ use App\Models\Media;
 use App\Services\Campaigns\CampaignActivity;
 use App\Services\Campaigns\CampaignDeviceTransport;
 use App\Services\Campaigns\CampaignLifecycle;
+use App\Services\Campaigns\CampaignPlaybackRestoration;
 use App\Services\CampaignTargetCatalog;
 use App\Services\Fleet\MediaPreviewSource;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
@@ -37,6 +38,10 @@ class CampaignLifecycleTest extends TestCase
         Queue::fake();
         config(['cache.default' => 'database', 'queue.default' => 'database', 'queue.connections.database.retry_after' => 2000]);
         $this->freezeTime();
+        // Restoration has its own integration suite; these tests isolate lifecycle scheduling.
+        $restoration = $this->mock(CampaignPlaybackRestoration::class);
+        $restoration->shouldReceive('begin')->andReturnUsing(fn ($target) => CampaignDevicePlayback::where('target_key', $target)->first());
+        $restoration->shouldReceive('restore');
         $this->mock(CampaignTargetCatalog::class)->shouldReceive('validatedKeys')->andReturnUsing(fn ($keys) => $keys);
         $this->mock(MediaPreviewSource::class)->shouldReceive('resolve')->andReturnUsing(fn ($media) => ['kind' => 'private_cloud', 'path' => '/fileDownload/Videos/'.basename($media->file_path)]);
     }
