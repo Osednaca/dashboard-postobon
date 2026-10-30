@@ -9,6 +9,7 @@ use App\Models\CampaignDeviceFile;
 use App\Models\CampaignDevicePlayback;
 use App\Models\Device;
 use App\Models\Media;
+use App\Services\Campaigns\CampaignActivity;
 use App\Services\Campaigns\CampaignDeviceTransport;
 use App\Services\Campaigns\CampaignLifecycle;
 use App\Services\CampaignTargetCatalog;
@@ -17,6 +18,7 @@ use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
@@ -236,12 +238,93 @@ class CampaignLifecycleTest extends TestCase
     {
         $campaign = $this->campaign([], 1);
         $transport = $this->mock(CampaignDeviceTransport::class);
-        $transport->shouldReceive('install')->once()->andThrow(new \RuntimeException('offline'));
+        $transport->shouldReceive('install')->once()->andThrow(new \RuntimeException('Se necesita un reporte reciente del contenido del equipo 42.'));
         $lifecycle = app(CampaignLifecycle::class);
         $lifecycle->activate($campaign);
         $lifecycle->processDevice($this->target);
         $this->assertSame('pending', CampaignDeviceFile::sole()->state);
-        $this->assertSame('offline', CampaignDeviceFile::sole()->last_error);
+        $this->assertSame('Se necesita un reporte reciente del contenido del equipo 42.', CampaignDeviceFile::sole()->last_error);
+    }
+
+    public function test_tick_retries_reconciliation_when_a_device_is_busy_without_recording_a_false_error(): void
+    {
+        $campaign = $this->campaign([], 1);
+        $lifecycle = app(CampaignLifecycle::class);
+        $lifecycle->activate($campaign);
+        $lock = Cache::lock(CampaignLifecycle::lockName($this->target), 2000);
+        $this->assertTrue($lock->get());
+        try {
+            $lifecycle->tick();
+            $this->assertNull($campaign->fresh()->lifecycle_error);
+            $this->assertNull(CampaignDeviceFile::sole()->last_error);
+            Queue::assertPushed(ProcessCampaignDeviceJob::class);
+        } finally {
+            $lock->release();
+        }
+        $lifecycle->tick();
+        $this->assertSame('active', $campaign->fresh()->status);
+        $this->assertNull($campaign->fresh()->lifecycle_error);
+    }
+
+    public function test_failure_before_selecting_a_file_is_safe_and_visible_on_the_device(): void
+    {
+        $campaign = $this->campaign([], 1);
+        $transport = $this->mock(CampaignDeviceTransport::class);
+        $transport->shouldReceive('power')->once()->andThrow(new \RuntimeException('secret=https://host/token?password=secret'));
+        $lifecycle = app(CampaignLifecycle::class);
+        $lifecycle->activate($campaign);
+        $previous = $this->campaign(['status' => 'finished'], 1);
+        CampaignDevicePlayback::create(['target_key' => $this->target, 'campaign_id' => $previous->id]);
+        $logger = \Mockery::mock();
+        $logger->shouldReceive('error')->once()->withArgs(function ($message, $context) {
+            return str_contains($message, 'Falló') && $context['target'] === $this->target
+                && $context['exception_type'] === \RuntimeException::class
+                && ! str_contains(json_encode($context), 'secret');
+        });
+        Log::shouldReceive('channel')->once()->with('diagnostics')->andReturn($logger);
+        $lifecycle->processDevice($this->target);
+        $this->assertNull(CampaignDeviceFile::sole()->last_error);
+        $this->assertSame('No se pudo procesar el dispositivo. Revisa los registros del servidor.', CampaignDevicePlayback::sole()->last_error);
+    }
+
+    public function test_failed_attempt_keeps_error_until_a_later_confirmed_publication(): void
+    {
+        $campaign = $this->campaign([], 1);
+        $transport = $this->mock(CampaignDeviceTransport::class);
+        $transport->shouldReceive('install')->once()->andThrow(new \RuntimeException('Se necesita un reporte reciente del contenido del equipo 42.'));
+        $transport->shouldReceive('install')->once()->andReturnUsing(fn ($file) => $file->update(['state' => 'ready', 'confirmed_at' => now(), 'last_error' => null]));
+        $lifecycle = app(CampaignLifecycle::class);
+        $lifecycle->activate($campaign);
+        $lifecycle->processDevice($this->target);
+        $this->assertNotNull(CampaignDevicePlayback::sole()->last_error);
+        $lifecycle->processDevice($this->target);
+        $this->assertNull(CampaignDevicePlayback::sole()->last_error);
+        $this->assertNull(CampaignDeviceFile::sole()->last_error);
+        $this->assertSame('ready', CampaignDeviceFile::sole()->state);
+    }
+
+    public function test_worker_start_is_observed_without_assuming_publication_or_a_running_worker(): void
+    {
+        $lifecycle = \Mockery::mock(CampaignLifecycle::class);
+        $lifecycle->shouldReceive('processDevice')->once()->with($this->target);
+        $activity = app(CampaignActivity::class);
+        $this->assertNull($activity->lastDeviceStart($this->target));
+        (new ProcessCampaignDeviceJob($this->target))->handle($lifecycle);
+        $this->assertSame(now()->toIso8601String(), $activity->lastDeviceStart($this->target));
+        $this->travel(25)->hours();
+        $this->assertNull($activity->lastDeviceStart($this->target));
+    }
+
+    public function test_scheduler_failure_is_logged_at_most_once_per_minute(): void
+    {
+        $logger = \Mockery::mock();
+        $logger->shouldReceive('error')->twice()->with('Falló el procesador de campañas; revisa el scheduler y la configuración.');
+        Log::shouldReceive('channel')->twice()->with('diagnostics')->andReturn($logger);
+        $activity = app(CampaignActivity::class);
+        $activity->schedulerFailed();
+        $activity->schedulerFailed();
+        $this->travel(61)->seconds();
+        $activity->schedulerFailed();
     }
 
     public function test_physical_alias_in_another_ledger_protects_uploaded_filename(): void
