@@ -177,8 +177,8 @@ class CampaignDeviceTransportTest extends TestCase
             return 7;
         });
         $fleet = $this->mock(UnifiedFleetClient::class);
-        $fleet->shouldReceive('getFleet')->once()->andReturn(['devices' => [['type' => 'wl35', 'id' => 'fan', 'online' => true, 'session_ready' => true, 'video_count' => 0]]]);
-        $fleet->shouldReceive('uploadPathAndDistribute')->once()->withArgs(fn ($path, $name, $targets, $progress, $play) => $play === false && $targets === ['wl35:fan'])->andReturn(['results' => [['key' => 'wl35:fan', 'type' => 'wl35', 'id' => 'fan', 'success' => true, 'video_index' => 1]]]);
+        $fleet->shouldReceive('getFleet')->twice()->andReturn(['devices' => [['type' => 'wl35', 'id' => 'fan', 'online' => true, 'fan_connected' => true, 'session_ready' => true, 'status_fresh' => true, 'restart_barrier' => true, 'restart_pending' => false, 'boot_id' => 'boot-1', 'uploading' => false, 'video_count' => 0]]]);
+        $fleet->shouldReceive('uploadPathAndDistribute')->once()->withArgs(fn ($path, $name, $targets, $progress, $play, $boot) => $play === false && $targets === ['wl35:fan'] && $boot === 'boot-1')->andReturn(['results' => [['key' => 'wl35:fan', 'type' => 'wl35', 'id' => 'fan', 'success' => true, 'video_index' => 1, 'upload_boot_id' => 'boot-1']]]);
         app(CampaignDeviceTransport::class)->install($file);
         $file->refresh();
         $this->assertSame('ready', $file->state);

@@ -87,8 +87,8 @@ class CampaignBaselineTransportTest extends TestCase
     {
         $file = $this->baseline('wl35:fan', ['state' => 'removed']);
         $fleet = $this->mock(UnifiedFleetClient::class);
-        $fleet->shouldReceive('getFleet')->once()->andReturn(['devices' => [['type' => 'wl35', 'id' => 'fan', 'online' => true, 'session_ready' => true, 'video_count' => 0]]]);
-        $fleet->shouldReceive('uploadPathAndDistribute')->once()->andReturn(['results' => [['key' => 'wl35:fan', 'success' => true, 'video_index' => 1]]]);
+        $fleet->shouldReceive('getFleet')->once()->andReturn(['devices' => [['type' => 'wl35', 'id' => 'fan', 'online' => true, 'fan_connected' => true, 'session_ready' => true, 'status_fresh' => true, 'restart_barrier' => true, 'restart_pending' => false, 'boot_id' => 'boot-1', 'uploading' => false, 'video_count' => 0]]]);
+        $fleet->shouldReceive('uploadPathAndDistribute')->once()->andReturn(['results' => [['key' => 'wl35:fan', 'success' => true, 'video_index' => 1, 'upload_boot_id' => 'boot-1']]]);
         app(CampaignDeviceTransport::class)->restoreBaselineFile($file, Storage::disk('local')->path('backup.mp4'));
         $this->assertSame('restored', $file->fresh()->state);
         $this->assertSame(Wl35DeviceMedia::sole()->upload_identity, $file->fresh()->operation['restored_upload_identity']);
@@ -99,10 +99,10 @@ class CampaignBaselineTransportTest extends TestCase
     {
         $file = $this->baseline('wl35:fan', ['state' => 'removed', 'filename' => null]);
         $fleet = $this->mock(UnifiedFleetClient::class);
-        $fleet->shouldReceive('getFleet')->once()->andReturn(['devices' => [['type' => 'wl35', 'id' => 'fan', 'online' => true, 'session_ready' => true, 'video_count' => 0]]]);
+        $fleet->shouldReceive('getFleet')->once()->andReturn(['devices' => [['type' => 'wl35', 'id' => 'fan', 'online' => true, 'fan_connected' => true, 'session_ready' => true, 'status_fresh' => true, 'restart_barrier' => true, 'restart_pending' => false, 'boot_id' => 'boot-1', 'uploading' => false, 'video_count' => 0]]]);
         $fleet->shouldReceive('uploadPathAndDistribute')->once()
             ->withArgs(fn ($path, $name, $targets, $progress, $play) => $name === 'campaign-baseline-'.$file->id.'.mp4' && $play === false)
-            ->andReturn(['results' => [['key' => 'wl35:fan', 'success' => true, 'video_index' => 1]]]);
+            ->andReturn(['results' => [['key' => 'wl35:fan', 'success' => true, 'video_index' => 1, 'upload_boot_id' => 'boot-1']]]);
         app(CampaignDeviceTransport::class)->restoreBaselineFile($file, Storage::disk('local')->path('backup.mp4'));
         $this->assertSame('restored', $file->fresh()->state);
         $this->assertSame('campaign-baseline-'.$file->id.'.mp4', Wl35DeviceMedia::sole()->filename);

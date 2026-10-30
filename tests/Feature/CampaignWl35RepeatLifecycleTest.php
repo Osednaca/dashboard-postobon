@@ -26,6 +26,8 @@ class CampaignWl35RepeatLifecycleTest extends TestCase
 
     private int $selected = 1;
 
+    private int $boot = 1;
+
     private array $commands = [];
 
     private array $deleted = [];
@@ -52,11 +54,13 @@ class CampaignWl35RepeatLifecycleTest extends TestCase
         $this->advert = Media::factory()->video()->create(['file_path' => 'advert.mp4', 'duration' => 10]);
         Wl35DeviceMedia::create(['device_id' => 'fan', 'video_index' => 1, 'media_id' => $this->previous->id, 'filename' => 'previous.mp4', 'upload_identity' => null]);
         $fleet = $this->mock(UnifiedFleetClient::class);
-        $fleet->shouldReceive('getFleet')->andReturnUsing(fn () => ['devices' => [['type' => 'wl35', 'id' => 'fan', 'online' => true, 'session_ready' => true, 'video_count' => $this->count, 'current_video' => $this->selected]]]);
+        $fleet->shouldReceive('getFleet')->andReturnUsing(fn () => ['devices' => [['type' => 'wl35', 'id' => 'fan', 'online' => true, 'fan_connected' => true, 'session_ready' => true, 'status_fresh' => true, 'restart_barrier' => true, 'restart_pending' => false, 'boot_id' => 'boot-'.$this->boot, 'uploading' => false, 'video_count' => $this->count, 'current_video' => $this->selected]]]);
         $fleet->shouldReceive('uploadPathAndDistribute')->andReturnUsing(function () {
+            $uploadBoot = 'boot-'.$this->boot;
             $this->count++;
+            $this->boot++; // Simulate the device restart before the next reconciliation tick.
 
-            return ['results' => [['key' => 'wl35:fan', 'type' => 'wl35', 'id' => 'fan', 'success' => true, 'video_index' => $this->count]]];
+            return ['results' => [['key' => 'wl35:fan', 'type' => 'wl35', 'id' => 'fan', 'success' => true, 'video_index' => $this->count, 'upload_boot_id' => $uploadBoot]]];
         });
         $fleet->shouldReceive('deleteWl35Video')->andReturnUsing(function ($id, $index, $expected) {
             $this->assertSame($this->count, $expected);

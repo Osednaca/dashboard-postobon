@@ -155,11 +155,36 @@ class CampaignDeviceTransport
         $id = substr($target, 5);
         $count = (int) $live['video_count'];
         $uploadName = $file->filename ?: 'campaign-baseline-'.$file->id.'.mp4';
-        $file->update(['state' => 'restoring', 'operation' => array_merge($operation, ['before_count' => $count]), 'last_error' => null]);
+        $barrier = app(CampaignWl35RestartBarrier::class);
+        $playback = CampaignDevicePlayback::whereKey($file->playback_id)->firstOrFail();
+        $boot = DB::transaction(function () use ($barrier, $playback, $live, $file, $operation, $count): string {
+            $boot = $barrier->arm($playback, $live);
+            $file->update(['state' => 'restoring', 'operation' => array_merge($operation, ['before_count' => $count]), 'last_error' => null]);
+
+            return $boot;
+        });
+        $distributionStarting = false;
         try {
-            $result = $this->fleet->uploadPathAndDistribute($verifiedPath, $uploadName, [$target], null, false);
+            $result = $this->fleet->uploadPathAndDistribute($verifiedPath, $uploadName, [$target], null, false, $boot, function () use (&$distributionStarting): void {
+                $distributionStarting = true;
+            });
             $item = collect($result['results'] ?? [])->firstWhere('key', $target);
+            if (($item['success'] ?? null) === false && ($item['retry_safe'] ?? null) === true && ($item['command_sent'] ?? null) === false
+                && in_array($item['error_code'] ?? null, ['wl35_reboot_pending', 'wl35_restart_capability_missing', 'wl35_boot_changed', 'wl35_not_ready', 'wl35_busy', 'wl35_upload_capability_missing'], true)) {
+                $message = in_array($item['error_code'], ['wl35_restart_capability_missing', 'wl35_upload_capability_missing'], true)
+                    ? 'Actualiza el firmware del equipo 35 para verificar la reconexión antes de publicar.'
+                    : 'El equipo 35 está esperando una conexión y sesión listas antes de publicar.';
+                DB::transaction(function () use ($barrier, $playback, $boot, $file, $message): void {
+                    $barrier->clearCertified($playback, $boot);
+                    $file->update(['state' => 'removed', 'last_error' => $message]);
+                });
+
+                return;
+            }
             if (! is_array($item) || ($item['success'] ?? false) !== true || (int) ($item['video_index'] ?? 0) !== $count + 1) {
+                throw new RuntimeException('La carga del respaldo 35 no fue confirmada.');
+            }
+            if (($item['upload_boot_id'] ?? null) !== $boot) {
                 throw new RuntimeException('La carga del respaldo 35 no fue confirmada.');
             }
             DB::transaction(function () use ($id, $count, $file, $operation, $uploadName): void {
@@ -168,6 +193,14 @@ class CampaignDeviceTransport
                 $file->update(['state' => 'restored', 'operation' => array_merge($operation, ['current_identity' => $identity, 'current_index' => $count + 1, 'restored_upload_identity' => $identity, 'restored_index' => $count + 1]), 'last_error' => null]);
             });
         } catch (Throwable $e) {
+            if (! $distributionStarting) {
+                DB::transaction(function () use ($barrier, $playback, $boot, $file): void {
+                    $barrier->clearCertified($playback, $boot);
+                    $file->update(['state' => 'removed', 'last_error' => 'No se pudo preparar la carga en el gateway; se reintentará.']);
+                });
+
+                return;
+            }
             Wl35DeviceMedia::where('device_id', $id)->update(['media_id' => null, 'filename' => null]);
             $file->update(['state' => 'needs_review', 'last_error' => 'Carga anterior 35 ambigua; no se repetirá automáticamente.']);
         }
@@ -286,26 +319,64 @@ class CampaignDeviceTransport
 
             return;
         }
+        $barrier = app(CampaignWl35RestartBarrier::class);
+        $barrier->eligibleBoot($live);
         $path = 'campaigns/'.Str::uuid().'.mp4';
         $this->materializer->materialize($file->media, $path);
-        if ($stillWanted !== null && ! $stillWanted()) {
-            Storage::disk('local')->delete($path);
-
-            return;
-        }
-        // Persist intent before any irreversible upload. A crash must never silently repeat it.
-        $file->update(['state' => 'installing', 'owned' => true, 'requested_at' => now(), 'evidence' => ['before_count' => (int) $live['video_count']]]);
         try {
-            $result = $this->fleet->uploadPathAndDistribute(Storage::disk('local')->path($path), $file->filename, [$file->target_key], null, false);
-            $item = collect($result['results'] ?? [])->firstWhere('key', $file->target_key);
-            if (! is_array($item) || ($item['success'] ?? false) !== true || ! isset($item['video_index']) || (int) $item['video_index'] !== (int) $live['video_count'] + 1) {
-                throw new RuntimeException('No se confirmÃ³ la identidad del archivo cargado en el equipo 35.');
+            if ($stillWanted !== null && ! $stillWanted()) {
+                return;
             }
-            app(Wl35MediaMapping::class)->remember([$item], [$file->target_key], $file->media_id, $file->filename);
-            $mapping = Wl35DeviceMedia::where('device_id', $id)->where('video_index', (int) $item['video_index'])->where('media_id', $file->media_id)->firstOrFail();
-            $file->update(['evidence' => ['mapping_id' => $mapping->id, 'upload_identity' => $mapping->upload_identity], 'video_index' => (int) $item['video_index'], 'state' => 'ready', 'confirmed_at' => now(), 'last_error' => null]);
-        } catch (Throwable $e) {
-            $file->update(['state' => 'needs_review', 'last_error' => 'Carga 35 ambigua: '.CampaignError::publicMessage($e)]);
+            // Materialization can be slow. Re-read state and atomically record the
+            // boot plus upload intent before dispatching anything to the device.
+            $live = $this->wl35($file);
+            $playback = CampaignDevicePlayback::firstOrCreate(['target_key' => $file->target_key]);
+            $boot = DB::transaction(function () use ($barrier, $playback, $live, $file): string {
+                $boot = $barrier->arm($playback, $live);
+                $file->update(['state' => 'installing', 'owned' => true, 'requested_at' => now(), 'evidence' => ['before_count' => (int) $live['video_count']]]);
+
+                return $boot;
+            });
+            $distributionStarting = false;
+            try {
+                $result = $this->fleet->uploadPathAndDistribute(Storage::disk('local')->path($path), $file->filename, [$file->target_key], null, false, $boot, function () use (&$distributionStarting): void {
+                    $distributionStarting = true;
+                });
+                $item = collect($result['results'] ?? [])->firstWhere('key', $file->target_key);
+                if (($item['success'] ?? null) === false && ($item['retry_safe'] ?? null) === true && ($item['command_sent'] ?? null) === false
+                    && in_array($item['error_code'] ?? null, ['wl35_reboot_pending', 'wl35_restart_capability_missing', 'wl35_boot_changed', 'wl35_not_ready', 'wl35_busy', 'wl35_upload_capability_missing'], true)) {
+                    $message = in_array($item['error_code'], ['wl35_restart_capability_missing', 'wl35_upload_capability_missing'], true)
+                        ? 'Actualiza el firmware del equipo 35 para verificar la reconexión antes de publicar.'
+                        : 'El equipo 35 está esperando una conexión y sesión listas antes de publicar.';
+                    DB::transaction(function () use ($barrier, $playback, $boot, $file, $message): void {
+                        $barrier->clearCertified($playback, $boot);
+                        $file->update(['state' => 'pending', 'last_error' => $message]);
+                    });
+
+                    return;
+                }
+                if (! is_array($item) || ($item['success'] ?? false) !== true || ! isset($item['video_index']) || (int) $item['video_index'] !== (int) $live['video_count'] + 1) {
+                    throw new RuntimeException('No se confirmÃ³ la identidad del archivo cargado en el equipo 35.');
+                }
+                if (($item['upload_boot_id'] ?? null) !== $boot) {
+                    throw new RuntimeException('No se confirmó la identidad del archivo cargado en el equipo 35.');
+                }
+                DB::transaction(function () use ($item, $file, $id): void {
+                    app(Wl35MediaMapping::class)->remember([$item], [$file->target_key], $file->media_id, $file->filename);
+                    $mapping = Wl35DeviceMedia::where('device_id', $id)->where('video_index', (int) $item['video_index'])->where('media_id', $file->media_id)->firstOrFail();
+                    $file->update(['evidence' => ['mapping_id' => $mapping->id, 'upload_identity' => $mapping->upload_identity], 'video_index' => (int) $item['video_index'], 'state' => 'ready', 'confirmed_at' => now(), 'last_error' => null]);
+                });
+            } catch (Throwable $e) {
+                if (! $distributionStarting) {
+                    DB::transaction(function () use ($barrier, $playback, $boot, $file): void {
+                        $barrier->clearCertified($playback, $boot);
+                        $file->update(['state' => 'pending', 'last_error' => 'No se pudo preparar la carga en el gateway; se reintentará.']);
+                    });
+
+                    return;
+                }
+                $file->update(['state' => 'needs_review', 'last_error' => 'Carga 35 ambigua: '.CampaignError::publicMessage($e)]);
+            }
         } finally {
             Storage::disk('local')->delete($path);
         }

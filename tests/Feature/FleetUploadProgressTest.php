@@ -107,4 +107,59 @@ class FleetUploadProgressTest extends TestCase
         $this->assertSame('completed', $upload->fresh()->status);
         Storage::disk('local')->assertMissing($upload->file_path);
     }
+
+    public function test_campaign_upload_checks_boot_and_marks_distribution_boundary_before_request(): void
+    {
+        Storage::fake('local');
+        Storage::disk('local')->put('sample.mp4', 'fixture');
+        $started = false;
+        Http::fake(function (Request $request) use (&$started) {
+            if (str_ends_with($request->url(), '/api/health')) {
+                return Http::response(['ok' => true]);
+            }
+            if (str_ends_with($request->url(), '/api/fleet/uploads')) {
+                $this->assertFalse($started);
+
+                return Http::response(['upload_id' => 'job'], 201);
+            }
+            if (str_ends_with($request->url(), '/job/distribute')) {
+                $this->assertTrue($started);
+                $this->assertSame(['wl35:test' => 'boot-A'], $request['expected_boot_ids']);
+
+                return Http::response(['results' => []]);
+            }
+            $this->fail('Unexpected HTTP request: '.$request->url());
+        });
+        app(UnifiedFleetClient::class)->uploadPathAndDistribute(
+            Storage::disk('local')->path('sample.mp4'), 'sample.mp4', ['wl35:test'], null, false, 'boot-A',
+            function () use (&$started) {
+                $started = true;
+            }
+        );
+        $this->assertTrue($started);
+    }
+
+    public function test_missing_gateway_upload_id_does_not_cross_distribution_boundary(): void
+    {
+        Storage::fake('local');
+        Storage::disk('local')->put('sample.mp4', 'fixture');
+        Http::fake([
+            'gateway.test/api/health' => Http::response(['ok' => true]),
+            'gateway.test/api/fleet/uploads' => Http::response([], 201),
+        ]);
+        $started = false;
+        try {
+            app(UnifiedFleetClient::class)->uploadPathAndDistribute(
+                Storage::disk('local')->path('sample.mp4'), 'sample.mp4', ['wl35:test'], null, false, 'boot-A',
+                function () use (&$started) {
+                    $started = true;
+                }
+            );
+            $this->fail('Expected a missing upload identifier to fail.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('identificador', $e->getMessage());
+        }
+        $this->assertFalse($started);
+        Http::assertSentCount(2);
+    }
 }

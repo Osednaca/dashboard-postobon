@@ -35,6 +35,15 @@
     @endif
     <p class="text-sm text-text-muted">Si no hay otra campaña que continúe la reproducción, pausar o finalizar deja de gestionar la secuencia sin apagar el equipo. La recuperación puede tardar mientras se retiran y cargan archivos; el video actual puede continuar durante la operación.</p>
     @foreach($playbackByTarget as $target => $session)
+        @if($session->wl35_wait_boot_id)
+            <div role="status" class="rounded-lg bg-surface p-3 text-sm">
+                <p class="font-medium">{{ $recipientNames->get($target) ?: $target }}: esperando reconexión del ESP32 y sesión lista.</p>
+                <p class="mt-1 text-text-muted">No se enviará otra operación al dispositivo hasta observar un nuevo arranque y una sesión lista.</p>
+                @if($session->wl35_wait_started_at?->lte(now()->subMinutes(2)))
+                    <p class="mt-1 text-warning">La espera continúa. Comprueba la alimentación, la red y el firmware del ESP32; no repitas manualmente una carga de resultado incierto.</p>
+                @endif
+            </div>
+        @endif
         @if($session->baseline !== null)
             @php
                 $restoreLabels = ['preparing' => 'Preparando respaldo del contenido anterior', 'managed' => 'Campaña en preparación o reproducción', 'pending' => 'Recuperación del contenido anterior pendiente', 'restored' => 'Recuperación de contenido anterior solicitada', 'empty' => 'Sin contenido anterior registrado', 'unavailable' => 'Contenido anterior no disponible'];

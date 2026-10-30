@@ -277,9 +277,10 @@ class CampaignBaselineLifecycleTest extends TestCase
         Wl35DeviceMedia::create(['device_id' => 'fan', 'media_id' => $old->id, 'video_index' => 1, 'upload_identity' => 'previous']);
         $count = 1;
         $selected = 1;
+        $boot = 1;
         $fleet = $this->mock(UnifiedFleetClient::class);
-        $fleet->shouldReceive('getFleet')->andReturnUsing(function () use (&$count, &$selected) {
-            return ['devices' => [['type' => 'wl35', 'id' => 'fan', 'online' => true, 'session_ready' => true, 'video_count' => $count, 'current_video' => $selected]]];
+        $fleet->shouldReceive('getFleet')->andReturnUsing(function () use (&$count, &$selected, &$boot) {
+            return ['devices' => [['type' => 'wl35', 'id' => 'fan', 'online' => true, 'fan_connected' => true, 'session_ready' => true, 'status_fresh' => true, 'restart_barrier' => true, 'restart_pending' => false, 'boot_id' => 'boot-'.$boot, 'uploading' => false, 'video_count' => $count, 'current_video' => $selected]]];
         });
         $fleet->shouldReceive('deleteWl35Video')->once()->andReturnUsing(function ($id, $index, $expected) use (&$count) {
             $this->assertSame(2, $index);
@@ -288,10 +289,12 @@ class CampaignBaselineLifecycleTest extends TestCase
 
             return ['confirmed' => true, 'deletion_status' => 'confirmed', 'video_count' => $count];
         });
-        $fleet->shouldReceive('uploadPathAndDistribute')->once()->andReturnUsing(function () use (&$count) {
+        $fleet->shouldReceive('uploadPathAndDistribute')->once()->andReturnUsing(function () use (&$count, &$boot) {
+            $uploadBoot = 'boot-'.$boot;
             $count++;
+            $boot++;
 
-            return ['results' => [['key' => $this->target, 'type' => 'wl35', 'id' => 'fan', 'success' => true, 'video_index' => $count]]];
+            return ['results' => [['key' => $this->target, 'type' => 'wl35', 'id' => 'fan', 'success' => true, 'video_index' => $count, 'upload_boot_id' => $uploadBoot]]];
         });
         $fleet->shouldReceive('sendCommand')->andReturnUsing(function ($payload) use (&$selected) {
             $this->assertContains($payload['command'], ['play', 'play_repeat_one']);

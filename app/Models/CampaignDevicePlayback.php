@@ -10,7 +10,7 @@ class CampaignDevicePlayback extends Model
 
     protected function casts(): array
     {
-        return ['due_at' => 'datetime', 'powered_off' => 'boolean', 'baseline' => 'array', 'baseline_closed_at' => 'datetime'];
+        return ['due_at' => 'datetime', 'powered_off' => 'boolean', 'baseline' => 'array', 'baseline_closed_at' => 'datetime', 'wl35_wait_started_at' => 'datetime'];
     }
 
     public function preserves(CampaignDeviceFile $file): bool
