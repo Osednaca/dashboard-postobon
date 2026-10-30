@@ -3,6 +3,7 @@
     $recipientNames = app(\App\Services\CampaignTargetCatalog::class)->all()->pluck('name', 'key');
     $targets = $deliveries->pluck('file.target_key')->filter()->unique()->values();
     $playbackByTarget = \App\Models\CampaignDevicePlayback::whereIn('target_key', $targets)->get()->keyBy('target_key');
+    $baselineByPlayback = \App\Models\CampaignBaselineFile::whereIn('playback_id', $playbackByTarget->pluck('id'))->orderBy('position')->get()->groupBy('playback_id');
     $activity = app(\App\Services\Campaigns\CampaignActivity::class);
     $lastTick = $activity->lastTick();
     $campaignError = \App\Services\Campaigns\CampaignError::safeStored($campaign->lifecycle_error);
@@ -23,16 +24,16 @@
     <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
             <h3 id="campaign-lifecycle-title" class="text-lg font-semibold text-text">Publicación y limpieza</h3>
-            <p class="mt-1 text-sm text-text-light">Durante la campaña se seleccionan sus videos en secuencia repetida. El contenido anterior se conserva en la SD; al finalizar se retiran solo los archivos añadidos que ninguna otra campaña necesite y puedan identificarse con seguridad.</p>
+            <p class="mt-1 text-sm text-text-light">Antes de publicar, se respalda el contenido anterior y se solicita su retiro de la SD. Al pausar o finalizar la última campaña activa, los videos anteriores se vuelven a cargar desde el servidor. Los archivos que otra campaña activa necesita se protegen.</p>
         </div>
         <a href="{{ route('campaigns.show', $campaign) }}" class="text-sm font-medium text-primary hover:underline">Actualizar estado</a>
     </div>
     <p class="text-sm text-text-muted">Finalizar una campaña no confirma el borrado. Una orden aceptada permanece pendiente hasta recibir evidencia del dispositivo; los equipos sin conexión pueden tardar en completar la operación.</p>
-    <p class="text-sm text-text-muted">Si no hay otra campaña que continúe la reproducción, pausar o finalizar deja de gestionar la secuencia sin apagar el equipo. Se solicita la selección anterior registrada, después de completar los retiros pendientes. El video actual puede continuar mientras se completa la operación.</p>
+    <p class="text-sm text-text-muted">Si no hay otra campaña que continúe la reproducción, pausar o finalizar deja de gestionar la secuencia sin apagar el equipo. La recuperación puede tardar mientras se retiran y cargan archivos; el video actual puede continuar durante la operación.</p>
     @foreach($playbackByTarget as $target => $session)
         @if($session->baseline !== null)
             @php
-                $restoreLabels = ['managed' => 'Contenido anterior conservado en la SD', 'pending' => 'Recuperación de selección anterior pendiente', 'restored' => 'Selección anterior solicitada', 'empty' => 'Sin contenido anterior registrado', 'unavailable' => 'Selección anterior no disponible'];
+                $restoreLabels = ['preparing' => 'Preparando respaldo del contenido anterior', 'managed' => 'Campaña en preparación o reproducción', 'pending' => 'Recuperación del contenido anterior pendiente', 'restored' => 'Recuperación de contenido anterior solicitada', 'empty' => 'Sin contenido anterior registrado', 'unavailable' => 'Contenido anterior no disponible'];
                 $restoreError = \App\Services\Campaigns\CampaignError::safeStored($session->restore_error);
             @endphp
             <div role="status" class="rounded-lg bg-surface p-3 text-sm">
@@ -45,6 +46,28 @@
                     <p class="mt-1 text-text-muted">El reporte inicial no contenía videos; el equipo permanece encendido sin elegir otro archivo.</p>
                 @endif
                 @if($restoreError)<p class="mt-1 text-danger break-words">{{ $restoreError }}</p>@endif
+                @if(isset($session->baseline['session_id']))
+                    @php
+                        $baselineFiles = ($baselineByPlayback->get($session->id) ?? collect())->where('session_id', $session->baseline['session_id']);
+                        $baselineLabels = ['backed_up' => 'Respaldo preparado', 'removing' => 'Retiro pendiente', 'removed' => 'Retiro procesado', 'restoring' => 'Carga anterior pendiente', 'restored' => 'Carga anterior procesada', 'needs_review' => 'Requiere revisión'];
+                    @endphp
+                    @if($baselineFiles->isNotEmpty())
+                        <ul class="mt-2 space-y-1" aria-label="Estado de los videos anteriores">
+                            @foreach($baselineFiles as $baselineFile)
+                                <li>
+                                    <span>{{ $baselineFile->filename ?: 'Video anterior #'.$baselineFile->original_index }}</span>:
+                                    <span>{{ $baselineLabels[$baselineFile->state] ?? 'Estado no disponible' }}</span>
+                                    @if($baselineFile->state === 'removed' && str_starts_with($target, 'z2:'))
+                                        <span class="text-text-muted">— Ausente del reporte; borrado físico de SD sin verificar.</span>
+                                    @endif
+                                    @if($baselineFile->last_error)
+                                        <span class="text-danger">— {{ \App\Services\Campaigns\CampaignError::safeStored($baselineFile->last_error) }}</span>
+                                    @endif
+                                </li>
+                            @endforeach
+                        </ul>
+                    @endif
+                @endif
             </div>
         @endif
     @endforeach
@@ -94,7 +117,7 @@
                             $playback = $playbackByTarget->get($file?->target_key);
                             $previousContent = $file && $playback?->preserves($file);
                             if ($state === 'preserved' && $previousContent) {
-                                $stateLabel = 'Contenido anterior conservado';
+                                $stateLabel = 'Contenido conservado por seguridad';
                             }
                             $fileError = \App\Services\Campaigns\CampaignError::safeStored($file?->last_error);
                             $playbackError = \App\Services\Campaigns\CampaignError::safeStored($playback?->last_error);
@@ -118,7 +141,7 @@
                                 @elseif($state === 'reported_absent')
                                     <p class="mt-1 text-xs text-text-muted">El modelo 42 ya no incluye este video en su reporte, pero no permite confirmar que el archivo haya desaparecido de la SD.</p>
                                 @elseif($previousContent)
-                                    <p class="mt-1 text-xs text-text-muted">Este video ya estaba en el dispositivo antes de la campaña y no se retira.</p>
+                                    <p class="mt-1 text-xs text-text-muted">Este video estaba en el dispositivo antes de la campaña y requiere protección durante la restauración.</p>
                                 @elseif($state === 'preserved')
                                     <p class="mt-1 text-xs text-text-muted">No hay una identificación suficiente para retirarlo sin arriesgar otro archivo.</p>
                                 @endif

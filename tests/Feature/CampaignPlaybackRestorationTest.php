@@ -12,8 +12,6 @@ use App\Services\Campaigns\CampaignDeviceTransport;
 use App\Services\Campaigns\CampaignLifecycle;
 use App\Services\CampaignTargetCatalog;
 use App\Services\Fleet\DeviceMutationLock;
-use App\Services\Fleet\MediaPreviewSource;
-use App\Services\Fleet\MediaSourceMaterializer;
 use App\Services\Fleet\UnifiedFleetClient;
 use App\Services\Fleet\VideoRemovalRejected;
 use App\Services\Z2\Z2VideoService;
@@ -42,10 +40,13 @@ class CampaignPlaybackRestorationTest extends TestCase
         $this->freezeTime();
         Http::preventStrayRequests();
         Queue::fake();
-        config(['privatecloud.base_url' => 'http://cloud.test', 'cache.default' => 'database', 'queue.default' => 'database', 'queue.connections.database.retry_after' => 2000]);
+        Storage::fake('local');
+        Storage::fake('backup');
+        Storage::disk('local')->put('original.mp4', 'original bytes');
+        Media::factory()->video()->create(['file_path' => 'original.mp4']);
+        config(['campaigns.backup_disk' => 'backup', 'campaigns.backup_persistent' => true, 'filesystems.disks.backup.driver' => 'local', 'privatecloud.base_url' => 'http://cloud.test', 'cache.default' => 'database', 'queue.default' => 'database', 'queue.connections.database.retry_after' => 2000]);
         $this->mock(CampaignTargetCatalog::class)->shouldReceive('validatedKeys')->andReturnUsing(fn ($keys) => $keys);
-        $this->mock(MediaPreviewSource::class)->shouldReceive('resolve')->andReturnUsing(fn ($media) => ['kind' => 'private_cloud', 'path' => '/fileDownload/Videos/'.basename($media->file_path)]);
-        $this->device = ['reportedPlaylist' => ['original.mp4'], 'reportedPlaylistVersion' => 1, 'displayImageId' => 'original.mp4'];
+        $this->device = ['reportedPlaylist' => ['original.mp4'], 'playlist' => ['original.mp4'], 'reportedPlaylistVersion' => 1, 'displayImageId' => 'original.mp4'];
         Http::fake(function ($request) {
             if ($this->offline) {
                 return Http::response(['result' => -1], 503);
@@ -54,15 +55,21 @@ class CampaignPlaybackRestorationTest extends TestCase
                 return Http::response(['device' => $this->device + ['reportedPlaylistAt' => now()->getTimestampMs()]]);
             }
             $action = basename(parse_url($request->url(), PHP_URL_PATH));
+            if ($action === 'upload') {
+                return Http::response(['result' => 0, 'filename' => 'restored.mp4']);
+            }
             $this->commands[] = [$action, $request['filename']];
             if ($action === 'play') {
                 // The snapshot must already be durable before any installation side effect.
                 $this->assertNotNull(CampaignDevicePlayback::sole()->baseline);
                 $this->device['reportedPlaylist'][] = $request['filename'];
+                $this->device['playlist'] = $this->device['reportedPlaylist'];
                 $this->device['reportedPlaylistVersion']++;
                 $this->device['displayImageId'] = $request['filename'];
             } elseif ($action === 'remove-media') {
                 $this->device['reportedPlaylist'] = array_values(array_diff($this->device['reportedPlaylist'], [$request['filename']]));
+                $this->device['playlist'] = $this->device['reportedPlaylist'];
+                $this->device['reportedPlaylistVersion']++;
                 $this->device['mediaRemovals'][] = ['requestId' => $request['request_id'], 'status' => 'reported_absent'];
             } elseif ($action === 'select-media') {
                 $this->device['displayImageId'] = $request['filename'];
@@ -75,7 +82,10 @@ class CampaignPlaybackRestorationTest extends TestCase
     private function campaign(string $name = 'campaign.mp4', array $attributes = []): Campaign
     {
         $campaign = Campaign::factory()->create($attributes + ['status' => 'draft', 'start_date' => now()->subMinute(), 'end_date' => now()->addHour(), 'target_devices' => [$this->target], 'priority' => 1]);
-        $media = Media::factory()->video()->create(['duration' => 10, 'file_path' => $name]);
+        $media = basename($name) === 'original.mp4'
+            ? Media::where('file_path', 'original.mp4')->firstOrFail()
+            : Media::factory()->video()->create(['duration' => 10, 'file_path' => 'http://cloud.test/fileDownload/Videos/'.basename($name)]);
+        $media->update(['duration' => 10]);
         $campaign->media()->attach($media, ['order' => 1]);
         app(CampaignLifecycle::class)->activate($campaign);
 
@@ -90,34 +100,34 @@ class CampaignPlaybackRestorationTest extends TestCase
         }
     }
 
-    public function test_real_lifecycle_preserves_old_files_and_returns_to_previous_selection_after_cleanup(): void
+    public function test_real_lifecycle_removes_old_files_and_restores_them_after_cleanup(): void
     {
         $campaign = $this->campaign();
-        $this->process(2);
+        $this->process(6);
         $this->assertSame('ready', CampaignDeviceFile::sole()->state);
         $this->assertSame('campaign.mp4', $this->device['displayImageId']);
         app(CampaignLifecycle::class)->finish($campaign);
-        $this->process(3);
-        $this->assertSame(['original.mp4'], $this->device['reportedPlaylist']);
-        $this->assertSame('original.mp4', $this->device['displayImageId']);
+        $this->process(8);
+        $this->assertSame(['restored.mp4'], $this->device['reportedPlaylist']);
+        $this->assertSame('restored.mp4', $this->device['displayImageId']);
         $this->assertSame('restored', CampaignDevicePlayback::sole()->restore_state);
         $this->assertNotNull(CampaignDevicePlayback::sole()->baseline_closed_at);
-        $this->assertNotContains(['remove-media', 'original.mp4'], $this->commands);
+        $this->assertContains(['remove-media', 'original.mp4'], $this->commands);
         Http::assertNotSent(fn ($r) => str_ends_with($r->url(), '/power'));
     }
 
     public function test_pause_restores_previous_selection_and_resume_keeps_the_original_snapshot(): void
     {
         $campaign = $this->campaign();
-        $this->process(2);
+        $this->process(6);
         $baseline = CampaignDevicePlayback::sole()->baseline;
         $campaign->update(['status' => 'paused']);
-        $this->process();
-        $this->assertSame('original.mp4', $this->device['displayImageId']);
+        $this->process(8);
+        $this->assertSame('restored.mp4', $this->device['displayImageId']);
         $this->assertNull(CampaignDevicePlayback::sole()->baseline_closed_at);
-        $this->assertSame('ready', CampaignDeviceFile::sole()->state);
+        $this->assertSame('reported_absent', CampaignDeviceFile::sole()->state);
         app(CampaignLifecycle::class)->activate($campaign);
-        $this->process();
+        $this->process(8);
         $this->assertSame('campaign.mp4', $this->device['displayImageId']);
         $this->assertSame($baseline, CampaignDevicePlayback::sole()->baseline);
     }
@@ -126,29 +136,30 @@ class CampaignPlaybackRestorationTest extends TestCase
     {
         $first = $this->campaign('first.mp4', ['priority' => 1]);
         $second = $this->campaign('second.mp4', ['priority' => 9]);
-        $this->process(4);
+        $this->process(10);
         $this->assertSame('second.mp4', $this->device['displayImageId']);
         $this->assertSame(['original.mp4'], CampaignDevicePlayback::sole()->baseline['files']);
         app(CampaignLifecycle::class)->finish($second);
-        $this->process(3);
+        $this->process(6);
         $this->assertSame('first.mp4', $this->device['displayImageId']);
         $this->assertNotContains(['select-media', 'original.mp4'], $this->commands);
         app(CampaignLifecycle::class)->finish($first);
-        $this->process(3);
-        $this->assertSame('original.mp4', $this->device['displayImageId']);
+        $this->process(8);
+        $this->assertSame('restored.mp4', $this->device['displayImageId']);
     }
 
     public function test_preexisting_campaign_file_is_preserved_even_when_referenced_by_aliases(): void
     {
         $first = $this->campaign('original.mp4');
+        CampaignDeviceFile::sole()->update(['filename' => 'original.mp4']);
         $second = $this->campaign('alias/original.mp4');
-        $this->process(2);
+        $this->process(5);
         $this->assertFalse(CampaignDeviceFile::sole()->owned);
         app(CampaignLifecycle::class)->finish($first);
         $this->process();
         $this->assertSame('ready', CampaignDeviceFile::sole()->state);
         app(CampaignLifecycle::class)->finish($second);
-        $this->process(2);
+        $this->process(8);
         $this->assertSame('preserved', CampaignDeviceFile::sole()->state);
         $this->assertSame(['original.mp4'], $this->device['reportedPlaylist']);
         $this->assertNotContains(['remove-media', 'original.mp4'], $this->commands);
@@ -159,7 +170,7 @@ class CampaignPlaybackRestorationTest extends TestCase
         $campaign = $this->campaign();
         CampaignDeviceFile::sole()->update(['state' => 'ready', 'owned' => true]);
         app(CampaignLifecycle::class)->finish($campaign);
-        $this->process(2);
+        $this->process(5);
         $this->assertSame('legacy', CampaignDevicePlayback::sole()->baseline['type']);
         $this->assertSame('unavailable', CampaignDevicePlayback::sole()->restore_state);
         $this->assertStringContainsString('No se registró', CampaignDevicePlayback::sole()->restore_error);
@@ -172,15 +183,13 @@ class CampaignPlaybackRestorationTest extends TestCase
         $campaign = $this->campaign('original.mp4');
         $this->process(2);
         app(CampaignLifecycle::class)->finish($campaign);
-        $this->process(); // Marks reused file preserved; restoration is next tick.
         $this->offline = true;
         $this->process();
-        $this->assertSame('pending', CampaignDevicePlayback::sole()->restore_state);
-        $this->assertNotNull(CampaignDevicePlayback::sole()->restore_error);
+        $this->assertNotNull(CampaignDevicePlayback::sole()->last_error);
         app(CampaignLifecycle::class)->tick();
         Queue::assertPushed(ProcessCampaignDeviceJob::class, fn ($job) => $job->target === $this->target);
         $this->offline = false;
-        $this->process();
+        $this->process(8);
         $this->assertSame('restored', CampaignDevicePlayback::sole()->restore_state);
         $this->assertNull(CampaignDevicePlayback::sole()->restore_error);
     }
@@ -188,12 +197,13 @@ class CampaignPlaybackRestorationTest extends TestCase
     public function test_empty_baseline_does_not_select_an_arbitrary_video(): void
     {
         $this->device['reportedPlaylist'] = [];
+        $this->device['playlist'] = [];
         $this->device['displayImageId'] = null;
         $campaign = $this->campaign();
         $this->process(2);
         app(CampaignLifecycle::class)->finish($campaign);
         $this->commands = [];
-        $this->process(3);
+        $this->process(6);
         $this->assertSame('empty', CampaignDevicePlayback::sole()->restore_state);
         $this->assertFalse(collect($this->commands)->contains(fn ($command) => $command[0] === 'select-media'));
     }
@@ -202,11 +212,11 @@ class CampaignPlaybackRestorationTest extends TestCase
     {
         $this->device['displayImageId'] = 'unknown.mp4';
         $campaign = $this->campaign();
-        $this->process(2);
+        $this->process(6);
         app(CampaignLifecycle::class)->finish($campaign);
-        $this->process(3);
+        $this->process(8);
         $this->assertSame('unavailable', CampaignDevicePlayback::sole()->restore_state);
-        $this->assertSame(['original.mp4'], $this->device['reportedPlaylist']);
+        $this->assertSame(['restored.mp4'], $this->device['reportedPlaylist']);
         $this->assertNotContains(['select-media', 'unknown.mp4'], $this->commands);
     }
 
@@ -268,13 +278,16 @@ class CampaignPlaybackRestorationTest extends TestCase
     public function test_snapshot_survives_new_service_instance_and_new_campaign_after_closure_gets_fresh_snapshot(): void
     {
         $first = $this->campaign();
-        $this->process(2);
+        $this->process(6);
         $baseline = CampaignDevicePlayback::sole()->baseline;
         $this->app->forgetInstance(CampaignLifecycle::class);
         $this->assertSame($baseline, CampaignDevicePlayback::sole()->baseline);
         app(CampaignLifecycle::class)->finish($first);
-        $this->process(3);
+        $this->process(8);
+        Storage::disk('local')->put('replacement.mp4', 'replacement bytes');
+        Media::factory()->video()->create(['file_path' => 'replacement.mp4']);
         $this->device['reportedPlaylist'] = ['replacement.mp4'];
+        $this->device['playlist'] = ['replacement.mp4'];
         $this->device['displayImageId'] = 'replacement.mp4';
         $this->campaign('next.mp4');
         $this->process();
@@ -305,20 +318,15 @@ class CampaignPlaybackRestorationTest extends TestCase
     public function test_wl35_real_lifecycle_appends_cleans_up_and_restores_original_index_without_powering_off(): void
     {
         $this->target = 'wl35:fan';
-        Storage::fake('local');
-        Wl35DeviceMedia::create(['device_id' => 'fan', 'video_index' => 1, 'upload_identity' => 'original-installation']);
-        $this->mock(MediaSourceMaterializer::class)->shouldReceive('materialize')->once()->andReturnUsing(function ($media, $path) {
-            Storage::disk('local')->put($path, 'fixture');
-
-            return 7;
-        });
+        Wl35DeviceMedia::create(['device_id' => 'fan', 'media_id' => Media::where('file_path', 'original.mp4')->firstOrFail()->id, 'filename' => 'original.mp4', 'video_index' => 1, 'upload_identity' => 'original-installation']);
+        Storage::disk('local')->put('campaign.mp4', 'campaign bytes');
         $count = 1;
         $selected = 1;
         $fleet = $this->mock(UnifiedFleetClient::class);
         $fleet->shouldReceive('getFleet')->andReturnUsing(function () use (&$count, &$selected) {
             return ['devices' => [['type' => 'wl35', 'id' => 'fan', 'online' => true, 'session_ready' => true, 'video_count' => $count, 'current_video' => $selected]]];
         });
-        $fleet->shouldReceive('uploadPathAndDistribute')->once()->andReturnUsing(function () use (&$count) {
+        $fleet->shouldReceive('uploadPathAndDistribute')->twice()->andReturnUsing(function () use (&$count) {
             $this->assertSame(1, CampaignDevicePlayback::sole()->baseline['selection']);
             $count++;
 
@@ -330,20 +338,21 @@ class CampaignPlaybackRestorationTest extends TestCase
 
             return ['results' => [['key' => $this->target, 'success' => true]]];
         });
-        $fleet->shouldReceive('deleteWl35Video')->once()->with('fan', 2, 2)->andReturnUsing(function () use (&$count) {
+        $fleet->shouldReceive('deleteWl35Video')->twice()->with('fan', 1, 1)->andReturnUsing(function () use (&$count) {
             $count--;
 
             return ['confirmed' => true, 'deletion_status' => 'confirmed', 'video_count' => $count];
         });
         $campaign = $this->campaign();
-        $this->process(2);
-        $this->assertSame(2, $selected);
+        $campaign->media()->first()->update(['file_path' => 'campaign.mp4']);
+        $this->process(8);
+        $this->assertSame(1, $selected);
         app(CampaignLifecycle::class)->finish($campaign);
-        $this->process(2);
+        $this->process(8);
         $this->assertSame(1, $count);
         $this->assertSame(1, $selected);
         $this->assertSame('removed', CampaignDeviceFile::sole()->state);
-        $this->assertSame('original-installation', Wl35DeviceMedia::sole()->upload_identity);
+        $this->assertNotSame('original-installation', Wl35DeviceMedia::sole()->upload_identity);
         $this->assertNotNull(CampaignDevicePlayback::sole()->baseline_closed_at);
     }
 
@@ -351,18 +360,18 @@ class CampaignPlaybackRestorationTest extends TestCase
     {
         $this->mock(UnifiedFleetClient::class)->shouldReceive('sendCommand')->andReturn(['results' => [['key' => $this->target, 'success' => true]]]);
         $first = $this->campaign();
-        $this->process(2);
+        $this->process(6);
         $second = $this->campaign('second-source.mp4', ['priority' => 9]);
         $second->deliveries()->first()->file->update(['filename' => 'campaign.mp4']);
-        $this->process(2);
+        $this->process(6);
         $this->assertSame(2, CampaignDeviceFile::where('owned', true)->count());
         app(CampaignLifecycle::class)->finish($first);
         $this->process();
         $this->assertNotContains(['remove-media', 'campaign.mp4'], $this->commands);
         app(CampaignLifecycle::class)->finish($second);
-        $this->process(5);
-        $this->assertSame(['original.mp4'], $this->device['reportedPlaylist']);
-        $this->assertSame('original.mp4', $this->device['displayImageId']);
+        $this->process(8);
+        $this->assertSame(['restored.mp4'], $this->device['reportedPlaylist']);
+        $this->assertSame('restored.mp4', $this->device['displayImageId']);
         $this->assertSame(0, CampaignDeviceFile::whereIn('state', ['ready', 'installing', 'removing'])->count());
     }
 

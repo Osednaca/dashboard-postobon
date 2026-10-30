@@ -2,6 +2,7 @@
 
 namespace App\Services\Z2;
 
+use App\Models\CampaignBaselineFile;
 use App\Models\CampaignDeviceFile;
 use App\Models\CampaignDevicePlayback;
 use App\Models\Media;
@@ -190,6 +191,7 @@ class Z2VideoService
             foreach ($sessions as $session) {
                 if (($session->baseline['type'] ?? null) === 'legacy'
                     || in_array($name, $session->baseline['files'] ?? [], true)
+                    || CampaignBaselineFile::where('playback_id', $session->id)->where('session_id', $session->baseline['session_id'] ?? '')->get()->contains(fn ($file) => ($file->operation['current_filename'] ?? $file->filename) === $name)
                     || CampaignDeviceFile::where('target_key', $session->target_key)->where('filename', $name)->whereNotIn('state', ['removed', 'reported_absent'])->exists()) {
                     throw new VideoRemovalRejected('Este video está protegido por una sesión de campaña. Finaliza la campaña y espera la recuperación antes de eliminarlo de la biblioteca.');
                 }

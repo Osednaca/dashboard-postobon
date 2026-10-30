@@ -7,6 +7,7 @@ use App\Models\CampaignDeviceFile;
 use App\Models\CampaignDevicePlayback;
 use App\Services\Fleet\DeviceMutationLock;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Throwable;
 
 /** Called only while the physical-device lock is held. */
@@ -18,6 +19,11 @@ class CampaignPlaybackRestoration
     {
         $playback = CampaignDevicePlayback::where('target_key', $target)->first();
         if ($playback?->baseline !== null && $playback->baseline_closed_at === null) {
+            if (! isset($playback->baseline['session_id'])) {
+                $baseline = $playback->baseline;
+                $baseline['session_id'] = (string) Str::uuid();
+                $playback->update(['baseline' => $baseline]);
+            }
             if ($hasWinner && $playback->restore_state !== 'managed') {
                 $playback->update(['restore_state' => 'managed', 'restore_error' => null]);
             }
@@ -34,6 +40,7 @@ class CampaignPlaybackRestoration
         }
         $playback = DeviceMutationLock::withBaselineLock(function () use ($legacy, $target, $hasWinner): CampaignDevicePlayback {
             $baseline = $legacy ? ['type' => 'legacy', 'selection' => null] : $this->transport->captureBaseline($target);
+            $baseline['session_id'] = (string) Str::uuid();
 
             return CampaignDevicePlayback::updateOrCreate(['target_key' => $target], [
                 'baseline' => $baseline, 'baseline_closed_at' => null,

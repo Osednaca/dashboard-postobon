@@ -218,7 +218,7 @@ class CampaignLifecycle
             }
         })->pluck('id');
 
-        return CampaignDelivery::whereIn('campaign_device_file_id', $physicalIds)->whereNull('released_at')->whereHas('campaign', fn ($q) => $q->whereNull('deleted_at')->where(fn ($q) => $q->whereIn('status', ['active', 'paused'])->orWhere(fn ($q) => $q->where('status', 'scheduled')->where(fn ($q) => $q->whereNull('start_date')->orWhere('start_date', '<=', now()))))->where(fn ($q) => $q->whereNull('end_date')->orWhere('end_date', '>', now())));
+        return CampaignDelivery::whereIn('campaign_device_file_id', $physicalIds)->whereNull('released_at')->whereHas('campaign', fn ($q) => $q->whereNull('deleted_at')->where(fn ($q) => $q->where('status', 'active')->orWhere(fn ($q) => $q->where('status', 'scheduled')->where(fn ($q) => $q->whereNull('start_date')->orWhere('start_date', '<=', now()))))->where(fn ($q) => $q->whereNull('end_date')->orWhere('end_date', '>', now())));
     }
 
     private function wantedNow(CampaignDeviceFile $file): bool
@@ -242,7 +242,7 @@ class CampaignLifecycle
             return true;
         }
         // Protect active legacy campaigns even if their delivery snapshot cannot yet be reconciled.
-        foreach (Campaign::where(fn ($q) => $q->whereIn('status', ['active', 'paused'])->orWhere(fn ($q) => $q->where('status', 'scheduled')->where(fn ($q) => $q->whereNull('start_date')->orWhere('start_date', '<=', now()))))->where(fn ($q) => $q->whereNull('end_date')->orWhere('end_date', '>', now()))->with('media')->get() as $campaign) {
+        foreach (Campaign::where(fn ($q) => $q->where('status', 'active')->orWhere(fn ($q) => $q->where('status', 'scheduled')->where(fn ($q) => $q->whereNull('start_date')->orWhere('start_date', '<=', now()))))->where(fn ($q) => $q->whereNull('end_date')->orWhere('end_date', '>', now()))->with('media')->get() as $campaign) {
             $keys = $campaign->target_devices;
             if ($keys === null) {
                 $keys = Device::whereIn('id', $campaign->deviceCampaigns()->pluck('device_id'))->get()->map(fn ($d) => CampaignTargetCatalog::z2Key($d->mac_address))->all();
@@ -274,6 +274,10 @@ class CampaignLifecycle
                 ->whereHas('deliveries', fn ($q) => $q->whereNull('released_at')->whereHas('file', fn ($f) => $f->where('target_key', $target)))
                 ->orderByDesc('priority')->orderBy('id')->first();
             $playback = app(CampaignPlaybackRestoration::class)->begin($target, $files, $winner !== null);
+            $baselineTransition = app(CampaignBaselineTransition::class);
+            if ($winner && $playback?->baseline !== null && ! $baselineTransition->prepare($playback)) {
+                return;
+            }
             $currentValid = $winner && $playback?->campaign_id === $winner->id && $winner->deliveries()->whereKey($playback->delivery_id)->whereNull('released_at')->exists();
             if (! $currentValid && $playback?->campaign_id !== null) {
                 $playback->update(['campaign_id' => null, 'delivery_id' => null, 'due_at' => null, 'last_error' => null]);
@@ -317,6 +321,13 @@ class CampaignLifecycle
                     return;
                 }
             }
+            if ($winner && $playback?->baseline !== null && ! $baselineTransition->removePrevious($playback, function () use ($winner): bool {
+                $winner->refresh();
+
+                return $winner->status === 'active' && (! $winner->end_date || $winner->end_date->isFuture());
+            })) {
+                return;
+            }
             // Install all live campaign deliveries, even when a higher priority campaign owns playback.
             foreach ($files as $file) {
                 $file->refresh();
@@ -329,6 +340,11 @@ class CampaignLifecycle
                 }
             }
             if (! $winner) {
+                if ($playback?->baseline !== null && app(CampaignBaselineBackup::class)->files($playback)->contains(fn ($file) => in_array($file->state, ['removing', 'removed', 'restoring', 'restored', 'needs_review'], true))) {
+                    if (! $baselineTransition->restorePrevious($playback, fn () => ! Campaign::where('status', 'active')->where(fn ($q) => $q->whereNull('start_date')->orWhere('start_date', '<=', now()))->where(fn ($q) => $q->whereNull('end_date')->orWhere('end_date', '>', now()))->whereHas('deliveries', fn ($q) => $q->whereNull('released_at')->whereHas('file', fn ($f) => $f->where('target_key', $target)))->exists())) {
+                        return;
+                    }
+                }
                 app(CampaignPlaybackRestoration::class)->restore($playback);
 
                 return;
