@@ -111,11 +111,19 @@
                                 </td>
                                 <td class="px-6 py-4">
                                     <div class="flex flex-wrap gap-1">
-                                        @foreach($campaign->segment_cities ?? [] as $city)
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-surface-dark text-text-light">{{ $city }}</span>
-                                        @endforeach
-                                        @if(empty($campaign->segment_cities))
-                                            <span class="text-xs text-text-muted">Sin segmentación</span>
+                                        @php
+                                            $count = $campaign->target_devices === null ? $campaign->device_campaigns_count : count($campaign->target_devices);
+                                            $audienceLabel = match ($campaign->audience_mode) {
+                                                'all' => 'Todos',
+                                                'segment' => 'Segmento',
+                                                'establishment' => 'Establecimiento',
+                                                default => 'Selección de dispositivos',
+                                            };
+                                        @endphp
+                                        @if($count > 0)
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-surface-dark text-text-light">{{ $audienceLabel }} · {{ $count }} {{ $count === 1 ? 'dispositivo' : 'dispositivos' }}</span>
+                                        @else
+                                            <span class="text-xs text-text-muted">Sin dispositivos asignados</span>
                                         @endif
                                     </div>
                                 </td>

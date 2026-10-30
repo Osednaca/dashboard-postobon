@@ -7,6 +7,7 @@ use App\Http\Requests\AssignMediaRequest;
 use App\Http\Requests\StoreCampaignRequest;
 use App\Http\Requests\UpdateCampaignRequest;
 use App\Models\Campaign;
+use App\Services\Campaigns\CampaignConfigurationException;
 use App\Services\CampaignService;
 use App\Services\Z2\Z2CampaignSyncService;
 use Illuminate\Http\RedirectResponse;
@@ -38,6 +39,7 @@ class CampaignController extends Controller
 
         try {
             $campaigns = $this->campaignService->paginate(15);
+            $campaigns->getCollection()->loadCount(['deviceCampaigns' => fn ($query) => $query->whereHas('device')]);
 
             return view('campaigns.index', compact('campaigns'));
         } catch (\Exception $e) {
@@ -158,8 +160,28 @@ class CampaignController extends Controller
             $this->z2CampaignSyncService->activate($campaign);
 
             return back()->with('success', 'Campaña activada exitosamente.');
-        } catch (\Exception $e) {
-            Log::error('Error al activar campaña: '.$e->getMessage());
+        } catch (ValidationException $e) {
+            Log::error('No se pudo activar la campaña: validación', ['campaign_id' => $campaign->id, 'fields' => array_keys($e->errors())]);
+            Log::channel('diagnostics')->error('No se pudo activar la campaña: validación', [
+                'campaign_id' => $campaign->id,
+                'fields' => array_keys($e->errors()),
+            ]);
+
+            return back()->with('error', collect($e->errors())->flatten()->first());
+        } catch (CampaignConfigurationException $e) {
+            Log::error('No se pudo activar la campaña: configuración', ['campaign_id' => $campaign->id, 'reason' => $e->getMessage()]);
+            Log::channel('diagnostics')->error('No se pudo activar la campaña: configuración', [
+                'campaign_id' => $campaign->id,
+                'reason' => $e->getMessage(),
+            ]);
+
+            return back()->with('error', $e->getMessage());
+        } catch (\Throwable $e) {
+            Log::error('Error inesperado al activar campaña', ['campaign_id' => $campaign->id, 'exception' => $e]);
+            Log::channel('diagnostics')->error('Error inesperado al activar campaña', [
+                'campaign_id' => $campaign->id,
+                'exception' => $e,
+            ]);
 
             return back()->with('error', 'Ocurrió un error al activar la campaña.');
         }
