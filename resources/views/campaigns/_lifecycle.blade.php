@@ -25,6 +25,9 @@
     <p class="text-sm text-text-muted">Finalizar una campaña no confirma el borrado. Una orden aceptada permanece pendiente hasta recibir evidencia del dispositivo; los equipos sin conexión pueden tardar en completar la operación.</p>
     <p class="text-sm text-text-muted">Si no hay otra campaña que continúe la reproducción, pausar o finalizar envía una orden de apagado al equipo. Reanudar la secuencia vuelve a encenderlo.</p>
 
+    @if($campaign->duration_preparation_state === 'pending')
+        <p role="status" class="rounded-lg bg-surface p-4 text-sm text-text-light">Preparando la duración de los videos. La campaña se activará cuando estén listos.</p>
+    @endif
     @if($campaign->lifecycle_error)
         <div role="alert" class="rounded-lg border border-danger/30 bg-danger/5 p-4 text-sm text-danger">
             <p class="font-semibold">No se pudo preparar o actualizar la campaña</p>

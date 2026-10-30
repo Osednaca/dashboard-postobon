@@ -105,6 +105,11 @@ class ProcessSchedules extends Command
                     default => false,
                 };
 
+                if (! $success && $schedule->type === 'activate_campaign' && $schedule->campaign?->fresh()?->duration_preparation_state === 'pending') {
+                    // Do not claim activation or fail the occurrence while its metadata job runs.
+                    continue;
+                }
+
                 $this->finishRun($schedule, $success, $now, $success ? null : ($this->controlError ?? 'El dispositivo o la nube rechazó la instrucción.'));
                 $this->powerDiagnostic('completed', ['accepted' => $success]);
                 if ($success) {
@@ -355,9 +360,13 @@ class ProcessSchedules extends Command
             return false;
         }
 
-        app(Z2CampaignSyncService::class)->activate($schedule->campaign);
+        if ($schedule->campaign->duration_preparation_state === 'failed') {
+            $this->controlError = $schedule->campaign->lifecycle_error ?: 'No se pudo preparar la duración de los videos.';
 
-        return true;
+            return false;
+        }
+
+        return app(Z2CampaignSyncService::class)->activate($schedule->campaign);
     }
 
     /** @return Collection<int, Device> */

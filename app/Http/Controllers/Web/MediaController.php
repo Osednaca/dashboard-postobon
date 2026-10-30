@@ -8,6 +8,7 @@ use App\Http\Requests\StoreMediaRequest;
 use App\Http\Requests\UpdateMediaRequest;
 use App\Http\Requests\UploadMediaRequest;
 use App\Models\Media;
+use App\Services\Fleet\VideoDurationProbe;
 use App\Services\MediaService;
 use App\Services\Z2\Z2VideoService;
 use Illuminate\Http\JsonResponse;
@@ -100,6 +101,7 @@ class MediaController extends Controller
                     'file_path' => $localPath,
                     'mime_type' => $file->getMimeType(),
                     'size' => $file->getSize(),
+                    'duration' => app(VideoDurationProbe::class)->file($storagePath) ?? ($request->validated()['duration'] ?? null),
                 ]);
                 $media = $this->mediaService->create($data);
                 Log::warning('Media saved locally but Z2 cloud upload failed', ['media_id' => $media->id]);

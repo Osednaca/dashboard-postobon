@@ -157,9 +157,9 @@ class CampaignController extends Controller
         $this->authorize('update', $campaign);
 
         try {
-            $this->z2CampaignSyncService->activate($campaign);
+            $activated = $this->z2CampaignSyncService->activate($campaign);
 
-            return back()->with('success', 'Campaña activada exitosamente.');
+            return back()->with('success', $activated ? 'Campaña activada exitosamente.' : 'Preparando la duración de los videos. La campaña se activará cuando estén listos.');
         } catch (ValidationException $e) {
             Log::error('No se pudo activar la campaña: validación', ['campaign_id' => $campaign->id, 'fields' => array_keys($e->errors())]);
             Log::channel('diagnostics')->error('No se pudo activar la campaña: validación', [

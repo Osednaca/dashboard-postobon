@@ -18,13 +18,13 @@ class Z2CampaignSyncService
             $campaign->update(['target_devices' => Device::whereKey($deviceIds)->get()->map(fn ($d) => CampaignTargetCatalog::z2Key($d->mac_address))->unique()->values()->all()]);
         }
         $this->lifecycle->assertQueueConfiguration();
-        if ($campaign->status === 'active') {
+        if ($campaign->status === 'active' && ! $campaign->media()->where(fn ($q) => $q->whereNull('duration')->orWhere('duration', '<=', 0))->exists()) {
             $this->lifecycle->snapshot($campaign);
-        } else {
-            $this->lifecycle->activate($campaign);
+
+            return true;
         }
 
-        return true;
+        return $this->lifecycle->activate($campaign);
     }
 
     public function publishToGroups(Campaign $campaign, array $groupIds): bool
@@ -41,14 +41,12 @@ class Z2CampaignSyncService
 
     public function activate(Campaign $campaign): bool
     {
-        $this->lifecycle->activate($campaign);
-
-        return true;
+        return $this->lifecycle->activate($campaign);
     }
 
     public function pause(Campaign $campaign): bool
     {
-        $campaign->update(['status' => 'paused']);
+        $campaign->update(['status' => 'paused', 'duration_preparation_token' => null, 'duration_preparation_state' => null]);
 
         return true;
     }

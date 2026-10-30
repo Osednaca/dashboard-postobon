@@ -5,8 +5,8 @@ El ciclo de campañas registra cada entrega por dispositivo y archivo. Publica t
 ## Uso del dashboard
 
 1. Selecciona los destinatarios, agrega los videos en el orden deseado y define inicio y fin. Una campaña permanente no tiene vencimiento automático.
-2. Verifica que cada video tenga una duración conocida y mayor que cero. La activación rechaza duraciones desconocidas: el servidor necesita ese dato para avanzar al siguiente video sin inventar un tiempo.
-3. Activa la campaña. La publicación respeta su fecha de inicio y procesa los videos por dispositivo; las órdenes no se envían todas a la vez.
+2. Activa la campaña. Si falta la duración de un video, el dashboard muestra «Preparando duración de videos» mientras un worker la obtiene del archivo. No se inventa un tiempo; al finalizar la preparación se activa la campaña si sus datos y vigencia no cambiaron.
+3. Si la preparación falla, revisa el video indicado y vuelve a activar. La publicación respeta la fecha de inicio y procesa los videos por dispositivo; las órdenes no se envían todas a la vez.
 4. Consulta **Publicación y limpieza** en el detalle y usa **Actualizar estado** para obtener información reciente. El estado general «Finalizada» no significa que todas las SD estén limpias.
 
 Los destinatarios quedan fijados al guardar. Las entregas registradas se conservan aunque se quite un video o se elimine lógicamente una campaña, para que la limpieza pueda terminar sin perder el vínculo con los archivos enviados.
@@ -44,6 +44,7 @@ Los cambios requieren desplegar versiones compatibles del dashboard, la nube pri
 - Usa un almacén de caché persistente y compartido por los procesos, como `database` o `redis`, para que los bloqueos por dispositivo coordinen publicación, reproducción y borrado. Una caché privada por proceso no proporciona esa protección.
 - Mantén el scheduler activo. `campaigns:process` se agenda cada segundo y encola el trabajo; no debe realizar las transferencias largas en el proceso del scheduler.
 - Mantén trabajadores dedicados a la cola `campaigns`. La configuración de Supervisor incluye dos procesos; ajusta su cantidad a la flota y la capacidad del servidor. Una transferencia larga de un dispositivo no debería bloquear el avance de todos los demás.
+- La misma cola prepara la duración de medios antiguos. El worker necesita `ffprobe` (incluido en la imagen con FFmpeg), acceso a la biblioteca y almacenamiento temporal local suficiente; la descarga respeta los límites de la preparación de vistas previas. Si el archivo o `ffprobe` no están disponibles, la campaña queda pendiente de corrección y reintento, sin activar.
 
 Comando equivalente del trabajador dedicado:
 

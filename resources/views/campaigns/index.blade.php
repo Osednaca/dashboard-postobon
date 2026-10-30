@@ -88,6 +88,11 @@
                                 </td>
                                 <td class="px-6 py-4">
                                     <x-campaign-status-badge :status="$campaign->status" />
+                                    @if($campaign->duration_preparation_state === 'pending')
+                                        <span class="block mt-1 text-xs text-text-light">Preparando duración de videos</span>
+                                    @elseif($campaign->duration_preparation_state === 'failed')
+                                        <span class="block mt-1 text-xs text-danger">{{ $campaign->lifecycle_error }}</span>
+                                    @endif
                                 </td>
                                 <td class="px-6 py-4">
                                     <div class="flex items-center gap-1">
@@ -132,7 +137,10 @@
                                         <x-action-button href="{{ route('campaigns.edit', $campaign) }}" icon="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" label="Editar" color="primary" />
                                         <x-action-button href="{{ route('campaigns.show', $campaign) }}" icon="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" label="Ver" />
 
-                                        @if($campaign->status == 'draft')
+                                        @if($campaign->duration_preparation_state === 'failed')
+                                            <x-action-button href="{{ route('campaigns.activate', $campaign) }}" icon="M13 10V3L4 14h7v7l9-11h-7z" label="Reintentar preparación" color="success" method="POST" confirm="true" />
+                                        @endif
+                                        @if($campaign->status == 'draft' && $campaign->duration_preparation_state !== 'failed')
                                             <x-action-button href="{{ route('campaigns.activate', $campaign) }}" icon="M13 10V3L4 14h7v7l9-11h-7z" label="Activar" color="success" method="POST" confirm="true" />
                                         @elseif($campaign->status == 'active')
                                             <x-action-button href="{{ route('campaigns.pause', $campaign) }}" icon="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" label="Pausar" color="warning" method="POST" confirm="true" />
