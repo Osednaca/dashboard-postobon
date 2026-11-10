@@ -72,8 +72,10 @@ class CompressedMediaPreviewTest extends TestCase
         Process::assertNothingRan();
     }
 
-    public function test_campaign_status_is_authorized_and_waits_for_compressed_media_without_original_fallback(): void
+    #[DataProvider('previewCacheStores')]
+    public function test_campaign_status_is_authorized_and_waits_for_compressed_media_without_original_fallback(string $store): void
     {
+        config(['cache.default' => $store]);
         $media = $this->media();
         $url = route('media.content', $media).'?preview_status=1';
         $this->getJson($url)->assertUnauthorized();
@@ -90,7 +92,7 @@ class CompressedMediaPreviewTest extends TestCase
         Process::assertNothingRan();
         $this->converter();
         $service = app(CompressedMediaPreview::class);
-        $service->generate($media->id, $service->identity($media));
+        Queue::pushed(GenerateMediaPreviewJob::class)->first()->handle($service);
         $this->getJson($url)->assertOk()->assertJsonPath('status', 'ready')
             ->assertJsonPath('url', $service->url($media));
         $this->assertStringContainsString('?preview=', $service->status($media)['url']);
@@ -332,5 +334,124 @@ class CompressedMediaPreviewTest extends TestCase
         app(CompressedMediaPreview::class)->prune();
         $disk->assertMissing($old);
         $disk->assertExists('media-previews/unrelated.mp4');
+    }
+
+    public function test_delayed_duplicate_preserves_ready_preview_and_cannot_release_new_pending_owner(): void
+    {
+        $media = $this->media();
+        $media->update(['file_path' => 'remote.mp4']);
+        $service = app(CompressedMediaPreview::class);
+        $identity = $service->identity($media);
+        $service->url($media);
+        $first = Queue::pushed(GenerateMediaPreviewJob::class)->first();
+
+        $this->travel(601)->seconds();
+        $service->url($media);
+        Queue::assertPushed(GenerateMediaPreviewJob::class, 2);
+        $second = Queue::pushed(GenerateMediaPreviewJob::class)->last();
+        $this->assertNotSame($first->pendingOwner, $second->pendingOwner);
+        Http::fake(function ($request, $options) {
+            $bytes = str_repeat('full-private-video', 100);
+            file_put_contents($options['sink'], $bytes);
+
+            return Http::response($bytes);
+        });
+        $this->converter();
+        $first->handle($service);
+        $ready = $service->url($media);
+        $this->assertStringContainsString('?preview=', $ready);
+        $this->assertSame('ready', $service->status($media)['status']);
+        $this->assertSame($ready, $service->status($media)['url']);
+        $pending = Cache::lock('media-preview:'.$identity.':pending-lock', 600);
+        $this->assertFalse($pending->get());
+
+        $checkedAt = Cache::get('media-preview:'.$identity)['checked_at'];
+        $this->travel(1)->minutes();
+        Http::fake(['cloud.test/*' => Http::response('', 503)]);
+        $second->handle($service);
+        $this->assertSame($ready, $service->url($media));
+        $this->assertSame($checkedAt, Cache::get('media-preview:'.$identity)['checked_at']);
+        Http::assertNothingSent();
+        Process::assertRanTimes(fn ($process) => $process->command[0] === 'ffmpeg', 1);
+        $this->assertTrue($pending->get());
+        $pending->release();
+    }
+
+    public function test_execution_lock_prevents_parallel_generation_for_the_same_identity(): void
+    {
+        $media = $this->media();
+        $service = app(CompressedMediaPreview::class);
+        $identity = $service->identity($media);
+        $execution = Cache::lock('media-preview:'.$identity.':generating', 600);
+        $this->assertTrue($execution->get());
+        $service->generate($media->id, $identity);
+        Process::assertNothingRan();
+        Http::assertNothingSent();
+        $this->assertSame([], Storage::disk('local')->allFiles('media-previews'));
+        $execution->release();
+
+        $this->converter();
+        $service->generate($media->id, $identity);
+        $this->assertStringContainsString('?preview=', $service->url($media));
+    }
+
+    public function test_delayed_duplicate_respects_failure_cooldown_before_retrying(): void
+    {
+        $media = $this->media();
+        $service = app(CompressedMediaPreview::class);
+        $identity = $service->identity($media);
+        $this->converter(fail: true);
+        $service->generate($media->id, $identity);
+        $checkedAt = Cache::get('media-preview:'.$identity)['checked_at'];
+
+        $this->travel(1)->minutes();
+        $service->generate($media->id, $identity);
+        Process::assertRanTimes(fn ($process) => $process->command[0] === 'ffmpeg', 1);
+        Process::assertRanTimes(fn ($process) => $process->command[0] === 'ffprobe', 1);
+        $this->assertSame($checkedAt, Cache::get('media-preview:'.$identity)['checked_at']);
+        $this->assertSame(route('media.content', $media), $service->url($media));
+
+        $this->travel(10)->minutes();
+        $this->converter();
+        $service->generate($media->id, $identity);
+        $this->assertStringContainsString('?preview=', $service->url($media));
+    }
+
+    public static function previewCacheStores(): array
+    {
+        return [['array'], ['database']];
+    }
+
+    #[DataProvider('previewCacheStores')]
+    public function test_campaign_status_ignores_expired_pending_locks(string $store): void
+    {
+        config(['cache.default' => $store, 'queue.default' => 'sync']);
+        $media = $this->media();
+        $service = app(CompressedMediaPreview::class);
+        $pending = Cache::lock('media-preview:'.$service->identity($media).':pending-lock', 1);
+        $this->assertTrue($pending->get());
+        $this->assertSame('pending', $service->status($media)['status']);
+
+        $this->travel(2)->seconds();
+        $this->assertSame('unavailable', $service->status($media)['status']);
+        $this->assertNull($service->status($media)['url']);
+        Queue::assertNothingPushed();
+        Process::assertNothingRan();
+    }
+
+    public function test_legacy_pending_marker_deduplicates_and_allows_ready_result_from_old_job(): void
+    {
+        $media = $this->media();
+        $service = app(CompressedMediaPreview::class);
+        $identity = $service->identity($media);
+        Cache::put('media-preview:'.$identity.':pending', true, 600);
+        $this->assertSame('pending', $service->status($media)['status']);
+        Queue::assertNothingPushed();
+
+        $this->converter();
+        (new GenerateMediaPreviewJob($media->id, $identity))->handle($service);
+        $this->assertSame('ready', $service->status($media)['status']);
+        $this->assertStringContainsString('?preview=', $service->status($media)['url']);
+        Queue::assertNothingPushed();
     }
 }
