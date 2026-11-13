@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AuditLog;
 use App\Models\User;
 use Database\Seeders\AuditLogSeeder;
+use Database\Seeders\CampaignStatisticSeeder;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -177,10 +178,11 @@ class AuditPresentationTest extends TestCase
         $existing = $this->entry(['action' => 'preserved_history']);
         // Exercise the normal seeder's dispatch without unrelated random demo factories.
         foreach (['UserSeeder', 'GroupSeeder', 'DeviceSeeder', 'MediaSeeder', 'CampaignSeeder',
-            'ScheduleSeeder', 'NotificationSeeder', 'DeviceHeartbeatSeeder', 'CampaignStatisticSeeder'] as $seeder) {
+            'ScheduleSeeder', 'NotificationSeeder', 'DeviceHeartbeatSeeder'] as $seeder) {
             $this->partialMock('Database\\Seeders\\'.$seeder)->shouldReceive('run')->once();
         }
         $this->partialMock(AuditLogSeeder::class)->shouldNotReceive('run');
+        $this->partialMock(CampaignStatisticSeeder::class)->shouldNotReceive('run');
         $this->seed(DatabaseSeeder::class);
 
         $this->assertSame(1, AuditLog::count());
