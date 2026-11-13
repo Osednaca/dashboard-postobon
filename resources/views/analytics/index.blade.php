@@ -7,6 +7,16 @@
                 <h2 class="text-2xl font-bold text-text">Analíticas</h2>
                 <p class="mt-1 text-sm text-text-muted">Inventario actual y estadísticas acumuladas registradas en el sistema</p>
             </div>
+            <form method="GET" action="{{ route('analytics.export') }}" class="flex items-end gap-2">
+                <div>
+                    <label for="analytics-export-format" class="block text-xs font-medium text-text-light mb-1.5">Formato de exportación</label>
+                    <select id="analytics-export-format" name="format" class="rounded-lg border border-border bg-white px-3 py-2 text-sm text-text focus:border-primary focus:ring-1 focus:ring-primary">
+                        <option value="pdf">PDF</option>
+                        <option value="xlsx">Excel (.xlsx)</option>
+                    </select>
+                </div>
+                <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90">Exportar</button>
+            </form>
         </div>
 
         @if(isset($error))
