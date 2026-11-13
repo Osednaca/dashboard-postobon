@@ -17,7 +17,6 @@ class DatabaseSeeder extends Seeder
             ScheduleSeeder::class,
             NotificationSeeder::class,
             DeviceHeartbeatSeeder::class,
-            CampaignStatisticSeeder::class,
         ]);
     }
 }

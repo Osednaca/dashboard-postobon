@@ -35,15 +35,20 @@ class DashboardService
      */
     public function getKpis(): array
     {
+        return $this->kpisFromAnalytics($this->analyticsService->report()['kpis']);
+    }
+
+    private function kpisFromAnalytics(array $analytics): array
+    {
         return [
             'total_devices' => Device::count(),
             'online_devices' => Device::where('status', 'active')->count(),
             'offline_devices' => Device::where('status', 'inactive')->count(),
-            'total_working_hours' => $this->analyticsService->workingHours(),
-            'uptime_percentage' => $this->analyticsService->uptime(),
-            'average_rpm' => $this->analyticsService->averageRpm(),
-            'total_impressions' => $this->analyticsService->totalImpressions(),
-            'total_plays' => $this->analyticsService->totalPlays(),
+            'total_working_hours' => $analytics['working_hours'],
+            'uptime_percentage' => $analytics['uptime'],
+            'average_rpm' => $analytics['average_rpm'],
+            'total_impressions' => $analytics['total_impressions'],
+            'total_plays' => $analytics['total_plays'],
         ];
     }
 
@@ -139,15 +144,17 @@ class DashboardService
      */
     public function getDashboardData(): array
     {
+        $report = $this->analyticsService->report();
+
         return [
-            'kpis' => $this->getKpis(),
+            'kpis' => $this->kpisFromAnalytics($report['kpis']),
             'device_statuses' => $this->getDeviceStatuses(),
             'campaign_statuses' => $this->getCampaignStatuses(),
             'map_data' => $this->getMapData(),
             'recent_campaigns' => $this->getRecentCampaigns(),
-            'activity_by_city' => $this->analyticsService->activityByCity(),
-            'activity_by_group' => $this->analyticsService->activityByGroup(),
-            'activity_by_campaign' => $this->analyticsService->activityByCampaign(),
+            'activity_by_city' => $report['cities'],
+            'activity_by_group' => $report['groups'],
+            'activity_by_campaign' => $report['campaigns'],
         ];
     }
 }

@@ -20,9 +20,27 @@
     @endphp
 
     <div class="space-y-6">
-        <div>
-            <h2 class="text-2xl font-bold text-text">Auditoría</h2>
-            <p class="mt-1 text-sm text-text-muted">Historial de acciones registradas en el sistema</p>
+        <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+            <div>
+                <h2 class="text-2xl font-bold text-text">Auditoría</h2>
+                <p class="mt-1 text-sm text-text-muted">Historial de acciones registradas en el sistema</p>
+            </div>
+            <form method="GET" action="{{ route('audit.export') }}" class="flex flex-wrap items-end gap-2">
+                @foreach($filters as $name => $value)
+                    @if(filled($value))
+                        <input type="hidden" name="{{ $name }}" value="{{ $value }}">
+                    @endif
+                @endforeach
+                <div>
+                    <label for="audit-export-format" class="block text-xs font-medium text-text-light mb-1.5">Formato de exportación</label>
+                    <select id="audit-export-format" name="format" class="rounded-lg border border-border bg-white px-3 py-2 text-sm text-text">
+                        <option value="pdf">PDF</option>
+                        <option value="xlsx">Excel (.xlsx)</option>
+                    </select>
+                </div>
+                <button type="submit" class="px-4 py-2 rounded-lg text-sm font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors">Exportar</button>
+                <p class="w-full text-xs text-text-muted">Todos los resultados de los filtros aplicados</p>
+            </form>
         </div>
 
         <div class="bg-white rounded-xl border border-border p-4">

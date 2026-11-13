@@ -8,9 +8,6 @@ use Illuminate\Http\JsonResponse;
 
 class AnalyticsController extends Controller
 {
-    /**
-     * @var AnalyticsService
-     */
     protected AnalyticsService $analyticsService;
 
     /**
@@ -27,15 +24,17 @@ class AnalyticsController extends Controller
     public function index(): JsonResponse
     {
         try {
+            $report = $this->analyticsService->report();
+
             return response()->json([
-                'working_hours' => $this->analyticsService->workingHours(),
-                'uptime' => $this->analyticsService->uptime(),
-                'average_rpm' => $this->analyticsService->averageRpm(),
-                'total_impressions' => $this->analyticsService->totalImpressions(),
-                'total_plays' => $this->analyticsService->totalPlays(),
-                'activity_by_city' => $this->analyticsService->activityByCity(),
-                'activity_by_group' => $this->analyticsService->activityByGroup(),
-                'activity_by_campaign' => $this->analyticsService->activityByCampaign(),
+                'working_hours' => $report['kpis']['working_hours'],
+                'uptime' => $report['kpis']['uptime'],
+                'average_rpm' => $report['kpis']['average_rpm'],
+                'total_impressions' => $report['kpis']['total_impressions'],
+                'total_plays' => $report['kpis']['total_plays'],
+                'activity_by_city' => $report['cities'],
+                'activity_by_group' => $report['groups'],
+                'activity_by_campaign' => $report['campaigns'],
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -69,10 +68,12 @@ class AnalyticsController extends Controller
     public function campaigns(): JsonResponse
     {
         try {
+            $report = $this->analyticsService->report();
+
             return response()->json([
-                'activity_by_campaign' => $this->analyticsService->activityByCampaign(),
-                'total_impressions' => $this->analyticsService->totalImpressions(),
-                'total_plays' => $this->analyticsService->totalPlays(),
+                'activity_by_campaign' => $report['campaigns'],
+                'total_impressions' => $report['kpis']['total_impressions'],
+                'total_plays' => $report['kpis']['total_plays'],
             ]);
         } catch (\Exception $e) {
             return response()->json([
