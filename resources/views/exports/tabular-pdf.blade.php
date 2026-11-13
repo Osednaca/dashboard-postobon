@@ -10,6 +10,7 @@
         h2 { color: #2d5795; font-size: 14px; border-bottom: 1px solid #cbd5e1; padding-bottom: 5px; margin: 20px 0 10px; page-break-after: avoid; }
         .note { color: #475569; margin: 3px 0; }
         .record { border-bottom: 1px solid #e2e8f0; padding: 7px 0; }
+        .record-compact { page-break-inside: avoid; }
         .record-title { font-weight: bold; color: #475569; margin-bottom: 3px; page-break-after: avoid; }
         .field { margin: 2px 0; white-space: pre-wrap; word-wrap: break-word; }
         .label { font-weight: bold; }
@@ -24,7 +25,17 @@
     @foreach($sections as $section)
         <h2>{{ $section['name'] }}</h2>
         @forelse($section['rows'] as $row)
-            <div class="record">
+            @php
+                // Keep short records together; large details must remain free to span pages.
+                $estimatedLines = 2;
+                foreach ($section['headers'] as $column => $header) {
+                    foreach (preg_split('/\R/u', $header.': '.($row[$column] ?? '')) as $line) {
+                        $estimatedLines += max(1, (int) ceil(mb_strlen($line) / 115));
+                    }
+                }
+                $compact = count($section['headers']) <= 12 && $estimatedLines <= 22;
+            @endphp
+            <div class="record{{ $compact ? ' record-compact' : '' }}">
                 <div class="record-title">Registro {{ $loop->iteration }}</div>
                 @foreach($section['headers'] as $column => $header)
                     <div class="field"><span class="label">{{ $header }}:</span> {{ $row[$column] ?? '' }}</div>

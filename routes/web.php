@@ -116,6 +116,7 @@ Route::middleware(['auth', 'role:superadmin,admin,tecnico,campanas'])->group(fun
     Route::post('notifications/{notification}/read', [NotificationController::class, 'markAsRead'])->name('notifications.read')->middleware('role:superadmin');
     Route::post('notifications/read-all', [NotificationController::class, 'markAllAsRead'])->name('notifications.read-all')->middleware('role:superadmin');
     Route::get('/audit', [AuditController::class, 'index'])->name('audit.index')->middleware('role:superadmin');
+    Route::get('/audit/export', [AuditController::class, 'export'])->name('audit.export')->middleware('role:superadmin');
     Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics.index')->middleware('role:superadmin');
     Route::get('/analytics/export', [AnalyticsController::class, 'export'])->name('analytics.export')->middleware('role:superadmin');
     Route::get('/analytics/devices', [AnalyticsController::class, 'devices'])->name('analytics.devices')->middleware('role:superadmin');

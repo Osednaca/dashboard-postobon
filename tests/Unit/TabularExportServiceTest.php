@@ -93,6 +93,31 @@ class TabularExportServiceTest extends TestCase
         $this->assertStringStartsWith('%PDF-', $response->getContent());
     }
 
+    public function test_pdf_keeps_a_short_record_together_when_it_reaches_a_page_boundary(): void
+    {
+        $rows = [
+            ['13/11/2026 10:00:00', '=SUM(A1:A2)', '<b>acción histórica</b>', 'Wl35DeviceProfile', 13,
+                json_encode(['ciudad' => 'Bogotá', 'nombre' => 'María Ñandú', 'entrada' => '<script>alert("audit")</script>'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), 'IP-FINAL-1'],
+            ['13/11/2026 10:00:00', 'Sin usuario disponible', 'publish', 'Campaign', 12, 'Sin detalles registrados', 'Sin IP registrada'],
+            ['13/11/2026 10:00:00', 'Sin usuario disponible', 'publish', 'Campaign', 11,
+                json_encode(['etiqueta' => 'Bogotá'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), 'IP-FINAL-3'],
+        ];
+        $pdf = app(TabularExportService::class)->download('pdf', 'auditoria', 'Auditoría', [[
+            'name' => 'Historial de auditoría', 'headers' => ['Fecha', 'Usuario', 'Acción registrada', 'Entidad registrada', 'ID', 'Detalles', 'IP'], 'rows' => $rows,
+        ]], ['Todos los resultados de los filtros aplicados. Zona horaria: America/Bogota. Total: 3.'])->getContent();
+        preg_match_all('/stream\r?\n(.*?)\r?\nendstream/s', $pdf, $streams);
+        $recordPage = null;
+        foreach ($streams[1] as $stream) {
+            $content = @gzuncompress($stream);
+            if ($content !== false && str_contains($content, mb_convert_encoding('Registro 3', 'UTF-16BE', 'UTF-8'))) {
+                $recordPage = $content;
+                break;
+            }
+        }
+        $this->assertNotNull($recordPage, 'Expected the actual PDF page stream containing record 3.');
+        $this->assertTrue(str_contains($recordPage, mb_convert_encoding('IP-FINAL-3', 'UTF-16BE', 'UTF-8')), 'The last field must share the PDF page with its short record heading.');
+    }
+
     public function test_unknown_formats_are_rejected(): void
     {
         $this->expectException(InvalidArgumentException::class);

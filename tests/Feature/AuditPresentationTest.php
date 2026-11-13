@@ -52,7 +52,7 @@ class AuditPresentationTest extends TestCase
             ->assertSee('Bogotá')->assertSee('&lt;script&gt;', false)
             ->assertDontSee('<script>alert(', false)
             ->assertDontSee('Verano 2024')->assertDontSee('Operador 1')
-            ->assertDontSee('Exportar')->assertSee('name="user_id"', false)
+            ->assertSee('Exportar')->assertSee('name="user_id"', false)
             ->assertSee('name="action"', false)->assertSee('name="entity_type"', false)
             ->assertSee('name="date"', false)->assertSee('type="submit"', false)
             ->assertViewHas('logs', fn ($logs) => $logs->total() === 1 && $logs->first()->relationLoaded('user'));
